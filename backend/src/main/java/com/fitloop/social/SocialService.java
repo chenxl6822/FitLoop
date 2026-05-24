@@ -46,7 +46,11 @@ public class SocialService {
         int earned = Math.max(1, (int) Math.round(record.getCalorie() / 10.0));
         user.setPoints(user.getPoints() + earned);
         user.setLevel(user.getPoints() / 100 + 1);
-        redis.delete("ranking:personal:week");
+        try {
+            redis.delete("ranking:personal:week");
+        } catch (RuntimeException ignored) {
+            // Ranking cache invalidation must not make a completed check-in fail.
+        }
     }
 
     @Transactional(readOnly = true)
