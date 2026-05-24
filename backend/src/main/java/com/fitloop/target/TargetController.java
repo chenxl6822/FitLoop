@@ -1,0 +1,31 @@
+package com.fitloop.target;
+
+import com.fitloop.common.ApiResponse;
+import com.fitloop.security.AuthSupport;
+import com.fitloop.target.TargetDtos.CreateTargetRequest;
+import com.fitloop.target.TargetDtos.TargetListResponse;
+import com.fitloop.target.TargetDtos.TargetResponse;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class TargetController {
+    private final TargetService targets;
+
+    public TargetController(TargetService targets) {
+        this.targets = targets;
+    }
+
+    @PostMapping({"/api/target/add", "/api/targets"})
+    public ApiResponse<TargetResponse> create(@Valid @RequestBody CreateTargetRequest request) {
+        return ApiResponse.ok(targets.create(AuthSupport.currentUserId(), request));
+    }
+
+    @GetMapping({"/api/target/info", "/api/targets/current"})
+    public ApiResponse<TargetListResponse> current() {
+        return ApiResponse.ok(new TargetListResponse(targets.current(AuthSupport.currentUserId())));
+    }
+}

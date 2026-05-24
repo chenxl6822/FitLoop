@@ -2,11 +2,13 @@ package com.fitloop.sport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fitloop.social.SocialService;
 import com.fitloop.sport.SportDtos.FinishSessionRequest;
 import com.fitloop.sport.SportDtos.SportRecordResponse;
 import com.fitloop.sport.SportDtos.StartSessionRequest;
 import com.fitloop.sport.SportDtos.StartSessionResponse;
 import com.fitloop.sport.SportDtos.TrackPointRequest;
+import com.fitloop.target.TargetService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,11 +26,16 @@ public class SportService {
     private final SportRecordRepository records;
     private final CalorieCalculator calorieCalculator;
     private final ObjectMapper objectMapper;
+    private final TargetService targetService;
+    private final SocialService socialService;
 
-    public SportService(SportRecordRepository records, CalorieCalculator calorieCalculator, ObjectMapper objectMapper) {
+    public SportService(SportRecordRepository records, CalorieCalculator calorieCalculator, ObjectMapper objectMapper,
+                        TargetService targetService, SocialService socialService) {
         this.records = records;
         this.calorieCalculator = calorieCalculator;
         this.objectMapper = objectMapper;
+        this.targetService = targetService;
+        this.socialService = socialService;
     }
 
     @Transactional
@@ -84,6 +91,10 @@ public class SportService {
         record.setEndedAt(Instant.now());
         record.setStatus(summary.abnormal() ? SportRecord.STATUS_ABNORMAL : SportRecord.STATUS_VALID);
         record.setAbnormalReason(summary.abnormalReason());
+        if (record.getStatus() == SportRecord.STATUS_VALID) {
+            targetService.applySportRecord(record);
+            socialService.reward(record);
+        }
         return SportRecordResponse.from(record);
     }
 
