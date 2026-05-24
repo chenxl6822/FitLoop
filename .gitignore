@@ -1,0 +1,35 @@
+# Local course deliverables and source documents stay outside Git.
+*.docx
+*.pptx
+*.xlsx
+*.pdf
+local-docs/
+reports/
+submission/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+application-local.yml
+
+# Java / Spring Boot
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+*.class
+*.log
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
+mobile/.packages
+mobile/pubspec.lock
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
