@@ -16,7 +16,86 @@ class FitLoopApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1F8A70)),
         useMaterial3: true,
       ),
-      home: const AppShell(),
+      home: const AuthGate(),
+    );
+  }
+}
+
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _signedIn = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (_signedIn) {
+      return const AppShell();
+    }
+    return AuthPage(onSignedIn: () => setState(() => _signedIn = true));
+  }
+}
+
+class AuthPage extends StatefulWidget {
+  const AuthPage({super.key, required this.onSignedIn});
+
+  final VoidCallback onSignedIn;
+
+  @override
+  State<AuthPage> createState() => _AuthPageState();
+}
+
+class _AuthPageState extends State<AuthPage> {
+  final _account = TextEditingController(text: '13800000000');
+  final _password = TextEditingController(text: 'pass1234');
+  bool _registerMode = false;
+
+  @override
+  void dispose() {
+    _account.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: [
+            const SizedBox(height: 32),
+            Text('FitLoop', style: Theme.of(context).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Text('校园运动打卡与健康管理', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 32),
+            TextField(
+              controller: _account,
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.phone_android), labelText: '手机号或邮箱'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _password,
+              obscureText: true,
+              decoration: const InputDecoration(prefixIcon: Icon(Icons.lock_outline), labelText: '密码'),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: widget.onSignedIn,
+              icon: Icon(_registerMode ? Icons.person_add_alt : Icons.login),
+              label: Text(_registerMode ? '注册并进入' : '登录'),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _registerMode = !_registerMode),
+              child: Text(_registerMode ? '已有账号，去登录' : '没有账号，创建账号'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -79,15 +158,41 @@ class SportPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return const SportSessionPage();
+  }
+}
+
+class SportSessionPage extends StatefulWidget {
+  const SportSessionPage({super.key});
+
+  @override
+  State<SportSessionPage> createState() => _SportSessionPageState();
+}
+
+class _SportSessionPageState extends State<SportSessionPage> {
+  bool _running = false;
+  int _minutes = 0;
+
+  @override
+  Widget build(BuildContext context) {
     return _PageScaffold(
       title: '运动打卡',
       children: [
         FilledButton.icon(
-          onPressed: () {},
-          icon: const Icon(Icons.play_arrow),
-          label: const Text('开始跑步'),
+          onPressed: () {
+            setState(() {
+              if (_running) {
+                _minutes = 30;
+              }
+              _running = !_running;
+            });
+          },
+          icon: Icon(_running ? Icons.stop : Icons.play_arrow),
+          label: Text(_running ? '结束打卡' : '开始跑步'),
         ),
-        const _MetricCard(label: '打卡方式', value: 'GPS / 传感器 / 拍照 / 手动', icon: Icons.sensors_outlined),
+        _MetricCard(label: '当前状态', value: _running ? 'GPS 采集中' : '未开始', icon: Icons.sensors_outlined),
+        _MetricCard(label: '最近一次', value: '$_minutes 分钟 / 预估 ${(8.0 * 60 * _minutes / 60).round()} kcal', icon: Icons.route_outlined),
+        const _MetricCard(label: '打卡方式', value: 'GPS / 传感器 / 拍照 / 手动', icon: Icons.tune_outlined),
       ],
     );
   }

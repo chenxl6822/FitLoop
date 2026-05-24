@@ -6,6 +6,11 @@ void main() {
     await tester.pumpWidget(const FitLoopApp());
 
     expect(find.text('FitLoop'), findsOneWidget);
+    expect(find.text('登录'), findsOneWidget);
+
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+
     expect(find.text('首页'), findsOneWidget);
     expect(find.text('运动'), findsOneWidget);
     expect(find.text('统计'), findsOneWidget);
