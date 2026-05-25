@@ -151,12 +151,8 @@ void main() {
     );
 
     await _openSportPage(tester);
-    await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
-    await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.stop), findsOneWidget);
-
-    await tester.tap(find.widgetWithIcon(FilledButton, Icons.stop));
-    await tester.pumpAndSettle();
+    await _startSportSession(tester, api);
+    await _finishSportSession(tester, api);
 
     expect(api.finishedSports, 1);
     expect(api.uploadedTrackPoints, 1);
@@ -197,12 +193,8 @@ void main() {
     );
 
     await _openSportPage(tester);
-    await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
-    await tester.pumpAndSettle();
-    expect(find.byIcon(Icons.stop), findsOneWidget);
-
-    await tester.tap(find.widgetWithIcon(FilledButton, Icons.stop));
-    await tester.pumpAndSettle();
+    await _startSportSession(tester, api);
+    await _finishSportSession(tester, api);
 
     expect(api.finishedSports, 1);
     expect(api.uploadedTrackPoints, 0);
@@ -215,6 +207,31 @@ Future<void> _openSportPage(WidgetTester tester) async {
   await tester.pumpAndSettle();
   await tester.tap(find.byIcon(Icons.directions_run_outlined));
   await tester.pumpAndSettle();
+}
+
+Future<void> _startSportSession(WidgetTester tester, _FakeApi api) async {
+  await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
+  await tester.pumpAndSettle();
+
+  expect(api.startedSports, 1);
+  _expectEnabledButton(tester, Icons.stop);
+}
+
+Future<void> _finishSportSession(WidgetTester tester, _FakeApi api) async {
+  _expectEnabledButton(tester, Icons.stop);
+  await tester.tap(find.widgetWithIcon(FilledButton, Icons.stop));
+
+  for (var i = 0; i < 10 && api.finishedSports == 0; i += 1) {
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  await tester.pumpAndSettle();
+}
+
+void _expectEnabledButton(WidgetTester tester, IconData icon) {
+  final button = tester.widget<FilledButton>(
+    find.widgetWithIcon(FilledButton, icon),
+  );
+  expect(button.onPressed, isNotNull);
 }
 
 class _FakeLocationService implements LocationService {
