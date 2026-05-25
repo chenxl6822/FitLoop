@@ -1,5 +1,6 @@
 import 'package:fitloop/api_client.dart';
 import 'package:fitloop/main.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -52,6 +53,34 @@ void main() {
     expect(api.createdTargets, 1);
     expect(find.textContaining('本周 运动次数：0 / 3'), findsOneWidget);
   });
+
+  testWidgets('submits health data from stats page', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(FitLoopApp(api: api));
+
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('统计'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('记录健康数据'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('保存健康数据'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('请至少填写一项健康数据'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, '体重 kg'), '62.5');
+    await tester.enterText(find.widgetWithText(TextField, '睡眠小时'), '7.5');
+    await tester.enterText(find.widgetWithText(TextField, '饮食备注'), '清淡饮食');
+    await tester.tap(find.text('保存健康数据'));
+    await tester.pumpAndSettle();
+
+    expect(api.createdHealthData, 1);
+    expect(find.textContaining('体重 62.5 kg'), findsOneWidget);
+    expect(find.textContaining('睡眠 7.5 小时'), findsOneWidget);
+    expect(find.textContaining('饮食 清淡饮食'), findsOneWidget);
+  });
 }
 
 class _FakeApi implements FitLoopApi {
@@ -79,6 +108,25 @@ class _FakeApi implements FitLoopApi {
   final List<SportTarget> _targets;
   int uploadedTrackPoints = 0;
   int createdTargets = 0;
+  int createdHealthData = 0;
+
+  @override
+  Future<HealthData> addHealthData({
+    required String token,
+    double? weightKg,
+    double? sleepHours,
+    String? dietNote,
+    required String dataDate,
+  }) async {
+    createdHealthData += 1;
+    return HealthData(
+      healthId: createdHealthData,
+      weightKg: weightKg,
+      sleepHours: sleepHours,
+      dietNote: dietNote,
+      dataDate: dataDate,
+    );
+  }
 
   @override
   Future<SportTarget> createTarget({

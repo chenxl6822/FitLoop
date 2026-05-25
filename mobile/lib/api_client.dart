@@ -56,6 +56,14 @@ abstract class FitLoopApi {
     int page = 1,
     int size = 20,
   });
+
+  Future<HealthData> addHealthData({
+    required String token,
+    double? weightKg,
+    double? sleepHours,
+    String? dietNote,
+    required String dataDate,
+  });
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -222,6 +230,28 @@ class HttpFitLoopApi implements FitLoopApi {
     final body = await _get(path, token: token);
     final data = body['data'] as Map<String, dynamic>;
     return RankingResult.fromJson(data);
+  }
+
+  @override
+  Future<HealthData> addHealthData({
+    required String token,
+    double? weightKg,
+    double? sleepHours,
+    String? dietNote,
+    required String dataDate,
+  }) async {
+    final body = await _post(
+      '/api/stat/health',
+      {
+        if (weightKg != null) 'weightKg': weightKg,
+        if (sleepHours != null) 'sleepHours': sleepHours,
+        if (dietNote != null && dietNote.isNotEmpty) 'dietNote': dietNote,
+        'dataDate': dataDate,
+      },
+      token: token,
+    );
+    final data = body['data'] as Map<String, dynamic>;
+    return HealthData.fromJson(data);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
@@ -455,4 +485,30 @@ class RankingRow {
   final String nickname;
   final double distanceKm;
   final double calorie;
+}
+
+class HealthData {
+  const HealthData({
+    required this.healthId,
+    this.weightKg,
+    this.sleepHours,
+    this.dietNote,
+    required this.dataDate,
+  });
+
+  factory HealthData.fromJson(Map<String, dynamic> json) {
+    return HealthData(
+      healthId: json['healthId'] as int,
+      weightKg: (json['weightKg'] as num?)?.toDouble(),
+      sleepHours: (json['sleepHours'] as num?)?.toDouble(),
+      dietNote: json['dietNote'] as String?,
+      dataDate: json['dataDate'] as String,
+    );
+  }
+
+  final int healthId;
+  final double? weightKg;
+  final double? sleepHours;
+  final String? dietNote;
+  final String dataDate;
 }

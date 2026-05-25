@@ -668,11 +668,28 @@ class StatsPage extends StatefulWidget {
 
 class _StatsPageState extends State<StatsPage> {
   Future<SportStats>? _future;
+  HealthData? _lastHealthData;
 
   @override
   void initState() {
     super.initState();
     _future = widget.api.sportStats(token: widget.session.token);
+  }
+
+  Future<void> _showHealthDataSheet() async {
+    final healthData = await showModalBottomSheet<HealthData>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return _HealthDataFormSheet(
+          api: widget.api,
+          token: widget.session.token,
+        );
+      },
+    );
+    if (healthData != null && mounted) {
+      setState(() => _lastHealthData = healthData);
+    }
   }
 
   @override
@@ -690,6 +707,20 @@ class _StatsPageState extends State<StatsPage> {
               icon: const Icon(Icons.refresh),
               label: const Text('刷新统计'),
             ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _showHealthDataSheet,
+              icon: const Icon(Icons.monitor_heart_outlined),
+              label: const Text('记录健康数据'),
+            ),
+            if (_lastHealthData != null) ...[
+              const SizedBox(height: 12),
+              _MetricCard(
+                label: '最近健康记录',
+                value: _formatHealthData(_lastHealthData!),
+                icon: Icons.favorite_outline,
+              ),
+            ],
             if (snapshot.hasError)
               _MetricCard(
                   label: '统计状态',
@@ -717,6 +748,171 @@ class _StatsPageState extends State<StatsPage> {
       },
     );
   }
+}
+
+class _HealthDataFormSheet extends StatefulWidget {
+  const _HealthDataFormSheet({
+    required this.api,
+    required this.token,
+  });
+
+  final FitLoopApi api;
+  final String token;
+
+  @override
+  State<_HealthDataFormSheet> createState() => _HealthDataFormSheetState();
+}
+
+class _HealthDataFormSheetState extends State<_HealthDataFormSheet> {
+  final _weight = TextEditingController();
+  final _sleep = TextEditingController();
+  final _diet = TextEditingController();
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void dispose() {
+    _weight.dispose();
+    _sleep.dispose();
+    _diet.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final weightText = _weight.text.trim();
+    final sleepText = _sleep.text.trim();
+    final dietNote = _diet.text.trim();
+    final weightKg = weightText.isEmpty ? null : double.tryParse(weightText);
+    final sleepHours = sleepText.isEmpty ? null : double.tryParse(sleepText);
+
+    if (weightText.isNotEmpty && (weightKg == null || weightKg <= 0)) {
+      setState(() => _message = '体重必须大于 0');
+      return;
+    }
+    if (sleepText.isNotEmpty && (sleepHours == null || sleepHours <= 0)) {
+      setState(() => _message = '睡眠小时必须大于 0');
+      return;
+    }
+    if (weightKg == null && sleepHours == null && dietNote.isEmpty) {
+      setState(() => _message = '请至少填写一项健康数据');
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      final healthData = await widget.api.addHealthData(
+        token: widget.token,
+        weightKg: weightKg,
+        sleepHours: sleepHours,
+        dietNote: dietNote.isEmpty ? null : dietNote,
+        dataDate: _todayText(),
+      );
+      if (mounted) {
+        Navigator.of(context).pop(healthData);
+      }
+    } catch (error) {
+      setState(() => _message = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '记录健康数据',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _weight,
+              enabled: !_busy,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.monitor_weight_outlined),
+                labelText: '体重 kg',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _sleep,
+              enabled: !_busy,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.bedtime_outlined),
+                labelText: '睡眠小时',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _diet,
+              enabled: !_busy,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.restaurant_outlined),
+                labelText: '饮食备注',
+              ),
+            ),
+            if (_message != null) ...[
+              const SizedBox(height: 12),
+              Text(_message!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _busy ? null : _submit,
+              icon: _busy
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check),
+              label: const Text('保存健康数据'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _todayText() {
+  final now = DateTime.now();
+  final month = now.month.toString().padLeft(2, '0');
+  final day = now.day.toString().padLeft(2, '0');
+  return '${now.year}-$month-$day';
+}
+
+String _formatHealthData(HealthData data) {
+  final parts = <String>[];
+  if (data.weightKg != null) {
+    parts.add('体重 ${_formatNumber(data.weightKg!)} kg');
+  }
+  if (data.sleepHours != null) {
+    parts.add('睡眠 ${_formatNumber(data.sleepHours!)} 小时');
+  }
+  final dietNote = data.dietNote;
+  if (dietNote != null && dietNote.isNotEmpty) {
+    parts.add('饮食 $dietNote');
+  }
+  return '${data.dataDate}：${parts.join(' / ')}';
 }
 
 class SocialPage extends StatefulWidget {
