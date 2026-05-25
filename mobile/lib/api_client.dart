@@ -37,6 +37,15 @@ abstract class FitLoopApi {
   });
 
   Future<SportStats> sportStats({required String token});
+
+  Future<List<SportTarget>> currentTargets({required String token});
+
+  Future<SportTarget> createTarget({
+    required String token,
+    required String periodType,
+    required String metric,
+    required double targetValue,
+  });
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -144,6 +153,36 @@ class HttpFitLoopApi implements FitLoopApi {
       distanceKm: (data['distanceKm'] as num).toDouble(),
       calorie: (data['calorie'] as num).toDouble(),
     );
+  }
+
+  @override
+  Future<List<SportTarget>> currentTargets({required String token}) async {
+    final body = await _get('/api/targets/current', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final targets = data['targets'] as List<dynamic>;
+    return targets
+        .map((item) => SportTarget.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<SportTarget> createTarget({
+    required String token,
+    required String periodType,
+    required String metric,
+    required double targetValue,
+  }) async {
+    final body = await _post(
+      '/api/targets',
+      {
+        'periodType': periodType,
+        'metric': metric,
+        'targetValue': targetValue,
+      },
+      token: token,
+    );
+    final data = body['data'] as Map<String, dynamic>;
+    return SportTarget.fromJson(data);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
@@ -269,4 +308,42 @@ class SportStats {
   final int durationSeconds;
   final double distanceKm;
   final double calorie;
+}
+
+class SportTarget {
+  const SportTarget({
+    required this.targetId,
+    required this.periodType,
+    required this.metric,
+    required this.targetValue,
+    required this.completedValue,
+    required this.progress,
+    required this.startDate,
+    required this.endDate,
+    required this.status,
+  });
+
+  factory SportTarget.fromJson(Map<String, dynamic> json) {
+    return SportTarget(
+      targetId: json['targetId'] as int,
+      periodType: json['periodType'] as String,
+      metric: json['metric'] as String,
+      targetValue: (json['targetValue'] as num).toDouble(),
+      completedValue: (json['completedValue'] as num).toDouble(),
+      progress: (json['progress'] as num).toDouble(),
+      startDate: json['startDate'] as String,
+      endDate: json['endDate'] as String,
+      status: json['status'] as String,
+    );
+  }
+
+  final int targetId;
+  final String periodType;
+  final String metric;
+  final double targetValue;
+  final double completedValue;
+  final double progress;
+  final String startDate;
+  final String endDate;
+  final String status;
 }

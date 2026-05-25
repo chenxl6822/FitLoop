@@ -194,7 +194,7 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      DashboardPage(session: widget.session),
+      DashboardPage(api: widget.api, session: widget.session),
       SportSessionPage(api: widget.api, session: widget.session),
       StatsPage(api: widget.api, session: widget.session),
       const SocialPage(),
@@ -232,10 +232,50 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key, required this.session});
+class DashboardPage extends StatefulWidget {
+  const DashboardPage({super.key, required this.api, required this.session});
 
+  final FitLoopApi api;
   final UserSession session;
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  Future<List<SportTarget>>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadTargets();
+  }
+
+  Future<List<SportTarget>> _loadTargets() {
+    return widget.api.currentTargets(token: widget.session.token);
+  }
+
+  void _refreshTargets() {
+    setState(() {
+      _future = _loadTargets();
+    });
+  }
+
+  Future<void> _showCreateTargetSheet() async {
+    final created = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return _TargetFormSheet(
+          api: widget.api,
+          token: widget.session.token,
+        );
+      },
+    );
+    if (created == true && mounted) {
+      _refreshTargets();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -244,15 +284,256 @@ class DashboardPage extends StatelessWidget {
       children: [
         _MetricCard(
             label: '欢迎回来',
-            value: session.nickname,
+            value: widget.session.nickname,
             icon: Icons.waving_hand_outlined),
-        const _MetricCard(
-            label: '本周目标', value: '连接后端后自动更新', icon: Icons.flag_outlined),
+        FutureBuilder<List<SportTarget>>(
+          future: _future,
+          builder: (context, snapshot) {
+            final targets = snapshot.data ?? const <SportTarget>[];
+            return _TargetSummaryCard(
+              loading: snapshot.connectionState == ConnectionState.waiting,
+              error: snapshot.error,
+              target: targets.isEmpty ? null : targets.first,
+              onRefresh: _refreshTargets,
+              onCreate: _showCreateTargetSheet,
+            );
+          },
+        ),
         const _MetricCard(
             label: '今日运动', value: '从运动页开始打卡', icon: Icons.timer_outlined),
       ],
     );
   }
+}
+
+class _TargetSummaryCard extends StatelessWidget {
+  const _TargetSummaryCard({
+    required this.loading,
+    required this.error,
+    required this.target,
+    required this.onRefresh,
+    required this.onCreate,
+  });
+
+  final bool loading;
+  final Object? error;
+  final SportTarget? target;
+  final VoidCallback onRefresh;
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    final target = this.target;
+    String value;
+    if (loading) {
+      value = '加载中';
+    } else if (error != null) {
+      value = error.toString();
+    } else if (target == null) {
+      value = '暂无进行中目标';
+    } else {
+      value =
+          '${_periodLabel(target.periodType)} ${_metricLabel(target.metric)}：'
+          '${_formatNumber(target.completedValue)} / ${_formatNumber(target.targetValue)}，'
+          '进度 ${target.progress.toStringAsFixed(1)}%';
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.flag_outlined),
+            title: const Text('运动目标'),
+            subtitle: Text(value),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onRefresh,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('刷新'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onCreate,
+                    icon: const Icon(Icons.add),
+                    label: const Text('创建目标'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TargetFormSheet extends StatefulWidget {
+  const _TargetFormSheet({
+    required this.api,
+    required this.token,
+  });
+
+  final FitLoopApi api;
+  final String token;
+
+  @override
+  State<_TargetFormSheet> createState() => _TargetFormSheetState();
+}
+
+class _TargetFormSheetState extends State<_TargetFormSheet> {
+  final _value = TextEditingController(text: '3');
+  String _periodType = 'week';
+  String _metric = 'count';
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void dispose() {
+    _value.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final targetValue = double.tryParse(_value.text.trim());
+    if (targetValue == null || targetValue <= 0) {
+      setState(() => _message = '目标值必须大于 0');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.api.createTarget(
+        token: widget.token,
+        periodType: _periodType,
+        metric: _metric,
+        targetValue: targetValue,
+      );
+      if (mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (error) {
+      setState(() => _message = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '创建运动目标',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _periodType,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.calendar_month_outlined),
+                labelText: '周期',
+              ),
+              items: const [
+                DropdownMenuItem(value: 'week', child: Text('本周')),
+                DropdownMenuItem(value: 'month', child: Text('本月')),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (value) => setState(() => _periodType = value ?? 'week'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _metric,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.tune_outlined),
+                labelText: '指标',
+              ),
+              items: const [
+                DropdownMenuItem(value: 'count', child: Text('运动次数')),
+                DropdownMenuItem(value: 'duration', child: Text('运动时长(分钟)')),
+                DropdownMenuItem(value: 'distance', child: Text('运动里程(km)')),
+                DropdownMenuItem(value: 'calorie', child: Text('消耗热量(kcal)')),
+              ],
+              onChanged: _busy
+                  ? null
+                  : (value) => setState(() => _metric = value ?? 'count'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _value,
+              enabled: !_busy,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.track_changes_outlined),
+                labelText: '目标值',
+              ),
+            ),
+            if (_message != null) ...[
+              const SizedBox(height: 12),
+              Text(_message!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _busy ? null : _submit,
+              icon: _busy
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check),
+              label: const Text('保存目标'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _periodLabel(String periodType) {
+  return switch (periodType.toLowerCase()) {
+    'month' => '本月',
+    _ => '本周',
+  };
+}
+
+String _metricLabel(String metric) {
+  return switch (metric.toLowerCase()) {
+    'duration' => '运动时长(分钟)',
+    'distance' => '运动里程(km)',
+    'calorie' => '消耗热量(kcal)',
+    _ => '运动次数',
+  };
+}
+
+String _formatNumber(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toStringAsFixed(0);
+  }
+  return value.toStringAsFixed(1);
 }
 
 class SportSessionPage extends StatefulWidget {
