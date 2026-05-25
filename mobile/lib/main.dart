@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
 
@@ -46,6 +47,22 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   UserSession? _session;
+
+  @override
+  void initState() {
+    super.initState();
+    _tryAutoLogin();
+  }
+
+  Future<void> _tryAutoLogin() async {
+    final data = await TokenStorage.load();
+    if (data != null && mounted) {
+      setState(() => _session = UserSession(
+            token: data['token'] as String,
+            userId: data['userId'] as int,
+            nickname: data['nickname'] as String));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,6 +122,7 @@ class _AuthPageState extends State<AuthPage> {
         account: _account.text.trim(),
         password: _password.text,
       );
+      await TokenStorage.save(session.token, session.userId, session.nickname);
       widget.onSignedIn(session);
     } catch (error) {
       setState(() => _message = error.toString());
@@ -1152,5 +1170,36 @@ class _MetricCard extends StatelessWidget {
         subtitle: Text(value),
       ),
     );
+  }
+}
+
+class TokenStorage {
+  static const _kToken = 'token';
+  static const _kUid = 'uid';
+  static const _kName = 'nickname';
+
+  static Future<void> save(String token, int userId, String nickname) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kToken, token);
+    await p.setInt(_kUid, userId);
+    await p.setString(_kName, nickname);
+  }
+
+  static Future<Map<String, Object>?> load() async {
+    final p = await SharedPreferences.getInstance();
+    final t = p.getString(_kToken);
+    if (t == null || t.isEmpty) return null;
+    return {
+      'token': t,
+      'userId': p.getInt(_kUid) ?? 0,
+      'nickname': p.getString(_kName) ?? 'FitLoop �û�',
+    };
+  }
+
+  static Future<void> clear() async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(_kToken);
+    await p.remove(_kUid);
+    await p.remove(_kName);
   }
 }
