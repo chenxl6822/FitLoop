@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:fitloop/api_client.dart';
 import 'package:fitloop/main.dart';
 import 'package:flutter/material.dart';
@@ -146,7 +144,7 @@ void main() {
       FitLoopApp(
         api: api,
         locationService: _FakeLocationService(
-          streamPositions: const [],
+          streamPositions: [_position(accuracy: 80)],
           currentPosition: _position(accuracy: 8),
         ),
       ),
@@ -188,7 +186,7 @@ void main() {
       FitLoopApp(
         api: api,
         locationService: _FakeLocationService(
-          streamPositions: const [],
+          streamPositions: [_position(accuracy: 80)],
           throwOnCurrentPosition: true,
         ),
       ),
@@ -272,13 +270,6 @@ class _FakeLocationService implements LocationService {
     final error = streamError;
     if (error != null) {
       return Stream<Position>.error(error);
-    }
-    if (streamPositions.isEmpty) {
-      late StreamController<Position> controller;
-      controller = StreamController<Position>(
-        onCancel: () => controller.close(),
-      );
-      return controller.stream;
     }
     return Stream.fromIterable(streamPositions);
   }
