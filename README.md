@@ -92,6 +92,19 @@ docker compose -f docker-compose.yml -f docker-compose.cn.yml ps
 docker compose -f docker-compose.yml -f docker-compose.cn.yml down
 ```
 
+如果后端基础镜像仍然拉取失败，可以先使用“宿主机后端 + Docker 数据库”的开发模式：
+
+```powershell
+cd "D:\code\Sports and Health\FitLoop\deploy"
+docker compose -f docker-compose.host.yml up -d
+docker compose -f docker-compose.host.yml ps
+
+cd "D:\code\Sports and Health\FitLoop\backend"
+.\run-local.ps1
+```
+
+这种模式下，MySQL、Redis、Nginx 运行在 Docker，Spring Boot 后端运行在本机 `8080` 端口。Nginx 会通过 `host.docker.internal:8080` 转发到本机后端。
+
 服务启动后可以检查：
 
 ```powershell
