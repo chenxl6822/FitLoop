@@ -105,6 +105,19 @@ cd "D:\code\Sports and Health\FitLoop\backend"
 
 这种模式下，MySQL、Redis、Nginx 运行在 Docker，Spring Boot 后端运行在本机 `8080` 端口。Nginx 会通过 `host.docker.internal:8080` 转发到本机后端。
 
+为避免和本机已有 MySQL 冲突，host 模式将容器 MySQL 映射到本机 `3307`，后端脚本 `backend/run-local.ps1` 也会连接 `localhost:3307`。
+
+如果基础镜像能拉取，但 Docker 构建阶段 Maven 下载不稳定，可以先在本机打包，再构建运行时镜像：
+
+```powershell
+cd "D:\code\Sports and Health\FitLoop\backend"
+mvn -DskipTests package
+
+cd "D:\code\Sports and Health\FitLoop\deploy"
+docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prebuilt.yml ps
+```
+
 服务启动后可以检查：
 
 ```powershell
