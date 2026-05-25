@@ -12,6 +12,9 @@ public final class AppealDtos {
     public record CreateAppealRequest(@NotNull Long recordId, @NotBlank String reason, String evidenceUrl) {
     }
 
+    public record ReviewAppealRequest(@NotBlank String status, String reviewNote) {
+    }
+
     public record AppealResponse(Long appealId, Long recordId, String reason, String evidenceUrl,
                                  String status, String reviewNote, Instant createdAt, Instant updatedAt) {
         public static AppealResponse from(Appeal appeal) {

@@ -36,6 +36,7 @@ services:
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: 6379
       FITLOOP_JWT_SECRET: ${FITLOOP_JWT_SECRET:-replace-with-a-long-random-production-secret}
+      FITLOOP_ADMIN_KEY: ${FITLOOP_ADMIN_KEY:-replace-with-an-admin-review-key}
     ports:
       - "${SERVER_PORT:-8080}:8080"
 

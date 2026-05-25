@@ -3,6 +3,7 @@ package com.fitloop.appeal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitloop.appeal.AppealDtos.CreateAppealRequest;
+import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
 import com.fitloop.sport.SportRecord;
 import com.fitloop.sport.SportRecordRepository;
 import java.time.Instant;
@@ -37,5 +38,24 @@ class AppealServiceTest {
         assertThat(appealService.list(1L)).hasSize(1);
         assertThat(records.findById(record.getRecordId()).orElseThrow().getStatus())
                 .isEqualTo(SportRecord.STATUS_APPEALING);
+    }
+
+    @Test
+    void approvesPendingAppealAndRestoresRecordAsValid() {
+        SportRecord record = new SportRecord();
+        record.setUserId(1L);
+        record.setSessionId("session-appeal-2");
+        record.setSportType("running");
+        record.setCheckinMode("gps");
+        record.setStartedAt(Instant.now());
+        record.setStatus(SportRecord.STATUS_ABNORMAL);
+        records.save(record);
+        var appeal = appealService.create(1L, new CreateAppealRequest(record.getRecordId(), "操场定位漂移", null));
+
+        var reviewed = appealService.review(appeal.appealId(), new ReviewAppealRequest("approved", "轨迹异常属实但可接受"));
+
+        assertThat(reviewed.status()).isEqualTo("approved");
+        assertThat(records.findById(record.getRecordId()).orElseThrow().getStatus())
+                .isEqualTo(SportRecord.STATUS_VALID);
     }
 }

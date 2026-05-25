@@ -2,6 +2,7 @@ package com.fitloop.appeal;
 
 import com.fitloop.appeal.AppealDtos.AppealResponse;
 import com.fitloop.appeal.AppealDtos.CreateAppealRequest;
+import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
 import com.fitloop.sport.SportRecord;
 import com.fitloop.sport.SportRecordRepository;
 import java.util.List;
@@ -47,5 +48,27 @@ public class AppealService {
                 .stream()
                 .map(AppealResponse::from)
                 .toList();
+    }
+
+    @Transactional
+    public AppealResponse review(Long appealId, ReviewAppealRequest request) {
+        Appeal appeal = appeals.findById(appealId)
+                .orElseThrow(() -> new IllegalArgumentException("申诉不存在"));
+        if (!"pending".equals(appeal.getStatus())) {
+            throw new IllegalArgumentException("申诉已审核，不能重复处理");
+        }
+        SportRecord record = records.findById(appeal.getRecordId())
+                .orElseThrow(() -> new IllegalArgumentException("运动记录不存在"));
+        if ("approved".equalsIgnoreCase(request.status())) {
+            appeal.setStatus("approved");
+            record.setStatus(SportRecord.STATUS_VALID);
+        } else if ("rejected".equalsIgnoreCase(request.status())) {
+            appeal.setStatus("rejected");
+            record.setStatus(SportRecord.STATUS_ABNORMAL);
+        } else {
+            throw new IllegalArgumentException("审核状态只能为 approved 或 rejected");
+        }
+        appeal.setReviewNote(request.reviewNote());
+        return AppealResponse.from(appeal);
     }
 }
