@@ -31,8 +31,8 @@ FitLoop 是面向高校学生的运动打卡与健康管理移动应用，后端
 
 ### P0 - 核心功能缺失（阻塞MVP上线）
 
-- [ ] **任务1**：运动页面接入真实GPS定位，替换_sampleTrackPoint假数据
-  - 状态：待执行
+- [x] **任务1**：运动页面接入真实GPS定位，替换_sampleTrackPoint假数据
+  - 状态：✅ 已完成（commit f00d78f）
   - 验收标准：
     - [ ] 使用 `geolocator` 包获取实时GPS坐标
     - [ ] 运动时持续上传轨迹点（timer 定时触发 uploadTrackPoint）
