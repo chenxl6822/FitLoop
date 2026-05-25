@@ -78,6 +78,20 @@ docker compose up -d --build
 docker compose ps
 ```
 
+如果 Docker Hub 的 `auth.docker.io` 连接超时，可以使用国内镜像 override：
+
+```powershell
+cd "D:\code\Sports and Health\FitLoop\deploy"
+docker compose -f docker-compose.yml -f docker-compose.cn.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.cn.yml ps
+```
+
+如果之后需要关闭这套服务，也要带上同样的 `-f` 参数：
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.cn.yml down
+```
+
 服务启动后可以检查：
 
 ```powershell
