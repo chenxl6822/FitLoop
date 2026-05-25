@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'api_client.dart';
 
@@ -552,59 +555,62 @@ class _SportSessionPageState extends State<SportSessionPage> {
   bool _busy = false;
   String _status = '未开始';
   DateTime? _startedAt;
-
-  TrackPoint _sampleTrackPoint({
-    required String sessionId,
-    required DateTime timestamp,
-    required int offset,
-  }) {
-    return TrackPoint(
-      sessionId: sessionId,
-      lat: 31.2304 + offset * 0.0001,
-      lng: 121.4737 + offset * 0.0001,
-      accuracy: 20,
-      timestamp: timestamp,
-    );
-  }
+  StreamSubscription<Position>? _positionSubscription;
+  int _trackPointCount = 0;
 
   Future<void> _toggle() async {
     setState(() => _busy = true);
     try {
       if (_sessionId == null) {
+        final permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          final result = await Geolocator.requestPermission();
+          if (result == LocationPermission.denied ||
+              result == LocationPermission.deniedForever) {
+            setState(() => _status = '需要位置权限才能使用GPS打卡');
+            return;
+          }
+        }
+
         final start = await widget.api.startSport(
           token: widget.session.token,
           sportType: 'running',
           checkinMode: 'gps',
         );
         final startedAt = DateTime.now();
-        await widget.api.uploadTrackPoint(
-          token: widget.session.token,
-          point: _sampleTrackPoint(
-            sessionId: start.sessionId,
-            timestamp: startedAt,
-            offset: 0,
-          ),
-        );
         setState(() {
           _sessionId = start.sessionId;
           _startedAt = startedAt;
-          _status = 'GPS 打卡进行中，已上传 1 个轨迹点';
+          _trackPointCount = 0;
+          _status = 'GPS 打卡进行中，正在获取位置...';
         });
+        _startGpsTracking(start.sessionId);
       } else {
+        await _stopGpsTracking();
+
+        Position? lastPosition;
+        try {
+          lastPosition = await Geolocator.getCurrentPosition();
+        } catch (_) {}
+
+        if (lastPosition != null) {
+          await widget.api.uploadTrackPoint(
+            token: widget.session.token,
+            point: TrackPoint(
+              sessionId: _sessionId!,
+              lat: lastPosition.latitude,
+              lng: lastPosition.longitude,
+              accuracy: lastPosition.accuracy,
+              timestamp: DateTime.now(),
+            ),
+          );
+        }
+
         final duration = DateTime.now()
             .difference(_startedAt ?? DateTime.now())
             .inSeconds
-            .clamp(60, 24 * 3600)
+            .clamp(1, 24 * 3600)
             .toInt();
-        await widget.api.uploadTrackPoint(
-          token: widget.session.token,
-          point: _sampleTrackPoint(
-            sessionId: _sessionId!,
-            timestamp:
-                (_startedAt ?? DateTime.now()).add(Duration(seconds: duration)),
-            offset: 1,
-          ),
-        );
         final record = await widget.api.finishSport(
           token: widget.session.token,
           sessionId: _sessionId!,
@@ -614,7 +620,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         setState(() {
           _sessionId = null;
           _lastRecord = record;
-          _status = '已保存记录 #${record.recordId}';
+          _status = '已保存记录 #${record.recordId}，共上传 $_trackPointCount 个轨迹点';
         });
       }
     } catch (error) {
@@ -624,6 +630,55 @@ class _SportSessionPageState extends State<SportSessionPage> {
         setState(() => _busy = false);
       }
     }
+  }
+
+  void _startGpsTracking(String sessionId) {
+    const throttleSeconds = 5;
+    DateTime? lastUpload;
+
+    _positionSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 10,
+      ),
+    ).listen((position) async {
+      final now = DateTime.now();
+      if (lastUpload != null &&
+          now.difference(lastUpload!).inSeconds < throttleSeconds) {
+        return;
+      }
+      lastUpload = now;
+
+      try {
+        await widget.api.uploadTrackPoint(
+          token: widget.session.token,
+          point: TrackPoint(
+            sessionId: sessionId,
+            lat: position.latitude,
+            lng: position.longitude,
+            accuracy: position.accuracy,
+            timestamp: position.timestamp,
+          ),
+        );
+        _trackPointCount++;
+        if (mounted) {
+          setState(() {
+            _status = 'GPS 打卡进行中，已上传 $_trackPointCount 个轨迹点';
+          });
+        }
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _stopGpsTracking() async {
+    await _positionSubscription?.cancel();
+    _positionSubscription = null;
+  }
+
+  @override
+  void dispose() {
+    _positionSubscription?.cancel();
+    super.dispose();
   }
 
   @override
@@ -642,7 +697,9 @@ class _SportSessionPageState extends State<SportSessionPage> {
             label: '当前状态', value: _status, icon: Icons.sensors_outlined),
         _MetricCard(
             label: '打卡方式',
-            value: running ? 'GPS session: $_sessionId' : 'GPS / 传感器 / 拍照 / 手动',
+            value: running
+                ? 'GPS实时追踪中 (精度: bestForNavigation, 间隔: 10m/5s)'
+                : 'GPS / 传感器 / 拍照 / 手动',
             icon: Icons.tune_outlined),
         if (lastRecord != null)
           _MetricCard(
