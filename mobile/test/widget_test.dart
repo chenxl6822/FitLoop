@@ -2,10 +2,21 @@ import 'package:fitloop/api_client.dart';
 import 'package:fitloop/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('renders login then dashboard shell', (tester) async {
-    await tester.pumpWidget(FitLoopApp(api: _FakeApi.withTarget()));
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: _FakeApi.withTarget(),
+        locationService: _FakeLocationService(),
+      ),
+    );
 
     expect(find.text('FitLoop'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
@@ -38,7 +49,9 @@ void main() {
 
   testWidgets('creates target from empty dashboard state', (tester) async {
     final api = _FakeApi();
-    await tester.pumpWidget(FitLoopApp(api: api));
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
 
     await tester.tap(find.text('登录'));
     await tester.pumpAndSettle();
@@ -56,7 +69,9 @@ void main() {
 
   testWidgets('submits health data from stats page', (tester) async {
     final api = _FakeApi();
-    await tester.pumpWidget(FitLoopApp(api: api));
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
 
     await tester.tap(find.text('登录'));
     await tester.pumpAndSettle();
@@ -81,6 +96,182 @@ void main() {
     expect(find.textContaining('睡眠 7.5 小时'), findsOneWidget);
     expect(find.textContaining('饮食 清淡饮食'), findsOneWidget);
   });
+
+  testWidgets('does not start GPS session when permission is denied forever',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          initialPermission: LocationPermission.denied,
+          requestedPermission: LocationPermission.deniedForever,
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pumpAndSettle();
+
+    expect(api.startedSports, 0);
+    expect(find.textContaining('需要位置权限'), findsOneWidget);
+  });
+
+  testWidgets('ignores inaccurate GPS stream positions', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          streamPositions: [_position(accuracy: 80)],
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pumpAndSettle();
+
+    expect(api.startedSports, 1);
+    expect(api.uploadedTrackPoints, 0);
+    expect(find.textContaining('GPS精度不足'), findsOneWidget);
+  });
+
+  testWidgets('counts final GPS point when finishing session', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          streamPositions: const [],
+          currentPosition: _position(accuracy: 8),
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.stop));
+    await tester.pumpAndSettle();
+
+    expect(api.finishedSports, 1);
+    expect(api.uploadedTrackPoints, 1);
+    expect(find.textContaining('共上传 1 个轨迹点'), findsOneWidget);
+  });
+
+  testWidgets('keeps session active when GPS stream reports an error',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          streamError: Exception('stream unavailable'),
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pumpAndSettle();
+
+    expect(api.startedSports, 1);
+    expect(find.byIcon(Icons.stop), findsOneWidget);
+    expect(find.textContaining('GPS定位失败'), findsOneWidget);
+  });
+
+  testWidgets('finishes session when final GPS lookup fails', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          streamPositions: const [],
+          throwOnCurrentPosition: true,
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.stop));
+    await tester.pumpAndSettle();
+
+    expect(api.finishedSports, 1);
+    expect(api.uploadedTrackPoints, 0);
+    expect(find.textContaining('共上传 0 个轨迹点'), findsOneWidget);
+  });
+}
+
+Future<void> _openSportPage(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.login));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byIcon(Icons.directions_run_outlined));
+  await tester.pumpAndSettle();
+}
+
+class _FakeLocationService implements LocationService {
+  _FakeLocationService({
+    this.initialPermission = LocationPermission.always,
+    this.requestedPermission = LocationPermission.always,
+    List<Position>? streamPositions,
+    Position? currentPosition,
+    this.throwOnCurrentPosition = false,
+    this.streamError,
+  })  : streamPositions = streamPositions ?? [_position()],
+        currentPosition = currentPosition ?? _position();
+
+  final LocationPermission initialPermission;
+  final LocationPermission requestedPermission;
+  final List<Position> streamPositions;
+  final Position currentPosition;
+  final bool throwOnCurrentPosition;
+  final Object? streamError;
+
+  @override
+  Future<LocationPermission> checkPermission() async {
+    return initialPermission;
+  }
+
+  @override
+  Future<Position> getCurrentPosition() async {
+    if (throwOnCurrentPosition) {
+      throw Exception('location unavailable');
+    }
+    return currentPosition;
+  }
+
+  @override
+  Stream<Position> getPositionStream({required LocationSettings settings}) {
+    final error = streamError;
+    if (error != null) {
+      return Stream<Position>.error(error);
+    }
+    return Stream.fromIterable(streamPositions);
+  }
+
+  @override
+  Future<LocationPermission> requestPermission() async {
+    return requestedPermission;
+  }
+}
+
+Position _position({double accuracy = 10}) {
+  return Position(
+    longitude: 121.4737,
+    latitude: 31.2304,
+    timestamp: DateTime(2026, 5, 26),
+    accuracy: accuracy,
+    altitude: 0,
+    altitudeAccuracy: 0,
+    heading: 0,
+    headingAccuracy: 0,
+    speed: 0,
+    speedAccuracy: 0,
+  );
 }
 
 class _FakeApi implements FitLoopApi {
@@ -107,6 +298,8 @@ class _FakeApi implements FitLoopApi {
 
   final List<SportTarget> _targets;
   int uploadedTrackPoints = 0;
+  int startedSports = 0;
+  int finishedSports = 0;
   int createdTargets = 0;
   int createdHealthData = 0;
 
@@ -209,6 +402,7 @@ class _FakeApi implements FitLoopApi {
     required int durationSeconds,
     required double weightKg,
   }) async {
+    finishedSports += 1;
     return const SportRecord(
       recordId: 1,
       status: 1,
@@ -224,6 +418,7 @@ class _FakeApi implements FitLoopApi {
     required String sportType,
     required String checkinMode,
   }) async {
+    startedSports += 1;
     return const SportStart(
         sessionId: 'session-1', startTime: '2026-05-25T00:00:00Z');
   }

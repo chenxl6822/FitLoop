@@ -11,10 +11,12 @@ void main() {
 }
 
 class FitLoopApp extends StatelessWidget {
-  FitLoopApp({super.key, FitLoopApi? api})
-      : api = api ?? const _ApiFactory().create();
+  FitLoopApp({super.key, FitLoopApi? api, LocationService? locationService})
+      : api = api ?? const _ApiFactory().create(),
+        locationService = locationService ?? GeolocatorLocationService();
 
   final FitLoopApi api;
+  final LocationService locationService;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +27,7 @@ class FitLoopApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1F8A70)),
         useMaterial3: true,
       ),
-      home: AuthGate(api: api),
+      home: AuthGate(api: api, locationService: locationService),
     );
   }
 }
@@ -36,10 +38,43 @@ class _ApiFactory {
   FitLoopApi create() => HttpFitLoopApi();
 }
 
+abstract class LocationService {
+  Future<LocationPermission> checkPermission();
+
+  Future<LocationPermission> requestPermission();
+
+  Future<Position> getCurrentPosition();
+
+  Stream<Position> getPositionStream({required LocationSettings settings});
+}
+
+class GeolocatorLocationService implements LocationService {
+  @override
+  Future<LocationPermission> checkPermission() {
+    return Geolocator.checkPermission();
+  }
+
+  @override
+  Future<Position> getCurrentPosition() {
+    return Geolocator.getCurrentPosition();
+  }
+
+  @override
+  Stream<Position> getPositionStream({required LocationSettings settings}) {
+    return Geolocator.getPositionStream(locationSettings: settings);
+  }
+
+  @override
+  Future<LocationPermission> requestPermission() {
+    return Geolocator.requestPermission();
+  }
+}
+
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key, required this.api});
+  const AuthGate({super.key, required this.api, required this.locationService});
 
   final FitLoopApi api;
+  final LocationService locationService;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -58,9 +93,9 @@ class _AuthGateState extends State<AuthGate> {
     final data = await TokenStorage.load();
     if (data != null && mounted) {
       setState(() => _session = UserSession(
-            token: data['token'] as String,
-            userId: data['userId'] as int,
-            nickname: data['nickname'] as String));
+          token: data['token'] as String,
+          userId: data['userId'] as int,
+          nickname: data['nickname'] as String));
     }
   }
 
@@ -68,7 +103,11 @@ class _AuthGateState extends State<AuthGate> {
   Widget build(BuildContext context) {
     final session = _session;
     if (session != null) {
-      return AppShell(api: widget.api, session: session);
+      return AppShell(
+        api: widget.api,
+        locationService: widget.locationService,
+        session: session,
+      );
     }
     return AuthPage(
       api: widget.api,
@@ -200,9 +239,15 @@ class _AuthPageState extends State<AuthPage> {
 }
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, required this.api, required this.session});
+  const AppShell({
+    super.key,
+    required this.api,
+    required this.locationService,
+    required this.session,
+  });
 
   final FitLoopApi api;
+  final LocationService locationService;
   final UserSession session;
 
   @override
@@ -216,7 +261,11 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     final pages = [
       DashboardPage(api: widget.api, session: widget.session),
-      SportSessionPage(api: widget.api, session: widget.session),
+      SportSessionPage(
+        api: widget.api,
+        locationService: widget.locationService,
+        session: widget.session,
+      ),
       StatsPage(api: widget.api, session: widget.session),
       SocialPage(api: widget.api, session: widget.session),
       ProfilePage(session: widget.session),
@@ -558,9 +607,15 @@ String _formatNumber(double value) {
 }
 
 class SportSessionPage extends StatefulWidget {
-  const SportSessionPage({super.key, required this.api, required this.session});
+  const SportSessionPage({
+    super.key,
+    required this.api,
+    required this.locationService,
+    required this.session,
+  });
 
   final FitLoopApi api;
+  final LocationService locationService;
   final UserSession session;
 
   @override
@@ -568,6 +623,8 @@ class SportSessionPage extends StatefulWidget {
 }
 
 class _SportSessionPageState extends State<SportSessionPage> {
+  static const _maxAcceptedAccuracyMeters = 50.0;
+
   String? _sessionId;
   SportRecord? _lastRecord;
   bool _busy = false;
@@ -580,16 +637,12 @@ class _SportSessionPageState extends State<SportSessionPage> {
     setState(() => _busy = true);
     try {
       if (_sessionId == null) {
-        final permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
-          final result = await Geolocator.requestPermission();
-          if (result == LocationPermission.denied ||
-              result == LocationPermission.deniedForever) {
-            setState(() => _status = '需要位置权限才能使用GPS打卡');
-            return;
-          }
+        final canUseLocation = await _ensureLocationPermission();
+        if (!canUseLocation) {
+          return;
         }
 
+        await _stopGpsTracking();
         final start = await widget.api.startSport(
           token: widget.session.token,
           sportType: 'running',
@@ -608,20 +661,12 @@ class _SportSessionPageState extends State<SportSessionPage> {
 
         Position? lastPosition;
         try {
-          lastPosition = await Geolocator.getCurrentPosition();
+          lastPosition = await widget.locationService.getCurrentPosition();
         } catch (_) {}
 
-        if (lastPosition != null) {
-          await widget.api.uploadTrackPoint(
-            token: widget.session.token,
-            point: TrackPoint(
-              sessionId: _sessionId!,
-              lat: lastPosition.latitude,
-              lng: lastPosition.longitude,
-              accuracy: lastPosition.accuracy,
-              timestamp: DateTime.now(),
-            ),
-          );
+        if (lastPosition != null &&
+            await _uploadTrackPoint(_sessionId!, lastPosition)) {
+          _trackPointCount++;
         }
 
         final duration = DateTime.now()
@@ -650,17 +695,80 @@ class _SportSessionPageState extends State<SportSessionPage> {
     }
   }
 
+  Future<bool> _ensureLocationPermission() async {
+    final permission = await widget.locationService.checkPermission();
+    if (_canUseLocation(permission)) {
+      return true;
+    }
+    if (permission == LocationPermission.denied) {
+      final result = await widget.locationService.requestPermission();
+      if (_canUseLocation(result)) {
+        return true;
+      }
+    }
+    if (mounted) {
+      setState(() => _status = '需要位置权限才能使用GPS打卡');
+    }
+    return false;
+  }
+
+  bool _canUseLocation(LocationPermission permission) {
+    return permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse;
+  }
+
+  bool _hasUsableAccuracy(Position position) {
+    return position.accuracy.isFinite &&
+        position.accuracy >= 0 &&
+        position.accuracy <= _maxAcceptedAccuracyMeters;
+  }
+
+  Future<bool> _uploadTrackPoint(String sessionId, Position position) async {
+    if (!_hasUsableAccuracy(position)) {
+      if (mounted) {
+        setState(() {
+          _status =
+              'GPS精度不足，已忽略本次轨迹点（${position.accuracy.toStringAsFixed(1)}m）';
+        });
+      }
+      return false;
+    }
+
+    await widget.api.uploadTrackPoint(
+      token: widget.session.token,
+      point: TrackPoint(
+        sessionId: sessionId,
+        lat: position.latitude,
+        lng: position.longitude,
+        accuracy: position.accuracy,
+        timestamp: position.timestamp,
+      ),
+    );
+    return true;
+  }
+
   void _startGpsTracking(String sessionId) {
     const throttleSeconds = 5;
     DateTime? lastUpload;
 
-    _positionSubscription = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
+    _positionSubscription = widget.locationService
+        .getPositionStream(
+      settings: const LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 10,
       ),
-    ).listen((position) async {
+    )
+        .listen((position) async {
       final now = DateTime.now();
+      if (!_hasUsableAccuracy(position)) {
+        if (mounted) {
+          setState(() {
+            _status =
+                'GPS精度不足，已忽略本次轨迹点（${position.accuracy.toStringAsFixed(1)}m）';
+          });
+        }
+        return;
+      }
       if (lastUpload != null &&
           now.difference(lastUpload!).inSeconds < throttleSeconds) {
         return;
@@ -668,23 +776,22 @@ class _SportSessionPageState extends State<SportSessionPage> {
       lastUpload = now;
 
       try {
-        await widget.api.uploadTrackPoint(
-          token: widget.session.token,
-          point: TrackPoint(
-            sessionId: sessionId,
-            lat: position.latitude,
-            lng: position.longitude,
-            accuracy: position.accuracy,
-            timestamp: position.timestamp,
-          ),
-        );
+        await _uploadTrackPoint(sessionId, position);
         _trackPointCount++;
         if (mounted) {
           setState(() {
             _status = 'GPS 打卡进行中，已上传 $_trackPointCount 个轨迹点';
           });
         }
-      } catch (_) {}
+      } catch (error) {
+        if (mounted) {
+          setState(() => _status = 'GPS轨迹点上传失败：$error');
+        }
+      }
+    }, onError: (Object error) {
+      if (mounted) {
+        setState(() => _status = 'GPS定位失败：$error');
+      }
     });
   }
 
