@@ -111,7 +111,7 @@ void main() {
     );
 
     await _openSportPage(tester);
-    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
     await tester.pumpAndSettle();
 
     expect(api.startedSports, 0);
@@ -130,7 +130,7 @@ void main() {
     );
 
     await _openSportPage(tester);
-    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
     await tester.pumpAndSettle();
 
     expect(api.startedSports, 1);
@@ -151,14 +151,16 @@ void main() {
     );
 
     await _openSportPage(tester);
-    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.stop));
+    expect(find.byIcon(Icons.stop), findsOneWidget);
+
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.stop));
     await tester.pumpAndSettle();
 
     expect(api.finishedSports, 1);
     expect(api.uploadedTrackPoints, 1);
-    expect(find.textContaining('共上传 1 个轨迹点'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
   testWidgets('keeps session active when GPS stream reports an error',
@@ -174,7 +176,7 @@ void main() {
     );
 
     await _openSportPage(tester);
-    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
     await tester.pumpAndSettle();
 
     expect(api.startedSports, 1);
@@ -195,14 +197,16 @@ void main() {
     );
 
     await _openSportPage(tester);
-    await tester.tap(find.byIcon(Icons.play_arrow));
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
     await tester.pumpAndSettle();
-    await tester.tap(find.byIcon(Icons.stop));
+    expect(find.byIcon(Icons.stop), findsOneWidget);
+
+    await tester.tap(find.widgetWithIcon(FilledButton, Icons.stop));
     await tester.pumpAndSettle();
 
     expect(api.finishedSports, 1);
     expect(api.uploadedTrackPoints, 0);
-    expect(find.textContaining('共上传 0 个轨迹点'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 }
 
