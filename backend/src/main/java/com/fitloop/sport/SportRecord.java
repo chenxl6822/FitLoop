@@ -15,6 +15,7 @@ public class SportRecord {
     public static final int STATUS_DRAFT = 0;
     public static final int STATUS_VALID = 1;
     public static final int STATUS_ABNORMAL = 2;
+    public static final int STATUS_APPEALING = 3;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
