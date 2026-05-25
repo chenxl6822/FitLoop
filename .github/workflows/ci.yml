@@ -18,7 +18,7 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: maven
-      - run: mvn test
+      - run: mvn --batch-mode --settings ../.github/maven-settings.xml -U test
 
   mobile:
     runs-on: ubuntu-latest
