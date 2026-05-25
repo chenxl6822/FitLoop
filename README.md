@@ -115,3 +115,29 @@ docker compose up -d --build
 - Maven 依赖下载在受限沙箱中可能需要联网权限。
 - Flutter 命令在当前终端检查中超时，需要在普通 PowerShell 中再次确认。
 - Docker daemon 当前不可访问，需启动 Docker Desktop 或以有权限的用户运行。
+
+## VS Code 打开方式
+
+推荐直接打开仓库中的工作区文件：
+
+```powershell
+code "D:\code\Sports and Health\FitLoop\FitLoop.code-workspace"
+```
+
+不要只把 `backend/` 或 `mobile/` 单独拖进 VS Code，否则 Java、Maven、Flutter 插件可能无法正确识别多模块项目。
+
+建议安装以下扩展：
+
+- Extension Pack for Java
+- Maven for Java
+- Dart
+- Flutter
+- YAML
+
+如果打开后仍然看到大量依赖报错，优先在普通 PowerShell 中完成 Maven 和 Flutter 的本地初始化，再回到 VS Code 执行：
+
+```powershell
+Developer: Reload Window
+Java: Clean Java Language Server Workspace
+Dart: Restart Analysis Server
+```

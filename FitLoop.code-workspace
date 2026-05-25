@@ -1,0 +1,36 @@
+{
+  "folders": [
+    {
+      "name": "FitLoop Backend",
+      "path": "backend"
+    },
+    {
+      "name": "FitLoop Mobile",
+      "path": "mobile"
+    },
+    {
+      "name": "FitLoop Deploy",
+      "path": "deploy"
+    }
+  ],
+  "settings": {
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.import.maven.enabled": true,
+    "java.compile.nullAnalysis.mode": "automatic",
+    "maven.executable.path": "D:\\Environment\\maven\\bin\\mvn.cmd",
+    "dart.flutterSdkPath": "D:\\Environment\\flutter",
+    "dart.sdkPath": "D:\\Environment\\flutter\\bin\\cache\\dart-sdk",
+    "dart.runPubGetOnPubspecChanges": true,
+    "files.encoding": "utf8",
+    "terminal.integrated.defaultProfile.windows": "PowerShell"
+  },
+  "extensions": {
+    "recommendations": [
+      "vscjava.vscode-java-pack",
+      "vscjava.vscode-maven",
+      "dart-code.dart-code",
+      "dart-code.flutter",
+      "redhat.vscode-yaml"
+    ]
+  }
+}

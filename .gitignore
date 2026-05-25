@@ -29,7 +29,8 @@ mobile/pubspec.lock
 
 # IDE / OS
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 *.iml
 .DS_Store
 Thumbs.db
