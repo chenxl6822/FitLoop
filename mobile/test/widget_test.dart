@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fitloop/api_client.dart';
 import 'package:fitloop/main.dart';
 import 'package:flutter/material.dart';
@@ -210,16 +212,16 @@ Future<void> _openSportPage(WidgetTester tester) async {
 }
 
 Future<void> _startSportSession(WidgetTester tester, _FakeApi api) async {
-  await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
+  await tester.tap(find.byKey(const Key('sport-session-toggle')));
   await tester.pumpAndSettle();
 
   expect(api.startedSports, 1);
-  _expectEnabledButton(tester, Icons.stop);
+  _expectEnabledSportButton(tester);
 }
 
 Future<void> _finishSportSession(WidgetTester tester, _FakeApi api) async {
-  _expectEnabledButton(tester, Icons.stop);
-  await tester.tap(find.widgetWithIcon(FilledButton, Icons.stop));
+  _expectEnabledSportButton(tester);
+  await tester.tap(find.byKey(const Key('sport-session-toggle')));
 
   for (var i = 0; i < 10 && api.finishedSports == 0; i += 1) {
     await tester.pump(const Duration(milliseconds: 20));
@@ -227,9 +229,9 @@ Future<void> _finishSportSession(WidgetTester tester, _FakeApi api) async {
   await tester.pumpAndSettle();
 }
 
-void _expectEnabledButton(WidgetTester tester, IconData icon) {
+void _expectEnabledSportButton(WidgetTester tester) {
   final button = tester.widget<FilledButton>(
-    find.widgetWithIcon(FilledButton, icon),
+    find.byKey(const Key('sport-session-toggle')),
   );
   expect(button.onPressed, isNotNull);
 }
@@ -270,6 +272,13 @@ class _FakeLocationService implements LocationService {
     final error = streamError;
     if (error != null) {
       return Stream<Position>.error(error);
+    }
+    if (streamPositions.isEmpty) {
+      late StreamController<Position> controller;
+      controller = StreamController<Position>(
+        onCancel: () => controller.close(),
+      );
+      return controller.stream;
     }
     return Stream.fromIterable(streamPositions);
   }

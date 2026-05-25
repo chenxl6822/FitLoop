@@ -814,6 +814,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       title: '运动打卡',
       children: [
         FilledButton.icon(
+          key: const Key('sport-session-toggle'),
           onPressed: _busy ? null : _toggle,
           icon: Icon(running ? Icons.stop : Icons.play_arrow),
           label: Text(running ? '结束打卡' : '开始跑步'),
