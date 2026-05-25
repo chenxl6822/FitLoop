@@ -20,6 +20,13 @@ void main() {
     expect(find.text('测试用户'), findsOneWidget);
     expect(find.textContaining('本周 运动次数：1 / 3'), findsOneWidget);
 
+    await tester.tap(find.text('社交'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('120 积分 / Lv.2'), findsOneWidget);
+    expect(find.textContaining('校园活力达人'), findsOneWidget);
+    expect(find.textContaining('测试用户 / 5.2 km / 320.0 kcal'), findsOneWidget);
+
     await tester.tap(find.text('运动'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('开始跑步'));
@@ -101,6 +108,38 @@ class _FakeApi implements FitLoopApi {
   @override
   Future<List<SportTarget>> currentTargets({required String token}) async {
     return List.of(_targets);
+  }
+
+  @override
+  Future<MedalSummary> medalSummary({required String token}) async {
+    return const MedalSummary(
+      points: 120,
+      level: 2,
+      medals: ['初次启程', '校园活力达人'],
+    );
+  }
+
+  @override
+  Future<RankingResult> ranking({
+    required String token,
+    String scope = 'personal',
+    String period = 'week',
+    int page = 1,
+    int size = 20,
+  }) async {
+    return const RankingResult(
+      scope: 'personal',
+      period: 'week',
+      rows: [
+        RankingRow(
+          rank: 1,
+          userId: 1,
+          nickname: '测试用户',
+          distanceKm: 5.2,
+          calorie: 320,
+        ),
+      ],
+    );
   }
 
   @override

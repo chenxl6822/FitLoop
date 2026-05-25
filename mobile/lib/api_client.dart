@@ -46,6 +46,16 @@ abstract class FitLoopApi {
     required String metric,
     required double targetValue,
   });
+
+  Future<MedalSummary> medalSummary({required String token});
+
+  Future<RankingResult> ranking({
+    required String token,
+    String scope = 'personal',
+    String period = 'week',
+    int page = 1,
+    int size = 20,
+  });
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -183,6 +193,35 @@ class HttpFitLoopApi implements FitLoopApi {
     );
     final data = body['data'] as Map<String, dynamic>;
     return SportTarget.fromJson(data);
+  }
+
+  @override
+  Future<MedalSummary> medalSummary({required String token}) async {
+    final body = await _get('/api/social/medal', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    return MedalSummary.fromJson(data);
+  }
+
+  @override
+  Future<RankingResult> ranking({
+    required String token,
+    String scope = 'personal',
+    String period = 'week',
+    int page = 1,
+    int size = 20,
+  }) async {
+    final path = Uri(
+      path: '/api/social/ranking',
+      queryParameters: {
+        'scope': scope,
+        'period': period,
+        'page': '$page',
+        'size': '$size',
+      },
+    ).toString();
+    final body = await _get(path, token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    return RankingResult.fromJson(data);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
@@ -346,4 +385,74 @@ class SportTarget {
   final String startDate;
   final String endDate;
   final String status;
+}
+
+class MedalSummary {
+  const MedalSummary({
+    required this.points,
+    required this.level,
+    required this.medals,
+  });
+
+  factory MedalSummary.fromJson(Map<String, dynamic> json) {
+    final medals = json['medals'] as List<dynamic>;
+    return MedalSummary(
+      points: json['points'] as int,
+      level: json['level'] as int,
+      medals: medals.map((item) => item as String).toList(),
+    );
+  }
+
+  final int points;
+  final int level;
+  final List<String> medals;
+}
+
+class RankingResult {
+  const RankingResult({
+    required this.scope,
+    required this.period,
+    required this.rows,
+  });
+
+  factory RankingResult.fromJson(Map<String, dynamic> json) {
+    final rows = json['rankingList'] as List<dynamic>;
+    return RankingResult(
+      scope: json['scope'] as String,
+      period: json['period'] as String,
+      rows: rows
+          .map((item) => RankingRow.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final String scope;
+  final String period;
+  final List<RankingRow> rows;
+}
+
+class RankingRow {
+  const RankingRow({
+    required this.rank,
+    required this.userId,
+    required this.nickname,
+    required this.distanceKm,
+    required this.calorie,
+  });
+
+  factory RankingRow.fromJson(Map<String, dynamic> json) {
+    return RankingRow(
+      rank: json['rank'] as int,
+      userId: json['userId'] as int,
+      nickname: json['nickname'] as String,
+      distanceKm: (json['distanceKm'] as num).toDouble(),
+      calorie: (json['calorie'] as num).toDouble(),
+    );
+  }
+
+  final int rank;
+  final int userId;
+  final String nickname;
+  final double distanceKm;
+  final double calorie;
 }

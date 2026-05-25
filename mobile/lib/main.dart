@@ -197,7 +197,7 @@ class _AppShellState extends State<AppShell> {
       DashboardPage(api: widget.api, session: widget.session),
       SportSessionPage(api: widget.api, session: widget.session),
       StatsPage(api: widget.api, session: widget.session),
-      const SocialPage(),
+      SocialPage(api: widget.api, session: widget.session),
       ProfilePage(session: widget.session),
     ];
     return Scaffold(
@@ -719,22 +719,117 @@ class _StatsPageState extends State<StatsPage> {
   }
 }
 
-class SocialPage extends StatelessWidget {
-  const SocialPage({super.key});
+class SocialPage extends StatefulWidget {
+  const SocialPage({super.key, required this.api, required this.session});
+
+  final FitLoopApi api;
+  final UserSession session;
+
+  @override
+  State<SocialPage> createState() => _SocialPageState();
+}
+
+class _SocialPageState extends State<SocialPage> {
+  Future<_SocialSnapshot>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadSocial();
+  }
+
+  Future<_SocialSnapshot> _loadSocial() async {
+    final medal = await widget.api.medalSummary(token: widget.session.token);
+    final ranking = await widget.api.ranking(token: widget.session.token);
+    return _SocialSnapshot(medal: medal, ranking: ranking);
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = _loadSocial();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return const _PageScaffold(
+    return _PageScaffold(
       title: '校园激励',
       children: [
+        FilledButton.icon(
+          onPressed: _refresh,
+          icon: const Icon(Icons.refresh),
+          label: const Text('刷新激励数据'),
+        ),
+        const SizedBox(height: 12),
+        FutureBuilder<_SocialSnapshot>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return _MetricCard(
+                label: '激励状态',
+                value: snapshot.error.toString(),
+                icon: Icons.error_outline,
+              );
+            }
+            final data = snapshot.data;
+            if (data == null) {
+              return const _MetricCard(
+                label: '激励状态',
+                value: '加载中',
+                icon: Icons.hourglass_empty,
+              );
+            }
+            return _SocialContent(snapshot: data);
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _SocialSnapshot {
+  const _SocialSnapshot({required this.medal, required this.ranking});
+
+  final MedalSummary medal;
+  final RankingResult ranking;
+}
+
+class _SocialContent extends StatelessWidget {
+  const _SocialContent({required this.snapshot});
+
+  final _SocialSnapshot snapshot;
+
+  @override
+  Widget build(BuildContext context) {
+    final medals = snapshot.medal.medals;
+    final rankingRows = snapshot.ranking.rows;
+    return Column(
+      children: [
         _MetricCard(
-            label: '积分等级',
-            value: '后续接入勋章接口',
-            icon: Icons.workspace_premium_outlined),
+          label: '积分等级',
+          value: '${snapshot.medal.points} 积分 / Lv.${snapshot.medal.level}',
+          icon: Icons.workspace_premium_outlined,
+        ),
         _MetricCard(
+          label: '我的勋章',
+          value: medals.isEmpty ? '暂无勋章' : medals.join('、'),
+          icon: Icons.military_tech_outlined,
+        ),
+        if (rankingRows.isEmpty)
+          const _MetricCard(
             label: '排行榜',
-            value: '班级 / 宿舍 / 好友',
-            icon: Icons.leaderboard_outlined),
+            value: '暂无排行数据',
+            icon: Icons.leaderboard_outlined,
+          )
+        else
+          ...rankingRows.take(5).map(
+                (row) => _MetricCard(
+                  label: '第 ${row.rank} 名',
+                  value:
+                      '${row.nickname} / ${row.distanceKm.toStringAsFixed(1)} km / ${row.calorie.toStringAsFixed(1)} kcal',
+                  icon: Icons.leaderboard_outlined,
+                ),
+              ),
       ],
     );
   }
