@@ -457,4 +457,56 @@ class _FakeApi implements FitLoopApi {
   }) async {
     uploadedTrackPoints += 1;
   }
+
+  @override
+  Future<TargetReminderListResponse> targetReminders(
+      {required String token}) async {
+    return const TargetReminderListResponse(targets: []);
+  }
+
+  @override
+  Future<void> acknowledgeTargetReminder(
+      {required String token, required int targetId}) async {}
+
+  @override
+  Future<ReminderListResponse> listReminders({required String token}) async {
+    return const ReminderListResponse(reminders: []);
+  }
+
+  @override
+  Future<ReminderConfig> upsertReminder(
+      {required String token,
+      required int remindId,
+      required String type,
+      String? time,
+      String? cycle,
+      bool? enabled}) async {
+    return ReminderConfig(
+        id: 1, type: type, time: time, cycle: cycle ?? 'daily', enabled: enabled ?? true);
+  }
+
+  @override
+  Future<FriendListResponse> listFriends({required String token}) async {
+    return const FriendListResponse(friends: []);
+  }
+
+  @override
+  Future<UserSearchResponse> searchUsers(
+      {required String token, required String query}) async {
+    return const UserSearchResponse(users: []);
+  }
+
+  @override
+  Future<void> addFriend({required String token, required int friendUserId}) async {}
+
+  @override
+  Future<AppealListResponse> listAppeals({required String token}) async {
+    return const AppealListResponse(appeals: []);
+  }
+
+  @override
+  Future<void> createAppeal(
+      {required String token,
+      required int recordId,
+      required String reason}) async {}
 }

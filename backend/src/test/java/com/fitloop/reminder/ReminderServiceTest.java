@@ -102,6 +102,68 @@ class ReminderServiceTest {
     }
 
     @Test
+    void acknowledgeTargetReminderMarksItAsRead() {
+        targetService.create(1L, new CreateTargetRequest("week", "count", 5));
+        reminderService.upsert(1L, 0L,
+                new ReminderRequest("target", LocalTime.of(0, 0), "daily", true));
+
+        // 标记已读前 due=true
+        var before = reminderService.getTargetReminders(1L);
+        assertThat(before.targets().get(0).due()).isTrue();
+        assertThat(before.targets().get(0).acknowledged()).isFalse();
+
+        // 标记已读
+        reminderService.acknowledgeTargetReminder(1L, before.targets().get(0).targetId());
+
+        // 标记已读后 due=false, acknowledged=true
+        var after = reminderService.getTargetReminders(1L);
+        assertThat(after.targets().get(0).due()).isFalse();
+        assertThat(after.targets().get(0).acknowledged()).isTrue();
+    }
+
+    @Test
+    void acknowledgeTargetReminderIsIdempotent() {
+        targetService.create(1L, new CreateTargetRequest("week", "count", 5));
+        Long targetId = reminderService.getTargetReminders(1L).targets().get(0).targetId();
+
+        // 多次调用不抛异常
+        reminderService.acknowledgeTargetReminder(1L, targetId);
+        reminderService.acknowledgeTargetReminder(1L, targetId);
+        reminderService.acknowledgeTargetReminder(1L, targetId);
+
+        var result = reminderService.getTargetReminders(1L);
+        assertThat(result.targets().get(0).acknowledged()).isTrue();
+    }
+
+    @Test
+    void listReturnsAllReminderConfigsForUser() {
+        reminderService.upsert(1L, 0L,
+                new ReminderRequest("target", LocalTime.of(0, 0), "daily", true));
+        reminderService.upsert(1L, 0L,
+                new ReminderRequest("sport", LocalTime.of(7, 0), "daily", true));
+
+        var result = reminderService.list(1L);
+        assertThat(result.reminders()).hasSize(2);
+        assertThat(result.reminders().stream().map(r -> r.type()))
+                .containsExactlyInAnyOrder("target", "sport");
+    }
+
+    @Test
+    void listReturnsEmptyWhenNoReminders() {
+        var result = reminderService.list(99L);
+        assertThat(result.reminders()).isEmpty();
+    }
+
+    @Test
+    void listOnlyReturnsOwnReminders() {
+        reminderService.upsert(1L, 0L,
+                new ReminderRequest("sport", LocalTime.of(7, 0), "daily", true));
+
+        var result = reminderService.list(2L);
+        assertThat(result.reminders()).isEmpty();
+    }
+
+    @Test
     void existingUpsertBehaviourNotBroken() {
         var response = reminderService.upsert(1L, 0L,
                 new ReminderRequest("sport", LocalTime.of(7, 0), "daily", true));
