@@ -268,7 +268,7 @@ class _AppShellState extends State<AppShell> {
       ),
       StatsPage(api: widget.api, session: widget.session),
       SocialPage(api: widget.api, session: widget.session),
-      ProfilePage(session: widget.session),
+      ProfilePage(api: widget.api, session: widget.session),
     ];
     return Scaffold(
       body: SafeArea(child: pages[_index]),
@@ -314,20 +314,27 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   Future<List<SportTarget>>? _future;
+  Future<TargetReminderListResponse>? _reminderFuture;
 
   @override
   void initState() {
     super.initState();
     _future = _loadTargets();
+    _reminderFuture = _loadReminders();
   }
 
   Future<List<SportTarget>> _loadTargets() {
     return widget.api.currentTargets(token: widget.session.token);
   }
 
-  void _refreshTargets() {
+  Future<TargetReminderListResponse> _loadReminders() {
+    return widget.api.targetReminders(token: widget.session.token);
+  }
+
+  void _refreshAll() {
     setState(() {
       _future = _loadTargets();
+      _reminderFuture = _loadReminders();
     });
   }
 
@@ -343,7 +350,7 @@ class _DashboardPageState extends State<DashboardPage> {
       },
     );
     if (created == true && mounted) {
-      _refreshTargets();
+      _refreshAll();
     }
   }
 
@@ -356,6 +363,28 @@ class _DashboardPageState extends State<DashboardPage> {
             label: '欢迎回来',
             value: widget.session.nickname,
             icon: Icons.waving_hand_outlined),
+        FutureBuilder<TargetReminderListResponse>(
+          future: _reminderFuture,
+          builder: (context, snapshot) {
+            final reminders = snapshot.data?.targets ?? const <TargetReminderResponse>[];
+            final dueItems = reminders.where((r) => r.due).toList();
+            if (dueItems.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return _ReminderBannerCard(
+              reminders: dueItems,
+              onDismiss: (targetId) async {
+                await widget.api.acknowledgeTargetReminder(
+                  token: widget.session.token,
+                  targetId: targetId,
+                );
+                if (mounted) {
+                  _refreshAll();
+                }
+              },
+            );
+          },
+        ),
         FutureBuilder<List<SportTarget>>(
           future: _future,
           builder: (context, snapshot) {
@@ -364,7 +393,7 @@ class _DashboardPageState extends State<DashboardPage> {
               loading: snapshot.connectionState == ConnectionState.waiting,
               error: snapshot.error,
               target: targets.isEmpty ? null : targets.first,
-              onRefresh: _refreshTargets,
+              onRefresh: _refreshAll,
               onCreate: _showCreateTargetSheet,
             );
           },
@@ -373,6 +402,103 @@ class _DashboardPageState extends State<DashboardPage> {
             label: '今日运动', value: '从运动页开始打卡', icon: Icons.timer_outlined),
       ],
     );
+  }
+}
+
+class _ReminderBannerCard extends StatefulWidget {
+  const _ReminderBannerCard({
+    required this.reminders,
+    required this.onDismiss,
+  });
+
+  final List<TargetReminderResponse> reminders;
+  final Future<void> Function(int targetId) onDismiss;
+
+  @override
+  State<_ReminderBannerCard> createState() => _ReminderBannerCardState();
+}
+
+class _ReminderBannerCardState extends State<_ReminderBannerCard> {
+  final Set<int> _dismissing = {};
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Icon(Icons.notifications_active_outlined,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                    size: 20),
+                const SizedBox(width: 8),
+                Text('目标提醒',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onErrorContainer,
+                        )),
+                if (widget.reminders.length > 1)
+                  Text(
+                    '（${widget.reminders.length} 项）',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                  ),
+              ],
+            ),
+          ),
+          ...widget.reminders.take(3).map(
+                (r) => ListTile(
+                  dense: true,
+                  leading: Icon(
+                    _reminderIcon(r.metric),
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                  title: Text(r.message,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color:
+                            Theme.of(context).colorScheme.onErrorContainer,
+                      )),
+                  trailing: _dismissing.contains(r.targetId)
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () async {
+                            setState(() => _dismissing.add(r.targetId));
+                            await widget.onDismiss(r.targetId);
+                            if (mounted) {
+                              setState(() => _dismissing.remove(r.targetId));
+                            }
+                          },
+                        ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+IconData _reminderIcon(String metric) {
+  switch (metric) {
+    case 'duration':
+      return Icons.timer_outlined;
+    case 'distance':
+      return Icons.route_outlined;
+    case 'calorie':
+      return Icons.bolt_outlined;
+    default:
+      return Icons.repeat_outlined;
   }
 }
 
@@ -624,6 +750,7 @@ class SportSessionPage extends StatefulWidget {
 
 class _SportSessionPageState extends State<SportSessionPage> {
   static const _maxAcceptedAccuracyMeters = 50.0;
+  static const int _statusAbnormal = 2;
 
   String? _sessionId;
   SportRecord? _lastRecord;
@@ -633,6 +760,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
   StreamSubscription<Position>? _positionSubscription;
   int _trackPointCount = 0;
   int _trackingGeneration = 0;
+  Future<AppealListResponse>? _appealFuture;
 
   Future<void> _toggle() async {
     setState(() => _busy = true);
@@ -685,6 +813,9 @@ class _SportSessionPageState extends State<SportSessionPage> {
           _sessionId = null;
           _lastRecord = record;
           _status = '已保存记录 #${record.recordId}，共上传 $_trackPointCount 个轨迹点';
+          if (record.status == _statusAbnormal) {
+            _appealFuture = widget.api.listAppeals(token: widget.session.token);
+          }
         });
       }
     } catch (error) {
@@ -820,6 +951,30 @@ class _SportSessionPageState extends State<SportSessionPage> {
     return Future.value();
   }
 
+  Future<void> _showAppealSheet(int recordId) async {
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return _AppealFormSheet(
+          api: widget.api,
+          token: widget.session.token,
+          recordId: recordId,
+        );
+      },
+    );
+    if (reason != null && mounted) {
+      setState(() {
+        _appealFuture = widget.api.listAppeals(token: widget.session.token);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('申诉已提交')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _trackingGeneration++;
@@ -848,14 +1003,211 @@ class _SportSessionPageState extends State<SportSessionPage> {
                 ? 'GPS实时追踪中 (精度: bestForNavigation, 间隔: 10m/5s)'
                 : 'GPS / 传感器 / 拍照 / 手动',
             icon: Icons.tune_outlined),
-        if (lastRecord != null)
+        if (lastRecord != null) ...[
           _MetricCard(
             label: '最近一次',
             value:
                 '${(lastRecord.durationSeconds / 60).round()} 分钟 / ${lastRecord.calorie.toStringAsFixed(1)} kcal',
             icon: Icons.route_outlined,
           ),
+          if (lastRecord.status == _statusAbnormal)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                  foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+                icon: const Icon(Icons.report_problem_outlined),
+                label: const Text('对本次记录提起申诉'),
+                onPressed: () => _showAppealSheet(lastRecord.recordId),
+              ),
+            ),
+          FutureBuilder<AppealListResponse>(
+            future: _appealFuture,
+            builder: (context, snapshot) {
+              final appeals = snapshot.data?.appeals ?? const <AppealResponse>[];
+              if (appeals.isEmpty) return const SizedBox.shrink();
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.fact_check_outlined, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            '我的申诉 (${appeals.length})',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    ...appeals.take(5).map((a) => ListTile(
+                          dense: true,
+                          leading: Icon(
+                            _appealStatusIcon(a.status),
+                            color: _appealStatusColor(context, a.status),
+                          ),
+                          title: Text(
+                            '记录 #${a.recordId}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          subtitle: Text(
+                            a.reason,
+                            style: const TextStyle(fontSize: 12),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Text(
+                            a.statusLabel,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _appealStatusColor(context, a.status),
+                            ),
+                          ),
+                        )),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ],
+    );
+  }
+}
+
+IconData _appealStatusIcon(String status) {
+  switch (status) {
+    case 'pending':
+      return Icons.hourglass_empty;
+    case 'approved':
+      return Icons.check_circle_outline;
+    case 'rejected':
+      return Icons.cancel_outlined;
+    default:
+      return Icons.help_outline;
+  }
+}
+
+Color _appealStatusColor(BuildContext context, String status) {
+  switch (status) {
+    case 'pending':
+      return Colors.orange;
+    case 'approved':
+      return Colors.green;
+    case 'rejected':
+      return Theme.of(context).colorScheme.error;
+    default:
+      return Colors.grey;
+  }
+}
+
+class _AppealFormSheet extends StatefulWidget {
+  const _AppealFormSheet({
+    required this.api,
+    required this.token,
+    required this.recordId,
+  });
+
+  final FitLoopApi api;
+  final String token;
+  final int recordId;
+
+  @override
+  State<_AppealFormSheet> createState() => _AppealFormSheetState();
+}
+
+class _AppealFormSheetState extends State<_AppealFormSheet> {
+  final _reason = TextEditingController();
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final reason = _reason.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _message = '请输入申诉理由');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.api.createAppeal(
+        token: widget.token,
+        recordId: widget.recordId,
+        reason: reason,
+      );
+      if (mounted) Navigator.of(context).pop(reason);
+    } catch (e) {
+      setState(() => _message = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '提起申诉',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text('记录 #${widget.recordId}',
+                style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _reason,
+              enabled: !_busy,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: '请描述申诉理由（如：GPS信号异常、实际已完成运动等）',
+                prefixIcon: Icon(Icons.edit_note_outlined),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_message != null) ...[
+              const SizedBox(height: 12),
+              Text(_message!,
+                  style:
+                      TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _busy ? null : _submit,
+              icon: _busy
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send),
+              label: const Text('提交申诉'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1131,11 +1483,22 @@ class SocialPage extends StatefulWidget {
 
 class _SocialPageState extends State<SocialPage> {
   Future<_SocialSnapshot>? _future;
+  Future<FriendListResponse>? _friendFuture;
+  final _searchController = TextEditingController();
+  List<UserSearchItem> _searchResults = [];
+  bool _searching = false;
 
   @override
   void initState() {
     super.initState();
     _future = _loadSocial();
+    _friendFuture = _loadFriends();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<_SocialSnapshot> _loadSocial() async {
@@ -1144,10 +1507,56 @@ class _SocialPageState extends State<SocialPage> {
     return _SocialSnapshot(medal: medal, ranking: ranking);
   }
 
+  Future<FriendListResponse> _loadFriends() {
+    return widget.api.listFriends(token: widget.session.token);
+  }
+
   void _refresh() {
     setState(() {
       _future = _loadSocial();
+      _friendFuture = _loadFriends();
+      _searchResults = [];
     });
+  }
+
+  Future<void> _doSearch() async {
+    final q = _searchController.text.trim();
+    if (q.isEmpty) {
+      setState(() => _searchResults = []);
+      return;
+    }
+    setState(() => _searching = true);
+    try {
+      final resp = await widget.api.searchUsers(
+        token: widget.session.token,
+        query: q,
+      );
+      if (mounted) setState(() => _searchResults = resp.users);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('搜索失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _addFriend(int userId) async {
+    try {
+      await widget.api.addFriend(
+        token: widget.session.token,
+        friendUserId: userId,
+      );
+      _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加失败: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -1155,6 +1564,109 @@ class _SocialPageState extends State<SocialPage> {
     return _PageScaffold(
       title: '校园激励',
       children: [
+        // 搜索栏
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      hintText: '搜索好友（昵称或手机号）',
+                      prefixIcon: Icon(Icons.search_outlined),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _doSearch(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _searching
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.send_outlined),
+                        onPressed: _doSearch,
+                      ),
+              ],
+            ),
+          ),
+        ),
+
+        // 搜索结果
+        if (_searchResults.isNotEmpty) ...[
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Text('搜索结果',
+                      style: Theme.of(context).textTheme.titleSmall),
+                ),
+                ..._searchResults.map((user) => ListTile(
+                      leading: CircleAvatar(child: Text(user.nickname[0])),
+                      title: Text(user.nickname),
+                      subtitle: Text('Lv.${user.level} · ${user.points} 积分'),
+                      trailing: user.isFriend
+                          ? const Chip(
+                              avatar: Icon(Icons.check, size: 16),
+                              label: Text('已是好友', style: TextStyle(fontSize: 12)),
+                            )
+                          : FilledButton.tonalIcon(
+                              icon: const Icon(Icons.person_add, size: 18),
+                              label: const Text('添加', style: TextStyle(fontSize: 12)),
+                              onPressed: () => _addFriend(user.userId),
+                            ),
+                    )),
+              ],
+            ),
+          ),
+        ],
+
+        // 好友列表
+        FutureBuilder<FriendListResponse>(
+          future: _friendFuture,
+          builder: (context, snapshot) {
+            final friends = snapshot.data?.friends ?? const <FriendInfo>[];
+            if (friends.isEmpty) return const SizedBox.shrink();
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      children: [
+                        Text('我的好友 (${friends.length})',
+                            style: Theme.of(context).textTheme.titleSmall),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 18),
+                          onPressed: _refresh,
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...friends.map((f) => ListTile(
+                        leading: CircleAvatar(child: Text(f.nickname[0])),
+                        title: Text(f.nickname),
+                        subtitle: Text('Lv.${f.level} · ${f.points} 积分'),
+                      )),
+                ],
+              ),
+            );
+          },
+        ),
+
+        // 激励数据
         FilledButton.icon(
           onPressed: _refresh,
           icon: const Icon(Icons.refresh),
@@ -1235,10 +1747,41 @@ class _SocialContent extends StatelessWidget {
   }
 }
 
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key, required this.session});
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({super.key, required this.api, required this.session});
 
+  final FitLoopApi api;
   final UserSession session;
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  Future<ReminderListResponse>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.api.listReminders(token: widget.session.token);
+  }
+
+  Future<void> _openSettings(String type, String label, IconData icon) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _ReminderSettingsPage(
+          api: widget.api,
+          token: widget.session.token,
+          type: type,
+          label: label,
+          icon: icon,
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      setState(() => _future = widget.api.listReminders(token: widget.session.token));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1247,13 +1790,185 @@ class ProfilePage extends StatelessWidget {
       children: [
         _MetricCard(
             label: '账号状态',
-            value: '已登录：${session.nickname}',
+            value: '已登录：${widget.session.nickname}',
             icon: Icons.verified_user_outlined),
-        const _MetricCard(
-            label: '提醒设置',
-            value: '运动 / 久坐 / 喝水 / 睡眠',
-            icon: Icons.notifications_outlined),
+        FutureBuilder<ReminderListResponse>(
+          future: _future,
+          builder: (context, snapshot) {
+            final reminders = snapshot.data?.reminders ?? const <ReminderConfig>[];
+            ReminderConfig? findByType(String t) {
+              return reminders.where((r) => r.type == t).firstOrNull;
+            }
+
+            const items = [
+              _ReminderTileData('sport', '运动', Icons.directions_run_outlined, Icons.timer_outlined),
+              _ReminderTileData('sit', '久坐', Icons.chair_outlined, Icons.access_time_outlined),
+              _ReminderTileData('drink', '喝水', Icons.water_drop_outlined, Icons.local_drink_outlined),
+              _ReminderTileData('sleep', '睡眠', Icons.bedtime_outlined, Icons.nightlight_outlined),
+            ];
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text('提醒设置',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            )),
+                  ),
+                  ...items.map((item) {
+                    final config = findByType(item.type);
+                    final enabled = config?.enabled ?? false;
+                    final timeDisplay = config?.time?.substring(0, 5) ?? '--:--';
+                    return ListTile(
+                      leading: Icon(enabled ? item.filledIcon : item.outlineIcon,
+                          color: enabled
+                              ? Theme.of(context).colorScheme.primary
+                              : null),
+                      title: Text(item.label),
+                      subtitle: Text(enabled ? '已开启 · $timeDisplay' : '关闭'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openSettings(item.type, item.label, item.outlineIcon),
+                    );
+                  }),
+                ],
+              ),
+            );
+          },
+        ),
       ],
+    );
+  }
+}
+
+class _ReminderTileData {
+  const _ReminderTileData(this.type, this.label, this.outlineIcon, this.filledIcon);
+  final String type;
+  final String label;
+  final IconData outlineIcon;
+  final IconData filledIcon;
+}
+
+class _ReminderSettingsPage extends StatefulWidget {
+  const _ReminderSettingsPage({
+    required this.api,
+    required this.token,
+    required this.type,
+    required this.label,
+    required this.icon,
+  });
+
+  final FitLoopApi api;
+  final String token;
+  final String type;
+  final String label;
+  final IconData icon;
+
+  @override
+  State<_ReminderSettingsPage> createState() => _ReminderSettingsPageState();
+}
+
+class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
+  bool _enabled = false;
+  TimeOfDay _time = const TimeOfDay(hour: 8, minute: 0);
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final resp = await widget.api.listReminders(token: widget.token);
+      final config = resp.reminders.where((r) => r.type == widget.type).firstOrNull;
+      if (config != null && mounted) {
+        setState(() {
+          _enabled = config.enabled;
+          if (config.time != null && config.time!.length >= 5) {
+            final parts = config.time!.split(':');
+            _time = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+          }
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(context: context, initialTime: _time);
+    if (picked != null && mounted) setState(() => _time = picked);
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final timeStr =
+          '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}:00';
+      await widget.api.upsertReminder(
+        token: widget.token,
+        remindId: 0,
+        type: widget.type,
+        time: timeStr,
+        cycle: 'daily',
+        enabled: _enabled,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('${widget.label} 提醒')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Icon(widget.icon, size: 64, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 24),
+                SwitchListTile(
+                  title: const Text('启用提醒'),
+                  subtitle: Text(_enabled ? '每天 $_time 提醒' : '提醒已关闭'),
+                  value: _enabled,
+                  onChanged: (v) => setState(() => _enabled = v),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(Icons.access_time),
+                  title: const Text('提醒时间'),
+                  subtitle: Text(_time.format(context)),
+                  trailing: const Icon(Icons.edit_calendar_outlined),
+                  onTap: _enabled ? _pickTime : null,
+                ),
+                const SizedBox(height: 32),
+                FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: _saving
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save),
+                  label: const Text('保存'),
+                ),
+              ],
+            ),
     );
   }
 }

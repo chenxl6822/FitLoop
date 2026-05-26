@@ -1,14 +1,19 @@
 package com.fitloop.reminder;
 
+import com.fitloop.reminder.ReminderDtos.ReminderListResponse;
 import com.fitloop.reminder.ReminderDtos.ReminderRequest;
 import com.fitloop.reminder.ReminderDtos.ReminderResponse;
 import com.fitloop.reminder.ReminderDtos.TargetReminderListResponse;
 import com.fitloop.reminder.ReminderDtos.TargetReminderResponse;
 import com.fitloop.target.SportTarget;
 import com.fitloop.target.SportTargetRepository;
+import com.fitloop.target.TargetReminderRead;
+import com.fitloop.target.TargetReminderReadRepository;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,10 +21,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class ReminderService {
     private final ReminderConfigRepository reminders;
     private final SportTargetRepository targets;
+    private final TargetReminderReadRepository reminderReads;
 
-    public ReminderService(ReminderConfigRepository reminders, SportTargetRepository targets) {
+    public ReminderService(ReminderConfigRepository reminders, SportTargetRepository targets,
+                           TargetReminderReadRepository reminderReads) {
         this.reminders = reminders;
         this.targets = targets;
+        this.reminderReads = reminderReads;
     }
 
     @Transactional
@@ -31,6 +39,14 @@ public class ReminderService {
         if (request.cycle() != null) config.setCycle(request.cycle());
         if (request.enabled() != null) config.setEnabled(request.enabled());
         return ReminderResponse.from(reminders.save(config));
+    }
+
+    @Transactional(readOnly = true)
+    public ReminderListResponse list(Long userId) {
+        return new ReminderListResponse(reminders.findByUserIdOrderByType(userId)
+                .stream()
+                .map(ReminderResponse::from)
+                .toList());
     }
 
     @Transactional(readOnly = true)
@@ -57,12 +73,19 @@ public class ReminderService {
                 .findFirst()
                 .orElse(null);
 
+        // 查找用户已确认过的提醒
+        Set<Long> acknowledgedTargetIds = reminderReads.findByUserId(userId)
+                .stream()
+                .map(TargetReminderRead::getTargetId)
+                .collect(Collectors.toSet());
+
         List<TargetReminderResponse> items = activeTargets.stream()
                 .map(t -> {
                     boolean completed = t.getCompletedValue() >= t.getTargetValue();
                     double progress = t.getTargetValue() <= 0 ? 0
                             : Math.min(100.0, t.getCompletedValue() / t.getTargetValue() * 100.0);
-                    boolean due = !completed && hasDueConfig;
+                    boolean acknowledged = acknowledgedTargetIds.contains(t.getTargetId());
+                    boolean due = !completed && !acknowledged && hasDueConfig;
 
                     String message = buildReminderMessage(t, completed, progress, due);
 
@@ -77,6 +100,7 @@ public class ReminderService {
                             t.getEndDate(),
                             t.getStatus(),
                             due,
+                            acknowledged,
                             configRemindTime,
                             message
                     );
@@ -106,5 +130,15 @@ public class ReminderService {
         }
         return periodLabel + "目标进度: " + target.getCompletedValue() + "/" + target.getTargetValue()
                 + metricLabel + " (" + progress + "%)";
+    }
+
+    @Transactional
+    public void acknowledgeTargetReminder(Long userId, Long targetId) {
+        if (reminderReads.findByUserIdAndTargetId(userId, targetId).isEmpty()) {
+            TargetReminderRead read = new TargetReminderRead();
+            read.setUserId(userId);
+            read.setTargetId(targetId);
+            reminderReads.save(read);
+        }
     }
 }

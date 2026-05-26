@@ -5,16 +5,22 @@ import com.fitloop.sport.SportRecord;
 import com.fitloop.sport.SportRecordRepository;
 import com.fitloop.user.UserInfo;
 import com.fitloop.user.UserRepository;
+import com.fitloop.social.SocialDtos.FriendInfo;
+import com.fitloop.social.SocialDtos.FriendListResponse;
 import com.fitloop.social.SocialDtos.FriendRequest;
 import com.fitloop.social.SocialDtos.FriendResponse;
 import com.fitloop.social.SocialDtos.MedalResponse;
 import com.fitloop.social.SocialDtos.RankingResponse;
 import com.fitloop.social.SocialDtos.RankingRow;
+import com.fitloop.social.SocialDtos.UserSearchItem;
+import com.fitloop.social.SocialDtos.UserSearchResponse;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -88,6 +94,38 @@ public class SocialService {
         friend.setUserId(userId);
         friend.setFriendUserId(request.friendUserId());
         return FriendResponse.from(friends.save(friend));
+    }
+
+    @Transactional(readOnly = true)
+    public FriendListResponse listFriends(Long userId) {
+        List<UserFriend> relations = friends.findByUserId(userId);
+        List<FriendInfo> list = relations.stream().map(f -> {
+            UserInfo friendUser = users.findById(f.getFriendUserId()).orElse(null);
+            return new FriendInfo(f.getFriendId(), f.getFriendUserId(),
+                    friendUser != null ? friendUser.getNickname() : "未知用户",
+                    friendUser != null ? friendUser.getPoints() : 0,
+                    friendUser != null ? friendUser.getLevel() : 0,
+                    f.getStatus());
+        }).toList();
+        return new FriendListResponse(list);
+    }
+
+    @Transactional(readOnly = true)
+    public UserSearchResponse searchUsers(Long userId, String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return new UserSearchResponse(List.of());
+        }
+        String q = query.trim();
+        List<UserInfo> matches = users.findByNicknameContainingOrPhoneContaining(q, q);
+        Set<Long> friendIds = friends.findByUserId(userId).stream()
+                .map(UserFriend::getFriendUserId)
+                .collect(Collectors.toSet());
+        List<UserSearchItem> items = matches.stream()
+                .filter(u -> !u.getUserId().equals(userId))
+                .map(u -> new UserSearchItem(u.getUserId(), u.getNickname(), u.getPoints(), u.getLevel(),
+                        friendIds.contains(u.getUserId())))
+                .toList();
+        return new UserSearchResponse(items);
     }
 
     private RankingRow toRankingRow(Map.Entry<Long, double[]> entry, Map<Long, double[]> totals) {

@@ -18,6 +18,9 @@ public final class ReminderDtos {
         }
     }
 
+    public record ReminderListResponse(List<ReminderResponse> reminders) {
+    }
+
     public record TargetReminderResponse(
             Long targetId,
             String periodType,
@@ -29,6 +32,7 @@ public final class ReminderDtos {
             LocalDate endDate,
             String status,
             boolean due,
+            boolean acknowledged,
             LocalTime remindTime,
             String message
     ) {

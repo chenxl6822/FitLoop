@@ -64,6 +64,35 @@ abstract class FitLoopApi {
     String? dietNote,
     required String dataDate,
   });
+
+  Future<TargetReminderListResponse> targetReminders({required String token});
+
+  Future<void> acknowledgeTargetReminder({
+    required String token,
+    required int targetId,
+  });
+
+  Future<ReminderListResponse> listReminders({required String token});
+
+  Future<ReminderConfig> upsertReminder({
+    required String token,
+    required int remindId,
+    required String type,
+    String? time,
+    String? cycle,
+    bool? enabled,
+  });
+
+  Future<FriendListResponse> listFriends({required String token});
+
+  Future<UserSearchResponse> searchUsers({required String token, required String query});
+
+  Future<void> addFriend({required String token, required int friendUserId});
+
+  Future<AppealListResponse> listAppeals({required String token});
+
+  Future<void> createAppeal(
+      {required String token, required int recordId, required String reason});
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -252,6 +281,136 @@ class HttpFitLoopApi implements FitLoopApi {
     );
     final data = body['data'] as Map<String, dynamic>;
     return HealthData.fromJson(data);
+  }
+
+  @override
+  Future<TargetReminderListResponse> targetReminders({
+    required String token,
+  }) async {
+    final body = await _get('/api/reminders/targets', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final targets = data['targets'] as List<dynamic>;
+    return TargetReminderListResponse(
+      targets: targets
+          .map((e) =>
+              TargetReminderResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<void> acknowledgeTargetReminder({
+    required String token,
+    required int targetId,
+  }) async {
+    await _put('/api/reminders/targets/$targetId/read', token: token);
+  }
+
+  @override
+  Future<ReminderListResponse> listReminders({required String token}) async {
+    final body = await _get('/api/reminders', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['reminders'] as List<dynamic>;
+    return ReminderListResponse(
+      reminders: list
+          .map((e) => ReminderConfig.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<ReminderConfig> upsertReminder({
+    required String token,
+    required int remindId,
+    required String type,
+    String? time,
+    String? cycle,
+    bool? enabled,
+  }) async {
+    final body = await _put(
+      '/api/reminders/$remindId',
+      body: {
+        'type': type,
+        if (time != null) 'time': time,
+        if (cycle != null) 'cycle': cycle,
+        if (enabled != null) 'enabled': enabled,
+      },
+      token: token,
+    );
+    final data = body['data'] as Map<String, dynamic>;
+    return ReminderConfig.fromJson(data);
+  }
+
+  @override
+  Future<FriendListResponse> listFriends({required String token}) async {
+    final body = await _get('/api/social/friends', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['friends'] as List<dynamic>;
+    return FriendListResponse(
+      friends: list
+          .map((e) => FriendInfo.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<UserSearchResponse> searchUsers({
+    required String token,
+    required String query,
+  }) async {
+    final path = Uri(
+      path: '/api/social/friends/search',
+      queryParameters: {'q': query},
+    ).toString();
+    final body = await _get(path, token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['users'] as List<dynamic>;
+    return UserSearchResponse(
+      users: list
+          .map((e) => UserSearchItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<void> addFriend({required String token, required int friendUserId}) async {
+    await _post(
+      '/api/social/friend',
+      {'friendUserId': friendUserId},
+      token: token,
+    );
+  }
+
+  @override
+  Future<AppealListResponse> listAppeals({required String token}) async {
+    final body = await _get('/api/appeals', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['appeals'] as List<dynamic>;
+    return AppealListResponse(
+      appeals: list
+          .map((e) => AppealResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<void> createAppeal(
+      {required String token,
+      required int recordId,
+      required String reason}) async {
+    await _post(
+      '/api/appeals',
+      {'recordId': recordId, 'reason': reason},
+      token: token,
+    );
+  }
+
+  Future<Map<String, dynamic>> _put(String path,
+      {Map<String, dynamic>? body, String? token}) async {
+    final request = await _client.putUrl(Uri.parse('$baseUrl$path'));
+    _setHeaders(request, token);
+    request.write(jsonEncode(body ?? <String, dynamic>{}));
+    return _send(request);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
@@ -485,6 +644,230 @@ class RankingRow {
   final String nickname;
   final double distanceKm;
   final double calorie;
+}
+
+class TargetReminderResponse {
+  const TargetReminderResponse({
+    required this.targetId,
+    required this.periodType,
+    required this.metric,
+    required this.targetValue,
+    required this.completedValue,
+    required this.progress,
+    required this.startDate,
+    required this.endDate,
+    required this.status,
+    required this.due,
+    required this.acknowledged,
+    this.remindTime,
+    required this.message,
+  });
+
+  factory TargetReminderResponse.fromJson(Map<String, dynamic> json) {
+    return TargetReminderResponse(
+      targetId: json['targetId'] as int,
+      periodType: json['periodType'] as String,
+      metric: json['metric'] as String,
+      targetValue: (json['targetValue'] as num).toDouble(),
+      completedValue: (json['completedValue'] as num).toDouble(),
+      progress: (json['progress'] as num).toDouble(),
+      startDate: json['startDate'] as String,
+      endDate: json['endDate'] as String,
+      status: json['status'] as String,
+      due: json['due'] as bool,
+      acknowledged: json['acknowledged'] as bool,
+      remindTime: json['remindTime'] as String?,
+      message: json['message'] as String,
+    );
+  }
+
+  final int targetId;
+  final String periodType;
+  final String metric;
+  final double targetValue;
+  final double completedValue;
+  final double progress;
+  final String startDate;
+  final String endDate;
+  final String status;
+  final bool due;
+  final bool acknowledged;
+  final String? remindTime;
+  final String message;
+}
+
+class TargetReminderListResponse {
+  const TargetReminderListResponse({required this.targets});
+
+  final List<TargetReminderResponse> targets;
+}
+
+class ReminderConfig {
+  const ReminderConfig({
+    required this.id,
+    required this.type,
+    this.time,
+    required this.cycle,
+    required this.enabled,
+  });
+
+  factory ReminderConfig.fromJson(Map<String, dynamic> json) {
+    return ReminderConfig(
+      id: json['id'] as int,
+      type: json['type'] as String,
+      time: json['time'] as String?,
+      cycle: json['cycle'] as String,
+      enabled: json['enabled'] as bool,
+    );
+  }
+
+  final int id;
+  final String type;
+  final String? time;
+  final String cycle;
+  final bool enabled;
+
+  String get label {
+    switch (type) {
+      case 'sport':
+        return '运动'; // runner icon
+      case 'sit':
+        return '久坐'; // chair icon
+      case 'drink':
+        return '喝水'; // water icon
+      case 'sleep':
+        return '睡眠'; // bed icon
+      default:
+        return type;
+    }
+  }
+}
+
+class ReminderListResponse {
+  const ReminderListResponse({required this.reminders});
+
+  final List<ReminderConfig> reminders;
+}
+
+class FriendInfo {
+  const FriendInfo({
+    required this.friendId,
+    required this.friendUserId,
+    required this.nickname,
+    required this.points,
+    required this.level,
+    required this.status,
+  });
+
+  factory FriendInfo.fromJson(Map<String, dynamic> json) {
+    return FriendInfo(
+      friendId: json['friendId'] as int,
+      friendUserId: json['friendUserId'] as int,
+      nickname: json['nickname'] as String,
+      points: json['points'] as int,
+      level: json['level'] as int,
+      status: json['status'] as String,
+    );
+  }
+
+  final int friendId;
+  final int friendUserId;
+  final String nickname;
+  final int points;
+  final int level;
+  final String status;
+}
+
+class FriendListResponse {
+  const FriendListResponse({required this.friends});
+
+  final List<FriendInfo> friends;
+}
+
+class UserSearchItem {
+  const UserSearchItem({
+    required this.userId,
+    required this.nickname,
+    required this.points,
+    required this.level,
+    required this.isFriend,
+  });
+
+  factory UserSearchItem.fromJson(Map<String, dynamic> json) {
+    return UserSearchItem(
+      userId: json['userId'] as int,
+      nickname: json['nickname'] as String,
+      points: json['points'] as int,
+      level: json['level'] as int,
+      isFriend: json['isFriend'] as bool,
+    );
+  }
+
+  final int userId;
+  final String nickname;
+  final int points;
+  final int level;
+  final bool isFriend;
+}
+
+class UserSearchResponse {
+  const UserSearchResponse({required this.users});
+
+  final List<UserSearchItem> users;
+}
+
+class AppealResponse {
+  const AppealResponse({
+    required this.appealId,
+    required this.recordId,
+    required this.reason,
+    this.evidenceUrl,
+    required this.status,
+    this.reviewNote,
+    required this.createdAt,
+    this.updatedAt,
+  });
+
+  factory AppealResponse.fromJson(Map<String, dynamic> json) {
+    return AppealResponse(
+      appealId: json['appealId'] as int,
+      recordId: json['recordId'] as int,
+      reason: json['reason'] as String,
+      evidenceUrl: json['evidenceUrl'] as String?,
+      status: json['status'] as String,
+      reviewNote: json['reviewNote'] as String?,
+      createdAt: json['createdAt'] as String,
+      updatedAt: json['updatedAt'] as String?,
+    );
+  }
+
+  final int appealId;
+  final int recordId;
+  final String reason;
+  final String? evidenceUrl;
+  final String status;
+  final String? reviewNote;
+  final String createdAt;
+  final String? updatedAt;
+
+  String get statusLabel {
+    switch (status) {
+      case 'pending':
+        return '审核中';
+      case 'approved':
+        return '已通过';
+      case 'rejected':
+        return '已驳回';
+      default:
+        return status;
+    }
+  }
+}
+
+class AppealListResponse {
+  const AppealListResponse({required this.appeals});
+
+  final List<AppealResponse> appeals;
 }
 
 class HealthData {
