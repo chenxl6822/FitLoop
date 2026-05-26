@@ -1800,7 +1800,7 @@ class _ProfilePageState extends State<ProfilePage> {
               return reminders.where((r) => r.type == t).firstOrNull;
             }
 
-            final items = const [
+            const items = [
               _ReminderTileData('sport', '运动', Icons.directions_run_outlined, Icons.timer_outlined),
               _ReminderTileData('sit', '久坐', Icons.chair_outlined, Icons.access_time_outlined),
               _ReminderTileData('drink', '喝水', Icons.water_drop_outlined, Icons.local_drink_outlined),
