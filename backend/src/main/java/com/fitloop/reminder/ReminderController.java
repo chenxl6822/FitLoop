@@ -3,7 +3,9 @@ package com.fitloop.reminder;
 import com.fitloop.common.ApiResponse;
 import com.fitloop.reminder.ReminderDtos.ReminderRequest;
 import com.fitloop.reminder.ReminderDtos.ReminderResponse;
+import com.fitloop.reminder.ReminderDtos.TargetReminderListResponse;
 import com.fitloop.security.AuthSupport;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,5 +22,10 @@ public class ReminderController {
     @PutMapping("/api/reminders/{id}")
     public ApiResponse<ReminderResponse> upsert(@PathVariable Long id, @RequestBody ReminderRequest request) {
         return ApiResponse.ok(reminders.upsert(AuthSupport.currentUserId(), id, request));
+    }
+
+    @GetMapping("/api/reminders/targets")
+    public ApiResponse<TargetReminderListResponse> targetReminders() {
+        return ApiResponse.ok(reminders.getTargetReminders(AuthSupport.currentUserId()));
     }
 }
