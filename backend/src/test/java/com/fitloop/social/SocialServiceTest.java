@@ -115,9 +115,12 @@ class SocialServiceTest {
 
     @Test
     void searchUsersByPhoneAlsoWorks() {
-        var u = createUser("13811112222", "David");
+        var david = createUser("13811112222", "David");
+        var alice = createUser("13800000001", "Alice");
 
-        var result = socialService.searchUsers(u.getUserId(), "1381111");
+        // Search as Alice, looking for David by partial phone
+        var result = socialService.searchUsers(alice.getUserId(), "1381111");
         assertThat(result.users()).hasSize(1);
+        assertThat(result.users().get(0).nickname()).isEqualTo("David");
     }
 }
