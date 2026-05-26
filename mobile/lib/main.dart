@@ -751,6 +751,7 @@ class SportSessionPage extends StatefulWidget {
 
 class _SportSessionPageState extends State<SportSessionPage> {
   static const _maxAcceptedAccuracyMeters = 50.0;
+  static const int _statusAbnormal = 2;
 
   String? _sessionId;
   SportRecord? _lastRecord;
@@ -760,6 +761,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
   StreamSubscription<Position>? _positionSubscription;
   int _trackPointCount = 0;
   int _trackingGeneration = 0;
+  Future<AppealListResponse>? _appealFuture;
 
   Future<void> _toggle() async {
     setState(() => _busy = true);
@@ -812,6 +814,9 @@ class _SportSessionPageState extends State<SportSessionPage> {
           _sessionId = null;
           _lastRecord = record;
           _status = '已保存记录 #${record.recordId}，共上传 $_trackPointCount 个轨迹点';
+          if (record.status == _statusAbnormal) {
+            _appealFuture = widget.api.listAppeals(token: widget.session.token);
+          }
         });
       }
     } catch (error) {
@@ -947,6 +952,30 @@ class _SportSessionPageState extends State<SportSessionPage> {
     return Future.value();
   }
 
+  Future<void> _showAppealSheet(int recordId) async {
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return _AppealFormSheet(
+          api: widget.api,
+          token: widget.session.token,
+          recordId: recordId,
+        );
+      },
+    );
+    if (reason != null && mounted) {
+      setState(() {
+        _appealFuture = widget.api.listAppeals(token: widget.session.token);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('申诉已提交')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _trackingGeneration++;
@@ -975,14 +1004,209 @@ class _SportSessionPageState extends State<SportSessionPage> {
                 ? 'GPS实时追踪中 (精度: bestForNavigation, 间隔: 10m/5s)'
                 : 'GPS / 传感器 / 拍照 / 手动',
             icon: Icons.tune_outlined),
-        if (lastRecord != null)
-          _MetricCard(
+        if (lastRecord != null) ...[\n          _MetricCard(
             label: '最近一次',
             value:
                 '${(lastRecord.durationSeconds / 60).round()} 分钟 / ${lastRecord.calorie.toStringAsFixed(1)} kcal',
             icon: Icons.route_outlined,
           ),
+          if (lastRecord.status == _statusAbnormal)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                  foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+                ),
+                icon: const Icon(Icons.report_problem_outlined),
+                label: const Text('对本次记录提起申诉'),
+                onPressed: () => _showAppealSheet(lastRecord.recordId),
+              ),
+            ),
+          FutureBuilder<AppealListResponse>(
+            future: _appealFuture,
+            builder: (context, snapshot) {
+              final appeals = snapshot.data?.appeals ?? const <AppealResponse>[];
+              if (appeals.isEmpty) return const SizedBox.shrink();
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.fact_check_outlined, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            '我的申诉 (${appeals.length})',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    ...appeals.take(5).map((a) => ListTile(
+                          dense: true,
+                          leading: Icon(
+                            _appealStatusIcon(a.status),
+                            color: _appealStatusColor(context, a.status),
+                          ),
+                          title: Text(
+                            '记录 #${a.recordId}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          subtitle: Text(
+                            a.reason,
+                            style: const TextStyle(fontSize: 12),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Text(
+                            a.statusLabel,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _appealStatusColor(context, a.status),
+                            ),
+                          ),
+                        )),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
       ],
+    );
+  }
+}
+
+IconData _appealStatusIcon(String status) {
+  switch (status) {
+    case 'pending':
+      return Icons.hourglass_empty;
+    case 'approved':
+      return Icons.check_circle_outline;
+    case 'rejected':
+      return Icons.cancel_outlined;
+    default:
+      return Icons.help_outline;
+  }
+}
+
+Color _appealStatusColor(BuildContext context, String status) {
+  switch (status) {
+    case 'pending':
+      return Colors.orange;
+    case 'approved':
+      return Colors.green;
+    case 'rejected':
+      return Theme.of(context).colorScheme.error;
+    default:
+      return Colors.grey;
+  }
+}
+
+class _AppealFormSheet extends StatefulWidget {
+  const _AppealFormSheet({
+    required this.api,
+    required this.token,
+    required this.recordId,
+  });
+
+  final FitLoopApi api;
+  final String token;
+  final int recordId;
+
+  @override
+  State<_AppealFormSheet> createState() => _AppealFormSheetState();
+}
+
+class _AppealFormSheetState extends State<_AppealFormSheet> {
+  final _reason = TextEditingController();
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final reason = _reason.text.trim();
+    if (reason.isEmpty) {
+      setState(() => _message = '请输入申诉理由');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.api.createAppeal(
+        token: widget.token,
+        recordId: widget.recordId,
+        reason: reason,
+      );
+      if (mounted) Navigator.of(context).pop(reason);
+    } catch (e) {
+      setState(() => _message = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + bottomInset),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              '提起申诉',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text('记录 #${widget.recordId}',
+                style: Theme.of(context).textTheme.bodySmall),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _reason,
+              enabled: !_busy,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: '请描述申诉理由（如：GPS信号异常、实际已完成运动等）',
+                prefixIcon: Icon(Icons.edit_note_outlined),
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_message != null) ...[\n              const SizedBox(height: 12),
+              Text(_message!,
+                  style:
+                      TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _busy ? null : _submit,
+              icon: _busy
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send),
+              label: const Text('提交申诉'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
