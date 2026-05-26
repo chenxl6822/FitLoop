@@ -1,5 +1,6 @@
 package com.fitloop.reminder;
 
+import com.fitloop.reminder.ReminderDtos.ReminderListResponse;
 import com.fitloop.reminder.ReminderDtos.ReminderRequest;
 import com.fitloop.reminder.ReminderDtos.ReminderResponse;
 import com.fitloop.reminder.ReminderDtos.TargetReminderListResponse;
@@ -38,6 +39,14 @@ public class ReminderService {
         if (request.cycle() != null) config.setCycle(request.cycle());
         if (request.enabled() != null) config.setEnabled(request.enabled());
         return ReminderResponse.from(reminders.save(config));
+    }
+
+    @Transactional(readOnly = true)
+    public ReminderListResponse list(Long userId) {
+        return new ReminderListResponse(reminders.findByUserIdOrderByType(userId)
+                .stream()
+                .map(ReminderResponse::from)
+                .toList());
     }
 
     @Transactional(readOnly = true)

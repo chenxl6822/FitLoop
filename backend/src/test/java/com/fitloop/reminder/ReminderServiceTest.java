@@ -136,6 +136,34 @@ class ReminderServiceTest {
     }
 
     @Test
+    void listReturnsAllReminderConfigsForUser() {
+        reminderService.upsert(1L, 0L,
+                new ReminderRequest("target", LocalTime.of(0, 0), "daily", true));
+        reminderService.upsert(1L, 0L,
+                new ReminderRequest("sport", LocalTime.of(7, 0), "daily", true));
+
+        var result = reminderService.list(1L);
+        assertThat(result.reminders()).hasSize(2);
+        assertThat(result.reminders().stream().map(r -> r.type()))
+                .containsExactlyInAnyOrder("target", "sport");
+    }
+
+    @Test
+    void listReturnsEmptyWhenNoReminders() {
+        var result = reminderService.list(99L);
+        assertThat(result.reminders()).isEmpty();
+    }
+
+    @Test
+    void listOnlyReturnsOwnReminders() {
+        reminderService.upsert(1L, 0L,
+                new ReminderRequest("sport", LocalTime.of(7, 0), "daily", true));
+
+        var result = reminderService.list(2L);
+        assertThat(result.reminders()).isEmpty();
+    }
+
+    @Test
     void existingUpsertBehaviourNotBroken() {
         var response = reminderService.upsert(1L, 0L,
                 new ReminderRequest("sport", LocalTime.of(7, 0), "daily", true));

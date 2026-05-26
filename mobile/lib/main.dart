@@ -268,7 +268,7 @@ class _AppShellState extends State<AppShell> {
       ),
       StatsPage(api: widget.api, session: widget.session),
       SocialPage(api: widget.api, session: widget.session),
-      ProfilePage(session: widget.session),
+      ProfilePage(api: widget.api, session: widget.session),
     ];
     return Scaffold(
       body: SafeArea(child: pages[_index]),
@@ -1362,10 +1362,41 @@ class _SocialContent extends StatelessWidget {
   }
 }
 
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key, required this.session});
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({super.key, required this.api, required this.session});
 
+  final FitLoopApi api;
   final UserSession session;
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  Future<ReminderListResponse>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.api.listReminders(token: widget.session.token);
+  }
+
+  Future<void> _openSettings(String type, String label, IconData icon) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _ReminderSettingsPage(
+          api: widget.api,
+          token: widget.session.token,
+          type: type,
+          label: label,
+          icon: icon,
+        ),
+      ),
+    );
+    if (changed == true && mounted) {
+      setState(() => _future = widget.api.listReminders(token: widget.session.token));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1374,13 +1405,184 @@ class ProfilePage extends StatelessWidget {
       children: [
         _MetricCard(
             label: '账号状态',
-            value: '已登录：${session.nickname}',
+            value: '已登录：${widget.session.nickname}',
             icon: Icons.verified_user_outlined),
-        const _MetricCard(
-            label: '提醒设置',
-            value: '运动 / 久坐 / 喝水 / 睡眠',
-            icon: Icons.notifications_outlined),
+        FutureBuilder<ReminderListResponse>(
+          future: _future,
+          builder: (context, snapshot) {
+            final reminders = snapshot.data?.reminders ?? const <ReminderConfig>[];
+            final findByType = (String t) =>
+                reminders.where((r) => r.type == t).firstOrNull;
+
+            final items = [
+              _ReminderTileData('sport', '运动', Icons.directions_run_outlined, Icons.timer_outlined),
+              _ReminderTileData('sit', '久坐', Icons.chair_outlined, Icons.access_time_outlined),
+              _ReminderTileData('drink', '喝水', Icons.water_drop_outlined, Icons.local_drink_outlined),
+              _ReminderTileData('sleep', '睡眠', Icons.bedtime_outlined, Icons.nightlight_outlined),
+            ];
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text('提醒设置',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            )),
+                  ),
+                  ...items.map((item) {
+                    final config = findByType(item.type);
+                    final enabled = config?.enabled ?? false;
+                    final timeDisplay = config?.time?.substring(0, 5) ?? '--:--';
+                    return ListTile(
+                      leading: Icon(enabled ? item.filledIcon : item.outlineIcon,
+                          color: enabled
+                              ? Theme.of(context).colorScheme.primary
+                              : null),
+                      title: Text(item.label),
+                      subtitle: Text(enabled ? '已开启 · $timeDisplay' : '关闭'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openSettings(item.type, item.label, item.outlineIcon),
+                    );
+                  }),
+                ],
+              ),
+            );
+          },
+        ),
       ],
+    );
+  }
+}
+
+class _ReminderTileData {
+  const _ReminderTileData(this.type, this.label, this.outlineIcon, this.filledIcon);
+  final String type;
+  final String label;
+  final IconData outlineIcon;
+  final IconData filledIcon;
+}
+
+class _ReminderSettingsPage extends StatefulWidget {
+  const _ReminderSettingsPage({
+    required this.api,
+    required this.token,
+    required this.type,
+    required this.label,
+    required this.icon,
+  });
+
+  final FitLoopApi api;
+  final String token;
+  final String type;
+  final String label;
+  final IconData icon;
+
+  @override
+  State<_ReminderSettingsPage> createState() => _ReminderSettingsPageState();
+}
+
+class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
+  bool _enabled = false;
+  TimeOfDay _time = const TimeOfDay(hour: 8, minute: 0);
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final resp = await widget.api.listReminders(token: widget.token);
+      final config = resp.reminders.where((r) => r.type == widget.type).firstOrNull;
+      if (config != null && mounted) {
+        setState(() {
+          _enabled = config.enabled;
+          if (config.time != null && config.time!.length >= 5) {
+            final parts = config.time!.split(':');
+            _time = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+          }
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(context: context, initialTime: _time);
+    if (picked != null && mounted) setState(() => _time = picked);
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final timeStr =
+          '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}:00';
+      await widget.api.upsertReminder(
+        token: widget.token,
+        remindId: 0,
+        type: widget.type,
+        time: timeStr,
+        cycle: 'daily',
+        enabled: _enabled,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('${widget.label} 提醒')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Icon(widget.icon, size: 64, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(height: 24),
+                SwitchListTile(
+                  title: const Text('启用提醒'),
+                  subtitle: Text(_enabled ? '每天 $_time 提醒' : '提醒已关闭'),
+                  value: _enabled,
+                  onChanged: (v) => setState(() => _enabled = v),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: const Icon(Icons.access_time),
+                  title: const Text('提醒时间'),
+                  subtitle: Text(_time.format(context)),
+                  trailing: const Icon(Icons.edit_calendar_outlined),
+                  onTap: _enabled ? _pickTime : null,
+                ),
+                const SizedBox(height: 32),
+                FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: _saving
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save),
+                  label: const Text('保存'),
+                ),
+              ],
+            ),
     );
   }
 }

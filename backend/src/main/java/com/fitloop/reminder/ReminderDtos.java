@@ -18,6 +18,9 @@ public final class ReminderDtos {
         }
     }
 
+    public record ReminderListResponse(List<ReminderResponse> reminders) {
+    }
+
     public record TargetReminderResponse(
             Long targetId,
             String periodType,

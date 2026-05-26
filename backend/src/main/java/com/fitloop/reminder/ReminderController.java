@@ -3,6 +3,7 @@ package com.fitloop.reminder;
 import com.fitloop.common.ApiResponse;
 import com.fitloop.reminder.ReminderDtos.ReminderRequest;
 import com.fitloop.reminder.ReminderDtos.ReminderResponse;
+import com.fitloop.reminder.ReminderDtos.ReminderListResponse;
 import com.fitloop.reminder.ReminderDtos.TargetReminderListResponse;
 import com.fitloop.security.AuthSupport;
 import java.util.Map;
@@ -18,6 +19,11 @@ public class ReminderController {
 
     public ReminderController(ReminderService reminders) {
         this.reminders = reminders;
+    }
+
+    @GetMapping("/api/reminders")
+    public ApiResponse<ReminderListResponse> list() {
+        return ApiResponse.ok(reminders.list(AuthSupport.currentUserId()));
     }
 
     @PutMapping("/api/reminders/{id}")
