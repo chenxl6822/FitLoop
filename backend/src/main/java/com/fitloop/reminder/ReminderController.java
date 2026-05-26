@@ -5,6 +5,7 @@ import com.fitloop.reminder.ReminderDtos.ReminderRequest;
 import com.fitloop.reminder.ReminderDtos.ReminderResponse;
 import com.fitloop.reminder.ReminderDtos.TargetReminderListResponse;
 import com.fitloop.security.AuthSupport;
+import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -27,5 +28,11 @@ public class ReminderController {
     @GetMapping("/api/reminders/targets")
     public ApiResponse<TargetReminderListResponse> targetReminders() {
         return ApiResponse.ok(reminders.getTargetReminders(AuthSupport.currentUserId()));
+    }
+
+    @PutMapping("/api/reminders/targets/{targetId}/read")
+    public ApiResponse<Map<String, Boolean>> acknowledgeTarget(@PathVariable Long targetId) {
+        reminders.acknowledgeTargetReminder(AuthSupport.currentUserId(), targetId);
+        return ApiResponse.ok(Map.of("acknowledged", true));
     }
 }
