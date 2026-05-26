@@ -632,6 +632,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
   DateTime? _startedAt;
   StreamSubscription<Position>? _positionSubscription;
   int _trackPointCount = 0;
+  int _trackingGeneration = 0;
 
   Future<void> _toggle() async {
     setState(() => _busy = true);
@@ -750,6 +751,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
   void _startGpsTracking(String sessionId) {
     const throttleSeconds = 5;
     DateTime? lastUpload;
+    final generation = ++_trackingGeneration;
 
     _positionSubscription = widget.locationService
         .getPositionStream(
@@ -759,6 +761,9 @@ class _SportSessionPageState extends State<SportSessionPage> {
       ),
     )
         .listen((position) async {
+      if (!_isCurrentTrackingSession(generation, sessionId)) {
+        return;
+      }
       final now = DateTime.now();
       if (!_hasUsableAccuracy(position)) {
         if (mounted) {
@@ -777,6 +782,9 @@ class _SportSessionPageState extends State<SportSessionPage> {
 
       try {
         await _uploadTrackPoint(sessionId, position);
+        if (!_isCurrentTrackingSession(generation, sessionId)) {
+          return;
+        }
         _trackPointCount++;
         if (mounted) {
           setState(() {
@@ -789,19 +797,32 @@ class _SportSessionPageState extends State<SportSessionPage> {
         }
       }
     }, onError: (Object error) {
+      if (!_isCurrentTrackingSession(generation, sessionId)) {
+        return;
+      }
       if (mounted) {
         setState(() => _status = 'GPS定位失败：$error');
       }
     });
   }
 
-  Future<void> _stopGpsTracking() async {
-    await _positionSubscription?.cancel();
+  bool _isCurrentTrackingSession(int generation, String sessionId) {
+    return _trackingGeneration == generation && _sessionId == sessionId;
+  }
+
+  Future<void> _stopGpsTracking() {
+    _trackingGeneration++;
+    final subscription = _positionSubscription;
     _positionSubscription = null;
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+    return Future.value();
   }
 
   @override
   void dispose() {
+    _trackingGeneration++;
     _positionSubscription?.cancel();
     super.dispose();
   }
