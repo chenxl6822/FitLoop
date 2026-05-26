@@ -88,6 +88,11 @@ abstract class FitLoopApi {
   Future<UserSearchResponse> searchUsers({required String token, required String query});
 
   Future<void> addFriend({required String token, required int friendUserId});
+
+  Future<AppealListResponse> listAppeals({required String token});
+
+  Future<void> createAppeal(
+      {required String token, required int recordId, required String reason});
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -372,6 +377,30 @@ class HttpFitLoopApi implements FitLoopApi {
     await _post(
       '/api/social/friend',
       {'friendUserId': friendUserId},
+      token: token,
+    );
+  }
+
+  @override
+  Future<AppealListResponse> listAppeals({required String token}) async {
+    final body = await _get('/api/appeals', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['appeals'] as List<dynamic>;
+    return AppealListResponse(
+      appeals: list
+          .map((e) => AppealResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<void> createAppeal(
+      {required String token,
+      required int recordId,
+      required String reason}) async {
+    await _post(
+      '/api/appeals',
+      {'recordId': recordId, 'reason': reason},
       token: token,
     );
   }
@@ -785,6 +814,60 @@ class UserSearchResponse {
   const UserSearchResponse({required this.users});
 
   final List<UserSearchItem> users;
+}
+
+class AppealResponse {
+  const AppealResponse({
+    required this.appealId,
+    required this.recordId,
+    required this.reason,
+    this.evidenceUrl,
+    required this.status,
+    this.reviewNote,
+    required this.createdAt,
+    this.updatedAt,
+  });
+
+  factory AppealResponse.fromJson(Map<String, dynamic> json) {
+    return AppealResponse(
+      appealId: json['appealId'] as int,
+      recordId: json['recordId'] as int,
+      reason: json['reason'] as String,
+      evidenceUrl: json['evidenceUrl'] as String?,
+      status: json['status'] as String,
+      reviewNote: json['reviewNote'] as String?,
+      createdAt: json['createdAt'] as String,
+      updatedAt: json['updatedAt'] as String?,
+    );
+  }
+
+  final int appealId;
+  final int recordId;
+  final String reason;
+  final String? evidenceUrl;
+  final String status;
+  final String? reviewNote;
+  final String createdAt;
+  final String? updatedAt;
+
+  String get statusLabel {
+    switch (status) {
+      case 'pending':
+        return '审核中';
+      case 'approved':
+        return '已通过';
+      case 'rejected':
+        return '已驳回';
+      default:
+        return status;
+    }
+  }
+}
+
+class AppealListResponse {
+  const AppealListResponse({required this.appeals});
+
+  final List<AppealResponse> appeals;
 }
 
 class HealthData {
