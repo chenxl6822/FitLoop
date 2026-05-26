@@ -1,6 +1,8 @@
 package com.fitloop.reminder;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 public final class ReminderDtos {
     private ReminderDtos() {
@@ -14,5 +16,24 @@ public final class ReminderDtos {
             return new ReminderResponse(config.getRemindId(), config.getType(), config.getRemindTime(),
                     config.getCycle(), config.isEnabled());
         }
+    }
+
+    public record TargetReminderResponse(
+            Long targetId,
+            String periodType,
+            String metric,
+            double targetValue,
+            double completedValue,
+            double progress,
+            LocalDate startDate,
+            LocalDate endDate,
+            String status,
+            boolean due,
+            LocalTime remindTime,
+            String message
+    ) {
+    }
+
+    public record TargetReminderListResponse(List<TargetReminderResponse> targets) {
     }
 }
