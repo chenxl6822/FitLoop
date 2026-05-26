@@ -314,20 +314,27 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   Future<List<SportTarget>>? _future;
+  Future<TargetReminderListResponse>? _reminderFuture;
 
   @override
   void initState() {
     super.initState();
     _future = _loadTargets();
+    _reminderFuture = _loadReminders();
   }
 
   Future<List<SportTarget>> _loadTargets() {
     return widget.api.currentTargets(token: widget.session.token);
   }
 
-  void _refreshTargets() {
+  Future<TargetReminderListResponse> _loadReminders() {
+    return widget.api.targetReminders(token: widget.session.token);
+  }
+
+  void _refreshAll() {
     setState(() {
       _future = _loadTargets();
+      _reminderFuture = _loadReminders();
     });
   }
 
@@ -343,7 +350,7 @@ class _DashboardPageState extends State<DashboardPage> {
       },
     );
     if (created == true && mounted) {
-      _refreshTargets();
+      _refreshAll();
     }
   }
 
@@ -356,6 +363,28 @@ class _DashboardPageState extends State<DashboardPage> {
             label: '欢迎回来',
             value: widget.session.nickname,
             icon: Icons.waving_hand_outlined),
+        FutureBuilder<TargetReminderListResponse>(
+          future: _reminderFuture,
+          builder: (context, snapshot) {
+            final reminders = snapshot.data?.targets ?? const <TargetReminderResponse>[];
+            final dueItems = reminders.where((r) => r.due).toList();
+            if (dueItems.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return _ReminderBannerCard(
+              reminders: dueItems,
+              onDismiss: (targetId) async {
+                await widget.api.acknowledgeTargetReminder(
+                  token: widget.session.token,
+                  targetId: targetId,
+                );
+                if (mounted) {
+                  _refreshAll();
+                }
+              },
+            );
+          },
+        ),
         FutureBuilder<List<SportTarget>>(
           future: _future,
           builder: (context, snapshot) {
@@ -364,7 +393,7 @@ class _DashboardPageState extends State<DashboardPage> {
               loading: snapshot.connectionState == ConnectionState.waiting,
               error: snapshot.error,
               target: targets.isEmpty ? null : targets.first,
-              onRefresh: _refreshTargets,
+              onRefresh: _refreshAll,
               onCreate: _showCreateTargetSheet,
             );
           },
@@ -373,6 +402,104 @@ class _DashboardPageState extends State<DashboardPage> {
             label: '今日运动', value: '从运动页开始打卡', icon: Icons.timer_outlined),
       ],
     );
+  }
+}
+
+class _ReminderBannerCard extends StatefulWidget {
+  const _ReminderBannerCard({
+    required this.reminders,
+    required this.onDismiss,
+  });
+
+  final List<TargetReminderResponse> reminders;
+  final Future<void> Function(int targetId) onDismiss;
+
+  @override
+  State<_ReminderBannerCard> createState() => _ReminderBannerCardState();
+}
+
+class _ReminderBannerCardState extends State<_ReminderBannerCard> {
+  final Set<int> _dismissing = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final first = widget.reminders.first;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Icon(Icons.notifications_active_outlined,
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                    size: 20),
+                const SizedBox(width: 8),
+                Text('目标提醒',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onErrorContainer,
+                        )),
+                if (widget.reminders.length > 1)
+                  Text(
+                    '（${widget.reminders.length} 项）',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onErrorContainer,
+                        ),
+                  ),
+              ],
+            ),
+          ),
+          ...widget.reminders.take(3).map(
+                (r) => ListTile(
+                  dense: true,
+                  leading: Icon(
+                    _reminderIcon(r.metric),
+                    color: Theme.of(context).colorScheme.onErrorContainer,
+                  ),
+                  title: Text(r.message,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color:
+                            Theme.of(context).colorScheme.onErrorContainer,
+                      )),
+                  trailing: _dismissing.contains(r.targetId)
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () async {
+                            setState(() => _dismissing.add(r.targetId));
+                            await widget.onDismiss(r.targetId);
+                            if (mounted) {
+                              setState(() => _dismissing.remove(r.targetId));
+                            }
+                          },
+                        ),
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+IconData _reminderIcon(String metric) {
+  switch (metric) {
+    case 'duration':
+      return Icons.timer_outlined;
+    case 'distance':
+      return Icons.route_outlined;
+    case 'calorie':
+      return Icons.bolt_outlined;
+    default:
+      return Icons.repeat_outlined;
   }
 }
 
