@@ -8,4 +8,6 @@ public interface ReminderConfigRepository extends JpaRepository<ReminderConfig, 
     Optional<ReminderConfig> findByRemindIdAndUserId(Long remindId, Long userId);
 
     List<ReminderConfig> findByUserIdAndTypeAndEnabled(Long userId, String type, boolean enabled);
+
+    List<ReminderConfig> findByUserIdOrderByType(Long userId);
 }

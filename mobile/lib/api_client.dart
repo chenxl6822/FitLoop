@@ -71,6 +71,17 @@ abstract class FitLoopApi {
     required String token,
     required int targetId,
   });
+
+  Future<ReminderListResponse> listReminders({required String token});
+
+  Future<ReminderConfig> upsertReminder({
+    required String token,
+    required int remindId,
+    required String type,
+    String? time,
+    String? cycle,
+    bool? enabled,
+  });
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -284,10 +295,46 @@ class HttpFitLoopApi implements FitLoopApi {
     await _put('/api/reminders/targets/$targetId/read', token: token);
   }
 
-  Future<Map<String, dynamic>> _put(String path, {String? token}) async {
+  @override
+  Future<ReminderListResponse> listReminders({required String token}) async {
+    final body = await _get('/api/reminders', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['reminders'] as List<dynamic>;
+    return ReminderListResponse(
+      reminders: list
+          .map((e) => ReminderConfig.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<ReminderConfig> upsertReminder({
+    required String token,
+    required int remindId,
+    required String type,
+    String? time,
+    String? cycle,
+    bool? enabled,
+  }) async {
+    final body = await _put(
+      '/api/reminders/$remindId',
+      body: {
+        'type': type,
+        if (time != null) 'time': time,
+        if (cycle != null) 'cycle': cycle,
+        if (enabled != null) 'enabled': enabled,
+      },
+      token: token,
+    );
+    final data = body['data'] as Map<String, dynamic>;
+    return ReminderConfig.fromJson(data);
+  }
+
+  Future<Map<String, dynamic>> _put(String path,
+      {Map<String, dynamic>? body, String? token}) async {
     final request = await _client.putUrl(Uri.parse('$baseUrl$path'));
     _setHeaders(request, token);
-    request.write(jsonEncode(<String, dynamic>{}));
+    request.write(jsonEncode(body ?? <String, dynamic>{}));
     return _send(request);
   }
 
@@ -578,6 +625,53 @@ class TargetReminderListResponse {
   const TargetReminderListResponse({required this.targets});
 
   final List<TargetReminderResponse> targets;
+}
+
+class ReminderConfig {
+  const ReminderConfig({
+    required this.id,
+    required this.type,
+    this.time,
+    required this.cycle,
+    required this.enabled,
+  });
+
+  factory ReminderConfig.fromJson(Map<String, dynamic> json) {
+    return ReminderConfig(
+      id: json['id'] as int,
+      type: json['type'] as String,
+      time: json['time'] as String?,
+      cycle: json['cycle'] as String,
+      enabled: json['enabled'] as bool,
+    );
+  }
+
+  final int id;
+  final String type;
+  final String? time;
+  final String cycle;
+  final bool enabled;
+
+  String get label {
+    switch (type) {
+      case 'sport':
+        return '运动'; // runner icon
+      case 'sit':
+        return '久坐'; // chair icon
+      case 'drink':
+        return '喝水'; // water icon
+      case 'sleep':
+        return '睡眠'; // bed icon
+      default:
+        return type;
+    }
+  }
+}
+
+class ReminderListResponse {
+  const ReminderListResponse({required this.reminders});
+
+  final List<ReminderConfig> reminders;
 }
 
 class HealthData {
