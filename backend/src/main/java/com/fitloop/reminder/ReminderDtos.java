@@ -29,6 +29,7 @@ public final class ReminderDtos {
             LocalDate endDate,
             String status,
             boolean due,
+            boolean acknowledged,
             LocalTime remindTime,
             String message
     ) {
