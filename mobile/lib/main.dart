@@ -423,7 +423,6 @@ class _ReminderBannerCardState extends State<_ReminderBannerCard> {
 
   @override
   Widget build(BuildContext context) {
-    final first = widget.reminders.first;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: Theme.of(context).colorScheme.errorContainer,
@@ -1004,7 +1003,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
                 ? 'GPS实时追踪中 (精度: bestForNavigation, 间隔: 10m/5s)'
                 : 'GPS / 传感器 / 拍照 / 手动',
             icon: Icons.tune_outlined),
-        if (lastRecord != null) ...[\n          _MetricCard(
+        if (lastRecord != null) ...[
+          _MetricCard(
             label: '最近一次',
             value:
                 '${(lastRecord.durationSeconds / 60).round()} 分钟 / ${lastRecord.calorie.toStringAsFixed(1)} kcal',
@@ -1188,7 +1188,8 @@ class _AppealFormSheetState extends State<_AppealFormSheet> {
                 border: OutlineInputBorder(),
               ),
             ),
-            if (_message != null) ...[\n              const SizedBox(height: 12),
+            if (_message != null) ...[
+              const SizedBox(height: 12),
               Text(_message!,
                   style:
                       TextStyle(color: Theme.of(context).colorScheme.error)),
