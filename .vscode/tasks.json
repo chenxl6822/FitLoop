@@ -1,0 +1,54 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "backend: test",
+      "type": "shell",
+      "command": "mvn test",
+      "options": {
+        "cwd": "${workspaceFolder:FitLoop Backend}"
+      },
+      "group": "test",
+      "problemMatcher": "$maven"
+    },
+    {
+      "label": "backend: run",
+      "type": "shell",
+      "command": "mvn spring-boot:run",
+      "options": {
+        "cwd": "${workspaceFolder:FitLoop Backend}"
+      },
+      "group": "build",
+      "problemMatcher": "$maven"
+    },
+    {
+      "label": "mobile: pub get",
+      "type": "shell",
+      "command": "flutter pub get",
+      "options": {
+        "cwd": "${workspaceFolder:FitLoop Mobile}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "mobile: test",
+      "type": "shell",
+      "command": "flutter test",
+      "options": {
+        "cwd": "${workspaceFolder:FitLoop Mobile}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "deploy: compose up",
+      "type": "shell",
+      "command": "docker compose up -d --build",
+      "options": {
+        "cwd": "${workspaceFolder:FitLoop Deploy}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: fitloop-backend
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/fitloop?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${SPRING_DATASOURCE_USERNAME:fitloop}
+    password: ${SPRING_DATASOURCE_PASSWORD:fitloop}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+fitloop:
+  jwt:
+    secret: ${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}
+    ttl-seconds: ${FITLOOP_JWT_TTL_SECONDS:604800}
+  admin:
+    key: ${FITLOOP_ADMIN_KEY:change-me-admin-key}

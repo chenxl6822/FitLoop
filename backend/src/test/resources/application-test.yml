@@ -1,0 +1,18 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:fitloop;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+fitloop:
+  jwt:
+    secret: test-secret-test-secret-test-secret
+    ttl-seconds: 3600

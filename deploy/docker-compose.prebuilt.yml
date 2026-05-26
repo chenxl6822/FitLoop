@@ -1,0 +1,16 @@
+services:
+  mysql:
+    image: docker.m.daocloud.io/library/mysql:8.0
+
+  redis:
+    image: docker.m.daocloud.io/library/redis:6.2-alpine
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.runtime
+      args:
+        JRE_IMAGE: docker.1ms.run/library/eclipse-temurin:17-jre
+
+  nginx:
+    image: docker.m.daocloud.io/library/nginx:1.27-alpine
