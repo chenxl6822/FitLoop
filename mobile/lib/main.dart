@@ -1258,11 +1258,22 @@ class SocialPage extends StatefulWidget {
 
 class _SocialPageState extends State<SocialPage> {
   Future<_SocialSnapshot>? _future;
+  Future<FriendListResponse>? _friendFuture;
+  final _searchController = TextEditingController();
+  List<UserSearchItem> _searchResults = [];
+  bool _searching = false;
 
   @override
   void initState() {
     super.initState();
     _future = _loadSocial();
+    _friendFuture = _loadFriends();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<_SocialSnapshot> _loadSocial() async {
@@ -1271,10 +1282,56 @@ class _SocialPageState extends State<SocialPage> {
     return _SocialSnapshot(medal: medal, ranking: ranking);
   }
 
+  Future<FriendListResponse> _loadFriends() {
+    return widget.api.listFriends(token: widget.session.token);
+  }
+
   void _refresh() {
     setState(() {
       _future = _loadSocial();
+      _friendFuture = _loadFriends();
+      _searchResults = [];
     });
+  }
+
+  Future<void> _doSearch() async {
+    final q = _searchController.text.trim();
+    if (q.isEmpty) {
+      setState(() => _searchResults = []);
+      return;
+    }
+    setState(() => _searching = true);
+    try {
+      final resp = await widget.api.searchUsers(
+        token: widget.session.token,
+        query: q,
+      );
+      if (mounted) setState(() => _searchResults = resp.users);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('搜索失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _addFriend(int userId) async {
+    try {
+      await widget.api.addFriend(
+        token: widget.session.token,
+        friendUserId: userId,
+      );
+      _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加失败: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -1282,6 +1339,109 @@ class _SocialPageState extends State<SocialPage> {
     return _PageScaffold(
       title: '校园激励',
       children: [
+        // 搜索栏
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: const InputDecoration(
+                      hintText: '搜索好友（昵称或手机号）',
+                      prefixIcon: Icon(Icons.search_outlined),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    onSubmitted: (_) => _doSearch(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _searching
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.send_outlined),
+                        onPressed: _doSearch,
+                      ),
+              ],
+            ),
+          ),
+        ),
+
+        // 搜索结果
+        if (_searchResults.isNotEmpty) ...[
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Text('搜索结果',
+                      style: Theme.of(context).textTheme.titleSmall),
+                ),
+                ..._searchResults.map((user) => ListTile(
+                      leading: CircleAvatar(child: Text(user.nickname[0])),
+                      title: Text(user.nickname),
+                      subtitle: Text('Lv.${user.level} · ${user.points} 积分'),
+                      trailing: user.isFriend
+                          ? const Chip(
+                              avatar: Icon(Icons.check, size: 16),
+                              label: Text('已是好友', style: TextStyle(fontSize: 12)),
+                            )
+                          : FilledButton.tonalIcon(
+                              icon: const Icon(Icons.person_add, size: 18),
+                              label: const Text('添加', style: TextStyle(fontSize: 12)),
+                              onPressed: () => _addFriend(user.userId),
+                            ),
+                    )),
+              ],
+            ),
+          ),
+        ],
+
+        // 好友列表
+        FutureBuilder<FriendListResponse>(
+          future: _friendFuture,
+          builder: (context, snapshot) {
+            final friends = snapshot.data?.friends ?? const <FriendInfo>[];
+            if (friends.isEmpty) return const SizedBox.shrink();
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Row(
+                      children: [
+                        Text('我的好友 (${friends.length})',
+                            style: Theme.of(context).textTheme.titleSmall),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 18),
+                          onPressed: _refresh,
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...friends.map((f) => ListTile(
+                        leading: CircleAvatar(child: Text(f.nickname[0])),
+                        title: Text(f.nickname),
+                        subtitle: Text('Lv.${f.level} · ${f.points} 积分'),
+                      )),
+                ],
+              ),
+            );
+          },
+        ),
+
+        // 激励数据
         FilledButton.icon(
           onPressed: _refresh,
           icon: const Icon(Icons.refresh),
