@@ -82,6 +82,12 @@ abstract class FitLoopApi {
     String? cycle,
     bool? enabled,
   });
+
+  Future<FriendListResponse> listFriends({required String token});
+
+  Future<UserSearchResponse> searchUsers({required String token, required String query});
+
+  Future<void> addFriend({required String token, required int friendUserId});
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -328,6 +334,46 @@ class HttpFitLoopApi implements FitLoopApi {
     );
     final data = body['data'] as Map<String, dynamic>;
     return ReminderConfig.fromJson(data);
+  }
+
+  @override
+  Future<FriendListResponse> listFriends({required String token}) async {
+    final body = await _get('/api/social/friends', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['friends'] as List<dynamic>;
+    return FriendListResponse(
+      friends: list
+          .map((e) => FriendInfo.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<UserSearchResponse> searchUsers({
+    required String token,
+    required String query,
+  }) async {
+    final path = Uri(
+      path: '/api/social/friends/search',
+      queryParameters: {'q': query},
+    ).toString();
+    final body = await _get(path, token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['users'] as List<dynamic>;
+    return UserSearchResponse(
+      users: list
+          .map((e) => UserSearchItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<void> addFriend({required String token, required int friendUserId}) async {
+    await _post(
+      '/api/social/friend',
+      {'friendUserId': friendUserId},
+      token: token,
+    );
   }
 
   Future<Map<String, dynamic>> _put(String path,
@@ -672,6 +718,73 @@ class ReminderListResponse {
   const ReminderListResponse({required this.reminders});
 
   final List<ReminderConfig> reminders;
+}
+
+class FriendInfo {
+  const FriendInfo({
+    required this.friendId,
+    required this.friendUserId,
+    required this.nickname,
+    required this.points,
+    required this.level,
+    required this.status,
+  });
+
+  factory FriendInfo.fromJson(Map<String, dynamic> json) {
+    return FriendInfo(
+      friendId: json['friendId'] as int,
+      friendUserId: json['friendUserId'] as int,
+      nickname: json['nickname'] as String,
+      points: json['points'] as int,
+      level: json['level'] as int,
+      status: json['status'] as String,
+    );
+  }
+
+  final int friendId;
+  final int friendUserId;
+  final String nickname;
+  final int points;
+  final int level;
+  final String status;
+}
+
+class FriendListResponse {
+  const FriendListResponse({required this.friends});
+
+  final List<FriendInfo> friends;
+}
+
+class UserSearchItem {
+  const UserSearchItem({
+    required this.userId,
+    required this.nickname,
+    required this.points,
+    required this.level,
+    required this.isFriend,
+  });
+
+  factory UserSearchItem.fromJson(Map<String, dynamic> json) {
+    return UserSearchItem(
+      userId: json['userId'] as int,
+      nickname: json['nickname'] as String,
+      points: json['points'] as int,
+      level: json['level'] as int,
+      isFriend: json['isFriend'] as bool,
+    );
+  }
+
+  final int userId;
+  final String nickname;
+  final int points;
+  final int level;
+  final bool isFriend;
+}
+
+class UserSearchResponse {
+  const UserSearchResponse({required this.users});
+
+  final List<UserSearchItem> users;
 }
 
 class HealthData {
