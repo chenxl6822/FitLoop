@@ -64,6 +64,13 @@ abstract class FitLoopApi {
     String? dietNote,
     required String dataDate,
   });
+
+  Future<TargetReminderListResponse> targetReminders({required String token});
+
+  Future<void> acknowledgeTargetReminder({
+    required String token,
+    required int targetId,
+  });
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -252,6 +259,36 @@ class HttpFitLoopApi implements FitLoopApi {
     );
     final data = body['data'] as Map<String, dynamic>;
     return HealthData.fromJson(data);
+  }
+
+  @override
+  Future<TargetReminderListResponse> targetReminders({
+    required String token,
+  }) async {
+    final body = await _get('/api/reminders/targets', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final targets = data['targets'] as List<dynamic>;
+    return TargetReminderListResponse(
+      targets: targets
+          .map((e) =>
+              TargetReminderResponse.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<void> acknowledgeTargetReminder({
+    required String token,
+    required int targetId,
+  }) async {
+    await _put('/api/reminders/targets/$targetId/read', token: token);
+  }
+
+  Future<Map<String, dynamic>> _put(String path, {String? token}) async {
+    final request = await _client.putUrl(Uri.parse('$baseUrl$path'));
+    _setHeaders(request, token);
+    request.write(jsonEncode(<String, dynamic>{}));
+    return _send(request);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
@@ -485,6 +522,62 @@ class RankingRow {
   final String nickname;
   final double distanceKm;
   final double calorie;
+}
+
+class TargetReminderResponse {
+  const TargetReminderResponse({
+    required this.targetId,
+    required this.periodType,
+    required this.metric,
+    required this.targetValue,
+    required this.completedValue,
+    required this.progress,
+    required this.startDate,
+    required this.endDate,
+    required this.status,
+    required this.due,
+    required this.acknowledged,
+    this.remindTime,
+    required this.message,
+  });
+
+  factory TargetReminderResponse.fromJson(Map<String, dynamic> json) {
+    return TargetReminderResponse(
+      targetId: json['targetId'] as int,
+      periodType: json['periodType'] as String,
+      metric: json['metric'] as String,
+      targetValue: (json['targetValue'] as num).toDouble(),
+      completedValue: (json['completedValue'] as num).toDouble(),
+      progress: (json['progress'] as num).toDouble(),
+      startDate: json['startDate'] as String,
+      endDate: json['endDate'] as String,
+      status: json['status'] as String,
+      due: json['due'] as bool,
+      acknowledged: json['acknowledged'] as bool,
+      remindTime: json['remindTime'] as String?,
+      message: json['message'] as String,
+    );
+  }
+
+  final int targetId;
+  final String periodType;
+  final String metric;
+  final double targetValue;
+  final double completedValue;
+  final double progress;
+  final String startDate;
+  final String endDate;
+  final String status;
+  final bool due;
+  final bool acknowledged;
+  final String? remindTime;
+  final String message;
+}
+
+class TargetReminderListResponse {
+  const TargetReminderListResponse({required this.targets});
+
+  final List<TargetReminderResponse> targets;
 }
 
 class HealthData {
