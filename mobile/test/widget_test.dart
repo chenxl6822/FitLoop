@@ -78,6 +78,17 @@ void main() {
     await tester.tap(find.text('统计'));
     await tester.pumpAndSettle();
 
+    expect(find.text('本周运动次数'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('里程 / 热量趋势'), 300);
+    await tester.pumpAndSettle();
+    expect(find.text('里程 / 热量趋势'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('体重趋势'), 300);
+    await tester.pumpAndSettle();
+    expect(find.text('体重趋势'), findsOneWidget);
+    expect(find.text('暂无趋势数据'), findsOneWidget);
+
+    await tester.scrollUntilVisible(find.text('记录健康数据'), -300);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('记录健康数据'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存健康数据'));
@@ -95,6 +106,9 @@ void main() {
     expect(find.textContaining('体重 62.5 kg'), findsOneWidget);
     expect(find.textContaining('睡眠 7.5 小时'), findsOneWidget);
     expect(find.textContaining('饮食 清淡饮食'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('体重趋势'), 300);
+    await tester.pumpAndSettle();
+    expect(find.text('暂无趋势数据'), findsNothing);
   });
 
   testWidgets('does not start GPS session when permission is denied forever',

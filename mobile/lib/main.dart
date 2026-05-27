@@ -5,18 +5,27 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import 'reminder_scheduler.dart';
+import 'stats_charts.dart';
 
 void main() {
   runApp(FitLoopApp());
 }
 
 class FitLoopApp extends StatelessWidget {
-  FitLoopApp({super.key, FitLoopApi? api, LocationService? locationService})
+  FitLoopApp({
+    super.key,
+    FitLoopApi? api,
+    LocationService? locationService,
+    ReminderScheduler? reminderScheduler,
+  })
       : api = api ?? const _ApiFactory().create(),
-        locationService = locationService ?? GeolocatorLocationService();
+        locationService = locationService ?? GeolocatorLocationService(),
+        reminderScheduler = reminderScheduler ?? LocalReminderScheduler();
 
   final FitLoopApi api;
   final LocationService locationService;
+  final ReminderScheduler reminderScheduler;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +36,11 @@ class FitLoopApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1F8A70)),
         useMaterial3: true,
       ),
-      home: AuthGate(api: api, locationService: locationService),
+      home: AuthGate(
+        api: api,
+        locationService: locationService,
+        reminderScheduler: reminderScheduler,
+      ),
     );
   }
 }
@@ -71,10 +84,16 @@ class GeolocatorLocationService implements LocationService {
 }
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key, required this.api, required this.locationService});
+  const AuthGate({
+    super.key,
+    required this.api,
+    required this.locationService,
+    required this.reminderScheduler,
+  });
 
   final FitLoopApi api;
   final LocationService locationService;
+  final ReminderScheduler reminderScheduler;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -106,6 +125,7 @@ class _AuthGateState extends State<AuthGate> {
       return AppShell(
         api: widget.api,
         locationService: widget.locationService,
+        reminderScheduler: widget.reminderScheduler,
         session: session,
       );
     }
@@ -243,11 +263,13 @@ class AppShell extends StatefulWidget {
     super.key,
     required this.api,
     required this.locationService,
+    required this.reminderScheduler,
     required this.session,
   });
 
   final FitLoopApi api;
   final LocationService locationService;
+  final ReminderScheduler reminderScheduler;
   final UserSession session;
 
   @override
@@ -268,7 +290,11 @@ class _AppShellState extends State<AppShell> {
       ),
       StatsPage(api: widget.api, session: widget.session),
       SocialPage(api: widget.api, session: widget.session),
-      ProfilePage(api: widget.api, session: widget.session),
+      ProfilePage(
+        api: widget.api,
+        reminderScheduler: widget.reminderScheduler,
+        session: widget.session,
+      ),
     ];
     return Scaffold(
       body: SafeArea(child: pages[_index]),
@@ -1224,7 +1250,10 @@ class StatsPage extends StatefulWidget {
 
 class _StatsPageState extends State<StatsPage> {
   Future<SportStats>? _future;
-  HealthData? _lastHealthData;
+  final List<HealthData> _healthTrend = [];
+
+  HealthData? get _lastHealthData =>
+      _healthTrend.isEmpty ? null : _healthTrend.last;
 
   @override
   void initState() {
@@ -1244,7 +1273,7 @@ class _StatsPageState extends State<StatsPage> {
       },
     );
     if (healthData != null && mounted) {
-      setState(() => _lastHealthData = healthData);
+      setState(() => _healthTrend.add(healthData));
     }
   }
 
@@ -1298,6 +1327,9 @@ class _StatsPageState extends State<StatsPage> {
                   label: '消耗',
                   value: '${stats.calorie.toStringAsFixed(1)} kcal',
                   icon: Icons.bolt_outlined),
+              WorkoutCountChartCard(stats: stats),
+              DistanceCalorieChartCard(stats: stats),
+              WeightTrendChartCard(healthData: _healthTrend),
             ],
           ],
         );
@@ -1748,9 +1780,15 @@ class _SocialContent extends StatelessWidget {
 }
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key, required this.api, required this.session});
+  const ProfilePage({
+    super.key,
+    required this.api,
+    required this.reminderScheduler,
+    required this.session,
+  });
 
   final FitLoopApi api;
+  final ReminderScheduler reminderScheduler;
   final UserSession session;
 
   @override
@@ -1771,6 +1809,7 @@ class _ProfilePageState extends State<ProfilePage> {
       MaterialPageRoute(
         builder: (_) => _ReminderSettingsPage(
           api: widget.api,
+          reminderScheduler: widget.reminderScheduler,
           token: widget.session.token,
           type: type,
           label: label,
@@ -1855,6 +1894,7 @@ class _ReminderTileData {
 class _ReminderSettingsPage extends StatefulWidget {
   const _ReminderSettingsPage({
     required this.api,
+    required this.reminderScheduler,
     required this.token,
     required this.type,
     required this.label,
@@ -1862,6 +1902,7 @@ class _ReminderSettingsPage extends StatefulWidget {
   });
 
   final FitLoopApi api;
+  final ReminderScheduler reminderScheduler;
   final String token;
   final String type;
   final String label;
@@ -1919,6 +1960,16 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
         cycle: 'daily',
         enabled: _enabled,
       );
+      if (_enabled) {
+        await widget.reminderScheduler.scheduleDaily(
+          type: widget.type,
+          title: '${widget.label} 提醒',
+          body: _reminderNotificationBody(widget.type),
+          time: _time,
+        );
+      } else {
+        await widget.reminderScheduler.cancel(widget.type);
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -1970,6 +2021,21 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
               ],
             ),
     );
+  }
+}
+
+String _reminderNotificationBody(String type) {
+  switch (type) {
+    case 'sport':
+      return '到时间活动一下，完成今天的运动目标。';
+    case 'sit':
+      return '久坐太久了，起身走动和拉伸一下。';
+    case 'drink':
+      return '补充一杯水，让身体保持在线。';
+    case 'sleep':
+      return '准备休息，给明天的状态充电。';
+    default:
+      return 'FitLoop 提醒时间到了。';
   }
 }
 
