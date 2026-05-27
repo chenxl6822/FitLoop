@@ -63,6 +63,12 @@ class LocalCache {
     await p.remove(_kToken);
     await p.remove(_kUid);
     await p.remove(_kName);
+    // 清除头像缓存
+    for (final key in p.getKeys()) {
+      if (key.startsWith('avatarUrl_')) {
+        await p.remove(key);
+      }
+    }
   }
 
   static Future<void> save(String token, int userId, String nickname) =>

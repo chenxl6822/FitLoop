@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
@@ -112,10 +113,14 @@ class _AuthGateState extends State<AuthGate> {
   Future<void> _tryAutoLogin() async {
     final data = await TokenStorage.load();
     if (data != null && mounted) {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = data['userId'] as int;
+      final avatarUrl = prefs.getString('avatarUrl_$userId');
       setState(() => _session = UserSession(
           token: data['token'] as String,
-          userId: data['userId'] as int,
-          nickname: data['nickname'] as String));
+          userId: userId,
+          nickname: data['nickname'] as String,
+          avatarUrl: avatarUrl));
     }
   }
 
@@ -1864,11 +1869,78 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   Future<ReminderListResponse>? _future;
+  String? _avatarUrl;
+  bool _uploading = false;
 
   @override
   void initState() {
     super.initState();
     _future = widget.api.listReminders(token: widget.session.token);
+    _avatarUrl = widget.session.avatarUrl;
+    if (_avatarUrl == null) {
+      _loadCachedAvatar();
+    }
+  }
+
+  Future<void> _loadCachedAvatar() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString('avatarUrl_${widget.session.userId}');
+    if (cached != null && mounted) {
+      setState(() => _avatarUrl = cached);
+    }
+  }
+
+  Future<void> _pickAndUploadAvatar() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('拍照'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('从相册选择'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    final picker = ImagePicker();
+    final xFile = await picker.pickImage(
+      source: source,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 85,
+    );
+    if (xFile == null || !mounted) return;
+
+    setState(() => _uploading = true);
+    try {
+      final url = await widget.api.uploadAvatar(
+        token: widget.session.token,
+        imagePath: xFile.path,
+      );
+      if (!mounted) return;
+      setState(() {
+        _avatarUrl = url;
+        _uploading = false;
+      });
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('avatarUrl_${widget.session.userId}', url);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('头像上传失败：$e')),
+      );
+    }
   }
 
   Future<void> _openSettings(String type, String label, IconData icon) async {
@@ -1894,6 +1966,56 @@ class _ProfilePageState extends State<ProfilePage> {
     return _PageScaffold(
       title: '我的',
       children: [
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: _uploading ? null : _pickAndUploadAvatar,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              child: Row(
+                children: [
+                  _AvatarWidget(
+                    avatarUrl: _avatarUrl,
+                    uploading: _uploading,
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.session.nickname,
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _uploading ? '上传中...' : '点击更换头像',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_uploading)
+                    const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    Icon(
+                      Icons.chevron_right,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
         _MetricCard(
             label: '账号状态',
             value: '已登录：${widget.session.nickname}',
@@ -2103,6 +2225,38 @@ String _reminderNotificationBody(String type) {
       return '准备休息，给明天的状态充电。';
     default:
       return 'FitLoop 提醒时间到了。';
+  }
+}
+
+class _AvatarWidget extends StatelessWidget {
+  const _AvatarWidget({required this.avatarUrl, required this.uploading});
+
+  final String? avatarUrl;
+  final bool uploading;
+
+  @override
+  Widget build(BuildContext context) {
+    const radius = 40.0;
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(avatarUrl!),
+      );
+    }
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      child: uploading
+          ? const SizedBox.square(
+              dimension: 48,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(
+              Icons.person,
+              size: 48,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+    );
   }
 }
 

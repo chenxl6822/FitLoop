@@ -13,6 +13,8 @@ dependencies:
   fl_chart: ^0.69.0
   flutter_local_notifications: ^17.2.4
   geolocator: ^13.0.0
+  http: ^1.2.1
+  image_picker: ^1.1.2
   shared_preferences: ^2.3.0
   timezone: ^0.9.4
 
