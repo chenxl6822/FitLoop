@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
+
 const defaultApiBaseUrl = String.fromEnvironment(
   'FITLOOP_API_BASE_URL',
   defaultValue: 'http://localhost:8080',
@@ -104,6 +106,13 @@ abstract class FitLoopApi {
     required String token,
     int days = 30,
   });
+
+  Future<String> uploadAvatar({
+    required String token,
+    required String imagePath,
+  });
+
+  Future<UserProfileResponse> getUserProfile({required String token});
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -128,6 +137,7 @@ class HttpFitLoopApi implements FitLoopApi {
       token: data['token'] as String,
       userId: profile['userId'] as int,
       nickname: profile['nickname'] as String? ?? 'FitLoop 用户',
+      avatarUrl: profile['avatarUrl'] as String?,
     );
   }
 
@@ -445,6 +455,30 @@ class HttpFitLoopApi implements FitLoopApi {
     return WeightHistoryResponse.fromJson(data);
   }
 
+  @override
+  Future<String> uploadAvatar({
+    required String token,
+    required String imagePath,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/user/avatar');
+    final multipart = http.MultipartRequest('POST', uri);
+    multipart.headers['Authorization'] = 'Bearer $token';
+    multipart.files.add(await http.MultipartFile.fromPath('file', imagePath));
+    final streamed = await multipart.send();
+    final response = await http.Response.fromStream(streamed);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body['code'] != 0) {
+      throw ApiException(body['message'] as String? ?? '上传失败');
+    }
+    return body['data'] as String;
+  }
+
+  @override
+  Future<UserProfileResponse> getUserProfile({required String token}) async {
+    final data = await _get('/api/user/profile', token: token);
+    return UserProfileResponse.fromJson(data['data'] as Map<String, dynamic>);
+  }
+
   Future<Map<String, dynamic>> _put(String path,
       {Map<String, dynamic>? body, String? token}) async {
     final request = await _client.putUrl(Uri.parse('$baseUrl$path'));
@@ -508,11 +542,13 @@ class UserSession {
     required this.token,
     required this.userId,
     required this.nickname,
+    this.avatarUrl,
   });
 
   final String token;
   final int userId;
   final String nickname;
+  final String? avatarUrl;
 }
 
 class SportStart {
@@ -1012,4 +1048,23 @@ class WeightHistoryResponse {
   }
 
   final List<WeightHistoryPoint> points;
+}
+
+class UserProfileResponse {
+  const UserProfileResponse({
+    required this.userId,
+    required this.nickname,
+    this.avatarUrl,
+  });
+
+  final int userId;
+  final String nickname;
+  final String? avatarUrl;
+
+  factory UserProfileResponse.fromJson(Map<String, dynamic> json) =>
+      UserProfileResponse(
+        userId: (json['userId'] as num).toInt(),
+        nickname: json['nickname'] as String,
+        avatarUrl: json['avatarUrl'] as String?,
+      );
 }

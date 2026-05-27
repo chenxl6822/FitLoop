@@ -589,6 +589,23 @@ class _FakeApi implements FitLoopApi {
   }
 
   @override
+  Future<String> uploadAvatar({
+    required String token,
+    required String imagePath,
+  }) async {
+    return 'https://example.com/avatar.png';
+  }
+
+  @override
+  Future<UserProfileResponse> getUserProfile({required String token}) async {
+    return const UserProfileResponse(
+      userId: 1,
+      nickname: '测试用户',
+      avatarUrl: 'https://example.com/avatar.png',
+    );
+  }
+
+  @override
   Future<WeightHistoryResponse> weightHistory({
     required String token,
     int days = 30,
