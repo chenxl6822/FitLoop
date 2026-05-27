@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:fitloop/api_client.dart';
 import 'package:fitloop/main.dart';
+import 'package:fitloop/sync_queue.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -214,6 +217,29 @@ void main() {
     expect(api.uploadedTrackPoints, 0);
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
+
+  testWidgets('queues finish request when session finish fails', (tester) async {
+    final api = _FakeApi(finishError: const SocketException('offline'));
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          currentPosition: _position(accuracy: 8),
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await _startSportSession(tester, api);
+    await tester.tap(find.byKey(const Key('sport-session-toggle')));
+    await tester.pumpAndSettle();
+
+    final pending = await SyncQueue.pending();
+    expect(pending, hasLength(1));
+    expect(pending.single.sessionId, 'session-1');
+    expect(find.textContaining('已加入离线同步队列'), findsOneWidget);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+  });
 }
 
 Future<void> _openSportPage(WidgetTester tester) async {
@@ -310,7 +336,10 @@ Position _position({double accuracy = 10}) {
 }
 
 class _FakeApi implements FitLoopApi {
-  _FakeApi({List<SportTarget> targets = const <SportTarget>[]})
+  _FakeApi({
+    List<SportTarget> targets = const <SportTarget>[],
+    this.finishError,
+  })
       : _targets = List.of(targets);
 
   factory _FakeApi.withTarget() {
@@ -332,6 +361,7 @@ class _FakeApi implements FitLoopApi {
   }
 
   final List<SportTarget> _targets;
+  final Object? finishError;
   int uploadedTrackPoints = 0;
   int startedSports = 0;
   int finishedSports = 0;
@@ -439,6 +469,10 @@ class _FakeApi implements FitLoopApi {
     required int durationSeconds,
     required double weightKg,
   }) async {
+    final error = finishError;
+    if (error != null) {
+      throw error;
+    }
     finishedSports += 1;
     return const SportRecord(
       recordId: 1,
