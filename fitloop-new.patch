@@ -1,0 +1,185 @@
+diff --git a/backend/src/main/java/com/fitloop/user/AvatarController.java b/backend/src/main/java/com/fitloop/user/AvatarController.java
+new file mode 100644
+index 0000000..5a681c7
+--- /dev/null
++++ b/backend/src/main/java/com/fitloop/user/AvatarController.java
+@@ -0,0 +1,63 @@
++package com.fitloop.user;
++
++import com.fitloop.common.ApiResponse;
++import com.fitloop.security.AuthSupport;
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.nio.file.Paths;
++import java.nio.file.StandardCopyOption;
++import java.util.UUID;
++import org.springframework.beans.factory.annotation.Value;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.multipart.MultipartFile;
++
++@RestController
++public class AvatarController {
++
++    private final UserService userService;
++    private final Path uploadDir;
++
++    public AvatarController(UserService userService,
++                            @Value("${fitloop.upload.avatar-dir:uploads/avatars}") String avatarDir) {
++        this.userService = userService;
++        this.uploadDir = Paths.get(avatarDir).toAbsolutePath().normalize();
++    }
++
++    @PostMapping("/api/user/avatar")
++    public ApiResponse<String> upload(@RequestParam("file") MultipartFile file) {
++        if (file.isEmpty()) {
++            throw new IllegalArgumentException("文件不能为空");
++        }
++        String contentType = file.getContentType();
++        if (contentType == null || !contentType.startsWith("image/")) {
++            throw new IllegalArgumentException("只能上传图片文件");
++        }
++        if (file.getSize() > 5 * 1024 * 1024) {
++            throw new IllegalArgumentException("文件不能超过 5MB");
++        }
++
++        try {
++            Files.createDirectories(uploadDir);
++
++            String originalName = file.getOriginalFilename();
++            String extension = "";
++            if (originalName != null && originalName.contains(".")) {
++                extension = originalName.substring(originalName.lastIndexOf('.'));
++            }
++            String filename = UUID.randomUUID() + extension;
++            Path targetPath = uploadDir.resolve(filename);
++
++            Files.copy(file.getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
++
++            String avatarUrl = "/uploads/avatars/" + filename;
++            userService.updateAvatar(AuthSupport.currentUserId(), avatarUrl);
++
++            return ApiResponse.ok(avatarUrl);
++        } catch (IOException e) {
++            throw new IllegalArgumentException("文件上传失败: " + e.getMessage());
++        }
++    }
++}
+diff --git a/backend/src/test/java/com/fitloop/stats/StatsHistoryTest.java b/backend/src/test/java/com/fitloop/stats/StatsHistoryTest.java
+new file mode 100644
+index 0000000..c56b71f
+--- /dev/null
++++ b/backend/src/test/java/com/fitloop/stats/StatsHistoryTest.java
+@@ -0,0 +1,110 @@
++package com.fitloop.stats;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import com.fitloop.sport.SportRecord;
++import com.fitloop.sport.SportRecordRepository;
++import com.fitloop.stats.StatsDtos.SportHistoryResponse;
++import com.fitloop.stats.StatsDtos.WeightHistoryResponse;
++import java.time.Instant;
++import java.time.LocalDate;
++import java.time.ZoneId;
++import java.time.temporal.TemporalAdjusters;
++import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.transaction.annotation.Transactional;
++
++@SpringBootTest
++@Transactional
++class StatsHistoryTest {
++
++    @Autowired
++    private StatsService statsService;
++
++    @Autowired
++    private SportRecordRepository sportRecords;
++
++    @Autowired
++    private HealthDataRepository healthData;
++
++    private static final Long USER_ID = 1L;
++    private final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
++    private LocalDate today;
++
++    @BeforeEach
++    void setUp() {
++        today = LocalDate.now();
++    }
++
++    @Test
++    void sportHistoryShouldReturnDailyAggregation() {
++        LocalDate monday = today.with(TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
++
++        SportRecord r1 = record(USER_ID, monday.atStartOfDay(ZONE).toInstant(), 600, 3.0, 300.0);
++        SportRecord r2 = record(USER_ID, monday.atStartOfDay(ZONE).plusHours(2).toInstant(), 300, 1.5, 150.0);
++        sportRecords.save(r1);
++        sportRecords.save(r2);
++
++        SportHistoryResponse result = statsService.sportHistory(USER_ID, "week", "all");
++
++        assertThat(result.points()).isNotEmpty();
++        // 周一应该聚合两条记录
++        SportHistoryPoint mondayPoint = result.points().get(0);
++        assertThat(mondayPoint.date()).isEqualTo(monday);
++        assertThat(mondayPoint.count()).isEqualTo(2);
++        assertThat(mondayPoint.durationSeconds()).isEqualTo(900);  // 600 + 300
++        assertThat(mondayPoint.distanceKm()).isEqualTo(4.5);
++        assertThat(mondayPoint.calorie()).isEqualTo(450.0);
++    }
++
++    @Test
++    void sportHistoryShouldReturnEmptyForNoRecords() {
++        SportHistoryResponse result = statsService.sportHistory(USER_ID, "week", "all");
++        assertThat(result.points()).isNotEmpty(); // 有日期只是全 0
++        assertThat(result.points().stream().allMatch(p -> p.count() == 0)).isTrue();
++    }
++
++    @Test
++    void weightHistoryShouldReturnOnlyDaysWithData() {
++        healthData.save(healthEntry(USER_ID, today.minusDays(5), 70.0));
++        healthData.save(healthEntry(USER_ID, today.minusDays(2), 69.0));
++        healthData.save(healthEntry(USER_ID, today, 68.5));
++
++        WeightHistoryResponse result = statsService.weightHistory(USER_ID, 30);
++
++        assertThat(result.points()).hasSize(3);
++        assertThat(result.points().get(0).weightKg()).isEqualTo(70.0);
++        assertThat(result.points().get(2).weightKg()).isEqualTo(68.5);
++    }
++
++    @Test
++    void weightHistoryShouldReturnEmptyWhenNoData() {
++        WeightHistoryResponse result = statsService.weightHistory(USER_ID, 7);
++        assertThat(result.points()).isEmpty();
++    }
++
++    private SportRecord record(Long userId, Instant startedAt, long duration, double distance, double calorie) {
++        SportRecord r = new SportRecord();
++        r.setUserId(userId);
++        r.setSessionId(java.util.UUID.randomUUID().toString());
++        r.setSportType("running");
++        r.setCheckinMode("gps");
++        r.setStartedAt(startedAt);
++        r.setEndedAt(startedAt.plusSeconds(duration));
++        r.setDurationSeconds(duration);
++        r.setDistanceKm(distance);
++        r.setCalorie(calorie);
++        r.setStatus(SportRecord.STATUS_VALID);
++        return r;
++    }
++
++    private HealthData healthEntry(Long userId, LocalDate date, double weight) {
++        HealthData d = new HealthData();
++        d.setUserId(userId);
++        d.setDataDate(date);
++        d.setWeightKg(weight);
++        return d;
++    }
++}
