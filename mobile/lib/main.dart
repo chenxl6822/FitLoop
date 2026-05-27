@@ -6,9 +6,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import 'onboarding_screen.dart';
 import 'reminder_scheduler.dart';
+import 'splash_screen.dart';
 import 'stats_charts.dart';
 import 'sync_queue.dart';
+
+const _kOnboardingDoneKey = 'onboarding_done';
 
 void main() {
   runApp(FitLoopApp());
@@ -38,11 +42,71 @@ class FitLoopApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1F8A70)),
         useMaterial3: true,
       ),
-      home: AuthGate(
+      home: _AppEntry(
         api: api,
         locationService: locationService,
         reminderScheduler: reminderScheduler,
       ),
+    );
+  }
+}
+
+class _AppEntry extends StatefulWidget {
+  const _AppEntry({
+    required this.api,
+    required this.locationService,
+    required this.reminderScheduler,
+  });
+
+  final FitLoopApi api;
+  final LocationService locationService;
+  final ReminderScheduler reminderScheduler;
+
+  @override
+  State<_AppEntry> createState() => _AppEntryState();
+}
+
+class _AppEntryState extends State<_AppEntry> {
+  bool _showSplash = true;
+  bool? _onboardingDone;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOnboarding();
+  }
+
+  Future<void> _checkOnboarding() async {
+    final prefs = await SharedPreferences.getInstance();
+    final done = prefs.getBool(_kOnboardingDoneKey) ?? false;
+    if (mounted) setState(() => _onboardingDone = done);
+  }
+
+  void _onSplashDone() {
+    if (mounted) setState(() => _showSplash = false);
+  }
+
+  void _onOnboardingDone() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kOnboardingDoneKey, true);
+    if (mounted) setState(() => _onboardingDone = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showSplash) {
+      return SplashScreen(onComplete: _onSplashDone);
+    }
+    if (_onboardingDone == null) {
+      return const SizedBox.shrink();
+    }
+    if (!_onboardingDone!) {
+      return OnboardingScreen(onComplete: _onOnboardingDone);
+    }
+    return AuthGate(
+      api: widget.api,
+      locationService: widget.locationService,
+      reminderScheduler: widget.reminderScheduler,
     );
   }
 }
