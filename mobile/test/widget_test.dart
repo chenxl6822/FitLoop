@@ -85,7 +85,7 @@ void main() {
     await tester.scrollUntilVisible(find.text('体重趋势'), 300);
     await tester.pumpAndSettle();
     expect(find.text('体重趋势'), findsOneWidget);
-    expect(find.text('暂无趋势数据'), findsOneWidget);
+    expect(find.text('暂无趋势数据'), findsNWidgets(2));
 
     await tester.scrollUntilVisible(find.text('记录健康数据'), -300);
     await tester.pumpAndSettle();
@@ -108,7 +108,7 @@ void main() {
     expect(find.textContaining('饮食 清淡饮食'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('体重趋势'), 300);
     await tester.pumpAndSettle();
-    expect(find.text('暂无趋势数据'), findsNothing);
+    expect(find.text('暂无趋势数据'), findsOneWidget);
   });
 
   testWidgets('does not start GPS session when permission is denied forever',
@@ -337,6 +337,7 @@ class _FakeApi implements FitLoopApi {
   int finishedSports = 0;
   int createdTargets = 0;
   int createdHealthData = 0;
+  double? _lastWeight;
 
   @override
   Future<HealthData> addHealthData({
@@ -347,6 +348,7 @@ class _FakeApi implements FitLoopApi {
     required String dataDate,
   }) async {
     createdHealthData += 1;
+    _lastWeight = weightKg;
     return HealthData(
       healthId: createdHealthData,
       weightKg: weightKg,
@@ -523,4 +525,45 @@ class _FakeApi implements FitLoopApi {
       {required String token,
       required int recordId,
       required String reason}) async {}
+
+  @override
+  Future<SportHistoryResponse> sportHistory({
+    required String token,
+    String period = 'week',
+    String metric = 'all',
+  }) async {
+    return const SportHistoryResponse(
+      period: 'week',
+      metric: 'all',
+      points: [
+        SportHistoryPoint(
+            date: '2026-05-25', count: 1, durationSeconds: 0, distanceKm: 0, calorie: 0),
+        SportHistoryPoint(
+            date: '2026-05-26', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+        SportHistoryPoint(
+            date: '2026-05-27', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+        SportHistoryPoint(
+            date: '2026-05-28', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+        SportHistoryPoint(
+            date: '2026-05-29', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+        SportHistoryPoint(
+            date: '2026-05-30', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+        SportHistoryPoint(
+            date: '2026-05-31', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+      ],
+    );
+  }
+
+  @override
+  Future<WeightHistoryResponse> weightHistory({
+    required String token,
+    int days = 30,
+  }) async {
+    if (_lastWeight != null) {
+      return WeightHistoryResponse(points: [
+        WeightHistoryPoint(date: '2026-05-27', weightKg: _lastWeight),
+      ]);
+    }
+    return const WeightHistoryResponse(points: []);
+  }
 }

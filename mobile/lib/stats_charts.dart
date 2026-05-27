@@ -3,16 +3,19 @@ import 'package:flutter/material.dart';
 
 import 'api_client.dart';
 
+/// 基于真实历史数据的柱状图 — 本周每天运动次数
 class WorkoutCountChartCard extends StatelessWidget {
-  const WorkoutCountChartCard({super.key, required this.stats});
+  const WorkoutCountChartCard({super.key, required this.history});
 
-  final SportStats stats;
+  final SportHistoryResponse history;
 
   @override
   Widget build(BuildContext context) {
-    final values = _distributeInt(stats.checkinCount, 7);
+    final points = history.points;
+    final values = points.map((p) => p.count).toList();
     final maxValue =
         values.fold<int>(0, (max, value) => value > max ? value : max);
+
     return _ChartCard(
       title: '本周运动次数',
       icon: Icons.bar_chart,
@@ -35,7 +38,7 @@ class WorkoutCountChartCard extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 getTitlesWidget: (value, meta) =>
-                    _weekdayTitle(value.toInt()),
+                    _weekdayLabel(points, value.toInt()),
               ),
             ),
           ),
@@ -59,18 +62,20 @@ class WorkoutCountChartCard extends StatelessWidget {
   }
 }
 
+/// 基于真实历史数据的折线图 — 每日里程 + 热量趋势
 class DistanceCalorieChartCard extends StatelessWidget {
-  const DistanceCalorieChartCard({super.key, required this.stats});
+  const DistanceCalorieChartCard({super.key, required this.history});
 
-  final SportStats stats;
+  final SportHistoryResponse history;
 
   @override
   Widget build(BuildContext context) {
-    final distanceValues = _distributeDouble(stats.distanceKm, 7);
-    final calorieValues = _distributeDouble(stats.calorie, 7);
-    final maxValue = [
+    final points = history.points;
+    final distanceValues = points.map((p) => p.distanceKm).toList();
+    final calorieValues = points.map((p) => p.calorie).toList();
+    final maxValue = <double>[
       ...distanceValues,
-      ...calorieValues.map((value) => value / 100),
+      ...calorieValues.map((v) => v / 100),
     ].fold<double>(0, (max, value) => value > max ? value : max);
 
     return _ChartCard(
@@ -102,7 +107,7 @@ class DistanceCalorieChartCard extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 getTitlesWidget: (value, meta) =>
-                    _weekdayTitle(value.toInt()),
+                    _weekdayLabel(points, value.toInt()),
               ),
             ),
           ),
@@ -134,29 +139,38 @@ class DistanceCalorieChartCard extends StatelessWidget {
   }
 }
 
+/// 体重趋势折线图 — 来自后端历史数据
 class WeightTrendChartCard extends StatelessWidget {
-  const WeightTrendChartCard({super.key, required this.healthData});
+  const WeightTrendChartCard({super.key, required this.history});
 
-  final List<HealthData> healthData;
+  final WeightHistoryResponse history;
 
   @override
   Widget build(BuildContext context) {
-    final weights = healthData
-        .where((item) => item.weightKg != null)
-        .map((item) => item.weightKg!)
+    final points = history.points;
+    final weights = points
+        .where((p) => p.weightKg != null)
+        .map((p) => p.weightKg!)
         .toList();
-    final minWeight = weights.isEmpty
-        ? 0.0
-        : weights.fold<double>(
-            weights.first,
-            (min, value) => value < min ? value : min,
-          );
-    final maxWeight = weights.isEmpty
-        ? 1.0
-        : weights.fold<double>(
-            weights.first,
-            (max, value) => value > max ? value : max,
-          );
+    final dates = points
+        .where((p) => p.weightKg != null)
+        .map((p) => _shortDate(p.date))
+        .toList();
+
+    if (weights.isEmpty) {
+      return const _ChartCard(
+        key: Key('weight-trend-chart-card'),
+        title: '体重趋势',
+        icon: Icons.monitor_weight_outlined,
+        empty: true,
+        child: SizedBox.shrink(),
+      );
+    }
+
+    final minWeight = weights.fold<double>(
+        weights.first, (min, value) => value < min ? value : min);
+    final maxWeight = weights.fold<double>(
+        weights.first, (max, value) => value > max ? value : max);
     final padding =
         maxWeight == minWeight ? 1.0 : (maxWeight - minWeight) * 0.2;
 
@@ -164,7 +178,7 @@ class WeightTrendChartCard extends StatelessWidget {
       key: const Key('weight-trend-chart-card'),
       title: '体重趋势',
       icon: Icons.monitor_weight_outlined,
-      empty: weights.isEmpty,
+      empty: false,
       child: LineChart(
         LineChartData(
           minY: minWeight - padding,
@@ -177,11 +191,25 @@ class WeightTrendChartCard extends StatelessWidget {
               strokeWidth: 1,
             ),
           ),
-          titlesData: const FlTitlesData(
-            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            leftTitles: AxisTitles(
+          titlesData: FlTitlesData(
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                getTitlesWidget: (value, meta) {
+                  final i = value.toInt();
+                  if (i < 0 || i >= dates.length) {
+                    return const SizedBox.shrink();
+                  }
+                  return Text(dates[i],
+                      style: const TextStyle(fontSize: 10));
+                },
+              ),
+            ),
+            leftTitles: const AxisTitles(
               sideTitles: SideTitles(showTitles: true, reservedSize: 40),
             ),
           ),
@@ -264,29 +292,28 @@ class _ChartCard extends StatelessWidget {
   }
 }
 
-Widget _weekdayTitle(int index) {
+Widget _weekdayLabel(List<SportHistoryPoint> points, int index) {
   const labels = ['一', '二', '三', '四', '五', '六', '日'];
-  if (index < 0 || index >= labels.length) {
+  if (index < 0 || index >= points.length) {
     return const SizedBox.shrink();
   }
-  return Text(labels[index], style: const TextStyle(fontSize: 11));
+  // 使用实际日期对应的中文星期标签
+  try {
+    final date = DateTime.tryParse(points[index].date);
+    if (date != null) {
+      return Text(labels[date.weekday - 1],
+          style: const TextStyle(fontSize: 11));
+    }
+  } catch (_) {}
+  return const SizedBox.shrink();
 }
 
-List<int> _distributeInt(int total, int slots) {
-  if (slots <= 0) return const [];
-  if (total <= 0) return List<int>.filled(slots, 0);
-  final values = List<int>.filled(slots, total ~/ slots);
-  for (var i = 0; i < total % slots; i++) {
-    values[slots - 1 - i] += 1;
-  }
-  return values;
-}
-
-List<double> _distributeDouble(double total, int slots) {
-  if (slots <= 0) return const [];
-  if (total <= 0) return List<double>.filled(slots, 0);
-  const weights = [0.08, 0.12, 0.1, 0.16, 0.14, 0.2, 0.2];
-  return [
-    for (var i = 0; i < slots; i++) total * weights[i % weights.length],
-  ];
+String _shortDate(String isoDate) {
+  try {
+    final date = DateTime.tryParse(isoDate);
+    if (date != null) {
+      return '${date.month}/${date.day}';
+    }
+  } catch (_) {}
+  return isoDate;
 }

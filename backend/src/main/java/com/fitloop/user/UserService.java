@@ -63,4 +63,10 @@ public class UserService {
         if (StringUtils.hasText(request.college())) user.setCollege(request.college());
         return UserProfile.from(user);
     }
+
+    @Transactional
+    public void updateAvatar(Long userId, String avatarUrl) {
+        UserInfo user = users.findById(userId).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        user.setAvatarUrl(avatarUrl);
+    }
 }

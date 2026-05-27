@@ -93,6 +93,17 @@ abstract class FitLoopApi {
 
   Future<void> createAppeal(
       {required String token, required int recordId, required String reason});
+
+  Future<SportHistoryResponse> sportHistory({
+    required String token,
+    String period = 'week',
+    String metric = 'all',
+  });
+
+  Future<WeightHistoryResponse> weightHistory({
+    required String token,
+    int days = 30,
+  });
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -403,6 +414,35 @@ class HttpFitLoopApi implements FitLoopApi {
       {'recordId': recordId, 'reason': reason},
       token: token,
     );
+  }
+
+  @override
+  Future<SportHistoryResponse> sportHistory({
+    required String token,
+    String period = 'week',
+    String metric = 'all',
+  }) async {
+    final path = Uri(
+      path: '/api/stat/sport/history',
+      queryParameters: {'period': period, 'metric': metric},
+    ).toString();
+    final body = await _get(path, token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    return SportHistoryResponse.fromJson(data);
+  }
+
+  @override
+  Future<WeightHistoryResponse> weightHistory({
+    required String token,
+    int days = 30,
+  }) async {
+    final path = Uri(
+      path: '/api/stat/health/history',
+      queryParameters: {'days': '$days'},
+    ).toString();
+    final body = await _get(path, token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    return WeightHistoryResponse.fromJson(data);
   }
 
   Future<Map<String, dynamic>> _put(String path,
@@ -894,4 +934,82 @@ class HealthData {
   final double? sleepHours;
   final String? dietNote;
   final String dataDate;
+}
+
+class SportHistoryPoint {
+  const SportHistoryPoint({
+    required this.date,
+    required this.count,
+    required this.durationSeconds,
+    required this.distanceKm,
+    required this.calorie,
+  });
+
+  factory SportHistoryPoint.fromJson(Map<String, dynamic> json) {
+    return SportHistoryPoint(
+      date: json['date'] as String,
+      count: json['count'] as int,
+      durationSeconds: json['durationSeconds'] as int,
+      distanceKm: (json['distanceKm'] as num).toDouble(),
+      calorie: (json['calorie'] as num).toDouble(),
+    );
+  }
+
+  final String date;
+  final int count;
+  final int durationSeconds;
+  final double distanceKm;
+  final double calorie;
+}
+
+class SportHistoryResponse {
+  const SportHistoryResponse({
+    required this.period,
+    required this.metric,
+    required this.points,
+  });
+
+  factory SportHistoryResponse.fromJson(Map<String, dynamic> json) {
+    final list = json['points'] as List<dynamic>;
+    return SportHistoryResponse(
+      period: json['period'] as String,
+      metric: json['metric'] as String,
+      points: list
+          .map((e) => SportHistoryPoint.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final String period;
+  final String metric;
+  final List<SportHistoryPoint> points;
+}
+
+class WeightHistoryPoint {
+  const WeightHistoryPoint({required this.date, this.weightKg});
+
+  factory WeightHistoryPoint.fromJson(Map<String, dynamic> json) {
+    return WeightHistoryPoint(
+      date: json['date'] as String,
+      weightKg: (json['weightKg'] as num?)?.toDouble(),
+    );
+  }
+
+  final String date;
+  final double? weightKg;
+}
+
+class WeightHistoryResponse {
+  const WeightHistoryResponse({required this.points});
+
+  factory WeightHistoryResponse.fromJson(Map<String, dynamic> json) {
+    final list = json['points'] as List<dynamic>;
+    return WeightHistoryResponse(
+      points: list
+          .map((e) => WeightHistoryPoint.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final List<WeightHistoryPoint> points;
 }
