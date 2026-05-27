@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_client.dart';
 import 'reminder_scheduler.dart';
 import 'stats_charts.dart';
+import 'sync_queue.dart';
 
 void main() {
   runApp(FitLoopApp());
@@ -845,7 +846,32 @@ class _SportSessionPageState extends State<SportSessionPage> {
         });
       }
     } catch (error) {
-      setState(() => _status = error.toString());
+      if (_sessionId != null) {
+        // 断网了 — 把打卡数据存到本地队列
+        final duration = DateTime.now()
+            .difference(_startedAt ?? DateTime.now())
+            .inSeconds
+            .clamp(1, 24 * 3600)
+            .toInt();
+        final record = PendingFinishRecord(
+          token: widget.session.token,
+          sessionId: _sessionId!,
+          durationSeconds: duration,
+          weightKg: 60,
+        );
+        await SyncQueue.enqueueFinish(record);
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _sessionId = null;
+          _startedAt = null;
+          _trackPointCount = 0;
+          _status = '网络暂时不可用，已加入离线同步队列，联网后自动提交';
+        });
+      } else {
+        setState(() => _status = error.toString());
+      }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
