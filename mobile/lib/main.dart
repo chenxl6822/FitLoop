@@ -1249,7 +1249,9 @@ class StatsPage extends StatefulWidget {
 }
 
 class _StatsPageState extends State<StatsPage> {
-  Future<SportStats>? _future;
+  Future<SportStats>? _summaryFuture;
+  Future<SportHistoryResponse>? _historyFuture;
+  Future<WeightHistoryResponse>? _weightFuture;
   final List<HealthData> _healthTrend = [];
 
   HealthData? get _lastHealthData =>
@@ -1258,7 +1260,16 @@ class _StatsPageState extends State<StatsPage> {
   @override
   void initState() {
     super.initState();
-    _future = widget.api.sportStats(token: widget.session.token);
+    _loadAll();
+  }
+
+  void _loadAll() {
+    final token = widget.session.token;
+    setState(() {
+      _summaryFuture = widget.api.sportStats(token: token);
+      _historyFuture = widget.api.sportHistory(token: token);
+      _weightFuture = widget.api.weightHistory(token: token);
+    });
   }
 
   Future<void> _showHealthDataSheet() async {
@@ -1273,22 +1284,25 @@ class _StatsPageState extends State<StatsPage> {
       },
     );
     if (healthData != null && mounted) {
-      setState(() => _healthTrend.add(healthData));
+      setState(() {
+        _healthTrend.add(healthData);
+        // 刷新体重趋势
+        _weightFuture = widget.api.weightHistory(token: widget.session.token);
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<SportStats>(
-      future: _future,
+      future: _summaryFuture,
       builder: (context, snapshot) {
         final stats = snapshot.data;
         return _PageScaffold(
           title: '健康统计',
           children: [
             FilledButton.icon(
-              onPressed: () => setState(() =>
-                  _future = widget.api.sportStats(token: widget.session.token)),
+              onPressed: _loadAll,
               icon: const Icon(Icons.refresh),
               label: const Text('刷新统计'),
             ),
@@ -1327,9 +1341,36 @@ class _StatsPageState extends State<StatsPage> {
                   label: '消耗',
                   value: '${stats.calorie.toStringAsFixed(1)} kcal',
                   icon: Icons.bolt_outlined),
-              WorkoutCountChartCard(stats: stats),
-              DistanceCalorieChartCard(stats: stats),
-              WeightTrendChartCard(healthData: _healthTrend),
+              // 历史图表 — 真实每日数据
+              FutureBuilder<SportHistoryResponse>(
+                future: _historyFuture,
+                builder: (context, histSnapshot) {
+                  if (histSnapshot.hasData) {
+                    return Column(children: [
+                      WorkoutCountChartCard(history: histSnapshot.data!),
+                      DistanceCalorieChartCard(history: histSnapshot.data!),
+                    ]);
+                  }
+                  if (histSnapshot.hasError) {
+                    return const _MetricCard(
+                        label: '历史图表',
+                        value: '加载中，使用备用数据',
+                        icon: Icons.warning_amber);
+                  }
+                  return const _MetricCard(
+                      label: '历史图表', value: '加载中', icon: Icons.hourglass_empty);
+                },
+              ),
+              // 体重趋势
+              FutureBuilder<WeightHistoryResponse>(
+                future: _weightFuture,
+                builder: (context, wSnapshot) {
+                  if (wSnapshot.hasData) {
+                    return WeightTrendChartCard(history: wSnapshot.data!);
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
             ],
           ],
         );
