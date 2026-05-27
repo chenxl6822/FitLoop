@@ -20,12 +20,7 @@ void main() {
         locationService: _FakeLocationService(),
       ),
     );
-
-    expect(find.text('FitLoop'), findsOneWidget);
-    expect(find.text('登录'), findsOneWidget);
-
-    await tester.tap(find.text('登录'));
-    await tester.pumpAndSettle();
+    await _enterApp(tester);
 
     expect(find.text('首页'), findsOneWidget);
     expect(find.text('运动'), findsOneWidget);
@@ -55,9 +50,7 @@ void main() {
     await tester.pumpWidget(
       FitLoopApp(api: api, locationService: _FakeLocationService()),
     );
-
-    await tester.tap(find.text('登录'));
-    await tester.pumpAndSettle();
+    await _enterApp(tester);
 
     expect(find.text('暂无进行中目标'), findsOneWidget);
 
@@ -75,9 +68,7 @@ void main() {
     await tester.pumpWidget(
       FitLoopApp(api: api, locationService: _FakeLocationService()),
     );
-
-    await tester.tap(find.text('登录'));
-    await tester.pumpAndSettle();
+    await _enterApp(tester);
     await tester.tap(find.text('统计'));
     await tester.pumpAndSettle();
 
@@ -242,9 +233,21 @@ void main() {
   });
 }
 
-Future<void> _openSportPage(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.login));
+Future<void> _enterApp(WidgetTester tester) async {
+  // 等待启动页动画完成（AnimationController 1200ms）
   await tester.pumpAndSettle();
+  // 首次安装时引导页会出现，点击跳过
+  if (find.text('跳过').evaluate().isNotEmpty) {
+    await tester.tap(find.text('跳过'));
+    await tester.pumpAndSettle();
+  }
+  // 登录
+  await tester.tap(find.text('登录'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _openSportPage(WidgetTester tester) async {
+  await _enterApp(tester);
   await tester.tap(find.byIcon(Icons.directions_run_outlined));
   await tester.pumpAndSettle();
 }
