@@ -16,11 +16,14 @@ public class UserService {
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final SmsService smsService;
 
-    public UserService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public UserService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService,
+                       SmsService smsService) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.smsService = smsService;
     }
 
     @Transactional
@@ -47,7 +50,11 @@ public class UserService {
         UserInfo user = users.findByPhoneOrEmail(request.account(), request.account())
                 .orElseThrow(() -> new IllegalArgumentException("账号或密码错误"));
         boolean codeLogin = "code".equalsIgnoreCase(request.loginType());
-        if (!codeLogin && !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        if (codeLogin) {
+            if (!smsService.verifyCode(request.account(), request.code())) {
+                throw new IllegalArgumentException("验证码错误或已过期");
+            }
+        } else if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new IllegalArgumentException("账号或密码错误");
         }
         return new LoginResponse(jwtService.issue(user.getUserId()), UserProfile.from(user));

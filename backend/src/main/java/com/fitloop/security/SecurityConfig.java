@@ -24,8 +24,8 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/login", "/api/user/register", "/actuator/health").permitAll()
-                        .requestMatchers("/uploads/avatars/**").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/user/register", "/api/sms/send", "/actuator/health").permitAll()
+                        .requestMatchers("/uploads/avatars/**", "/uploads/photos/**").permitAll()
                         .requestMatchers("/api/admin/**").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)

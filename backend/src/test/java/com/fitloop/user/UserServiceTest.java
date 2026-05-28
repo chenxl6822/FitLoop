@@ -17,7 +17,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 @DataJpaTest
-@Import({UserService.class, JwtService.class, UserServiceTest.PasswordEncoderConfig.class})
+@Import({UserService.class, SmsService.class, JwtService.class, UserServiceTest.PasswordEncoderConfig.class})
 class UserServiceTest {
 
     @TestConfiguration
