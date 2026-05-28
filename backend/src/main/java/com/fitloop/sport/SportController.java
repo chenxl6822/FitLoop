@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/sport")
@@ -39,6 +41,11 @@ public class SportController {
     @PostMapping("/session/finish")
     public ApiResponse<SportRecordResponse> finish(@Valid @RequestBody FinishSessionRequest request) {
         return ApiResponse.ok(sportService.finish(AuthSupport.currentUserId(), request));
+    }
+
+    @PostMapping("/photo")
+    public ApiResponse<String> uploadPhoto(@RequestParam("file") MultipartFile file) {
+        return ApiResponse.ok(sportService.savePhoto(AuthSupport.currentUserId(), file));
     }
 
     @GetMapping("/list")
