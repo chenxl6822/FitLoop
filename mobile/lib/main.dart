@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:pedometer/pedometer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
@@ -146,6 +147,49 @@ class GeolocatorLocationService implements LocationService {
   @override
   Future<LocationPermission> requestPermission() {
     return Geolocator.requestPermission();
+  }
+}
+
+abstract class PedometerService {
+  Stream<int> get stepCountStream;
+
+  Future<int> get currentStepCount;
+
+  void dispose();
+}
+
+class AndroidPedometerService implements PedometerService {
+  AndroidPedometerService();
+
+  int _initialSteps = 0;
+  bool _initialized = false;
+  StreamSubscription<StepCount>? _subscription;
+  final StreamController<int> _stepController = StreamController<int>.broadcast();
+
+  @override
+  Future<int> get currentStepCount async {
+    return 0;
+  }
+
+  @override
+  Stream<int> get stepCountStream {
+    _subscription = Pedometer.stepCountStream.listen((event) {
+      final steps = event.steps;
+      if (!_initialized) {
+        _initialSteps = steps;
+        _initialized = true;
+        _stepController.add(0);
+        return;
+      }
+      _stepController.add(steps - _initialSteps);
+    });
+    return _stepController.stream;
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _stepController.close();
   }
 }
 
