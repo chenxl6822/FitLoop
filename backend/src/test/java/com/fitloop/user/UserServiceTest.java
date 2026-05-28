@@ -31,6 +31,9 @@ class UserServiceTest {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private SmsService smsService;
+
     @Test
     void registerCreatesUser() {
         var profile = userService.register(
@@ -127,5 +130,41 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.updateProfile(9999L,
                 new UpdateProfileRequest("X", null, null, null, null)))
                 .hasMessageContaining("不存在");
+    }
+
+    @Test
+    void loginWithValidCodeSucceeds() {
+        userService.register(
+                new RegisterRequest("13800000010", null, "pass1234", null, "CodeUser"));
+        String code = smsService.sendCode("13800000010");
+
+        var result = userService.login(
+                new LoginRequest("13800000010", null, code, "code"));
+
+        assertThat(result.token()).isNotNull().isNotEmpty();
+        assertThat(result.userProfile().nickname()).isEqualTo("CodeUser");
+    }
+
+    @Test
+    void loginWithWrongCodeRejected() {
+        userService.register(
+                new RegisterRequest("13800000011", null, "pass1234", null, "CodeUser2"));
+        smsService.sendCode("13800000011");
+
+        assertThatThrownBy(() -> userService.login(
+                new LoginRequest("13800000011", null, "000000", "code")))
+                .hasMessageContaining("验证码错误或已过期");
+    }
+
+    @Test
+    void loginWithExpiredCodeRejected() {
+        userService.register(
+                new RegisterRequest("13800000012", null, "pass1234", null, "CodeUser3"));
+        String code = smsService.sendCode("13800000012");
+        smsService.verifyCode("13800000012", code);
+
+        assertThatThrownBy(() -> userService.login(
+                new LoginRequest("13800000012", null, code, "code")))
+                .hasMessageContaining("验证码错误或已过期");
     }
 }
