@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'fitloop_assets.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key, required this.onComplete});
   final VoidCallback onComplete;
@@ -58,12 +60,30 @@ class _SplashScreenState extends State<SplashScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.directions_run,
-                size: 80,
-                color: Colors.white,
+              Container(
+                width: 112,
+                height: 112,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(32),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    FitLoopAssets.splashLogo,
+                    fit: BoxFit.cover,
+                  ),
+                ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               Text(
                 'FitLoop',
                 style: Theme.of(context).textTheme.displayMedium?.copyWith(

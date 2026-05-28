@@ -1,5 +1,7 @@
 # FitLoop 运动打卡与健康管理应用
 
+![FitLoop 产品展示图](mobile/assets/ai_generated/readme_hero_mockup.png)
+
 FitLoop 是一个面向高校学生的运动打卡与健康管理项目。采用 Flutter 移动端、Spring Boot 后端、MySQL 8.0、Redis 6.0 和 Docker Compose 部署方案，围绕运动打卡、健康档案、目标管理、数据统计、智能提醒、校园社交激励、异常申诉等功能展开。
 
 本仓库只保存代码、测试、部署配置和必要的工程说明。需求文档、概要设计、详细设计、测试报告成品、答辩材料等课程交付文件保留在本地，不提交到 Git。

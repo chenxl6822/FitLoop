@@ -7,6 +7,7 @@ import 'package:pedometer/pedometer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_client.dart';
+import 'fitloop_assets.dart';
 import 'onboarding_screen.dart';
 import 'reminder_scheduler.dart';
 import 'splash_screen.dart';
@@ -33,8 +34,7 @@ class FitLoopApp extends StatelessWidget {
     FitLoopApi? api,
     LocationService? locationService,
     ReminderScheduler? reminderScheduler,
-  })
-      : api = api ?? const _ApiFactory().create(),
+  })  : api = api ?? const _ApiFactory().create(),
         locationService = locationService ?? GeolocatorLocationService(),
         reminderScheduler = reminderScheduler ?? LocalReminderScheduler();
 
@@ -172,7 +172,8 @@ class AndroidPedometerService implements PedometerService {
   int _initialSteps = 0;
   bool _initialized = false;
   StreamSubscription<StepCount>? _subscription;
-  final StreamController<int> _stepController = StreamController<int>.broadcast();
+  final StreamController<int> _stepController =
+      StreamController<int>.broadcast();
 
   @override
   Future<int> get currentStepCount async {
@@ -371,8 +372,7 @@ class _AuthPageState extends State<AuthPage> {
                   ?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            Text('校园运动打卡与健康管理',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text('校园运动打卡与健康管理', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 24),
             if (!_registerMode)
               Row(
@@ -381,8 +381,9 @@ class _AuthPageState extends State<AuthPage> {
                     child: ChoiceChip(
                       label: const Text('密码登录'),
                       selected: _loginTab == 'password',
-                      onSelected:
-                          _busy ? null : (_) => setState(() => _loginTab = 'password'),
+                      onSelected: _busy
+                          ? null
+                          : (_) => setState(() => _loginTab = 'password'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -390,8 +391,9 @@ class _AuthPageState extends State<AuthPage> {
                     child: ChoiceChip(
                       label: const Text('验证码登录'),
                       selected: _loginTab == 'code',
-                      onSelected:
-                          _busy ? null : (_) => setState(() => _loginTab = 'code'),
+                      onSelected: _busy
+                          ? null
+                          : (_) => setState(() => _loginTab = 'code'),
                     ),
                   ),
                 ],
@@ -427,8 +429,7 @@ class _AuthPageState extends State<AuthPage> {
                   ),
                   const SizedBox(width: 12),
                   FilledButton.tonal(
-                    onPressed:
-                        (_busy || _countdown > 0) ? null : _sendCode,
+                    onPressed: (_busy || _countdown > 0) ? null : _sendCode,
                     child: Text(_countdown > 0 ? '${_countdown}s' : '获取验证码'),
                   ),
                 ],
@@ -454,8 +455,7 @@ class _AuthPageState extends State<AuthPage> {
             if (_message != null) ...[
               const SizedBox(height: 12),
               Text(_message!,
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.error)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 20),
             FilledButton.icon(
@@ -471,8 +471,7 @@ class _AuthPageState extends State<AuthPage> {
               onPressed: _busy
                   ? null
                   : () => setState(() => _registerMode = !_registerMode),
-              child: Text(
-                  _registerMode ? '已有账号，去登录' : '没有账号，创建账号'),
+              child: Text(_registerMode ? '已有账号，去登录' : '没有账号，创建账号'),
             ),
           ],
         ),
@@ -615,7 +614,8 @@ class _DashboardPageState extends State<DashboardPage> {
         FutureBuilder<TargetReminderListResponse>(
           future: _reminderFuture,
           builder: (context, snapshot) {
-            final reminders = snapshot.data?.targets ?? const <TargetReminderResponse>[];
+            final reminders =
+                snapshot.data?.targets ?? const <TargetReminderResponse>[];
             final dueItems = reminders.where((r) => r.due).toList();
             if (dueItems.isEmpty) {
               return const SizedBox.shrink();
@@ -688,15 +688,13 @@ class _ReminderBannerCardState extends State<_ReminderBannerCard> {
                 const SizedBox(width: 8),
                 Text('目标提醒',
                     style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onErrorContainer,
+                          color: Theme.of(context).colorScheme.onErrorContainer,
                         )),
                 if (widget.reminders.length > 1)
                   Text(
                     '（${widget.reminders.length} 项）',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onErrorContainer,
+                          color: Theme.of(context).colorScheme.onErrorContainer,
                         ),
                   ),
               ],
@@ -712,8 +710,7 @@ class _ReminderBannerCardState extends State<_ReminderBannerCard> {
                   title: Text(r.message,
                       style: TextStyle(
                         fontSize: 13,
-                        color:
-                            Theme.of(context).colorScheme.onErrorContainer,
+                        color: Theme.of(context).colorScheme.onErrorContainer,
                       )),
                   trailing: _dismissing.contains(r.targetId)
                       ? const SizedBox.square(
@@ -1289,7 +1286,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
       if (_selectedCheckinMode == 'gps') {
         statusMsg += '，共上传 $_trackPointCount 个轨迹点';
       } else if (_selectedCheckinMode == 'sensor') {
-        statusMsg += '，步数 $_stepCount，距离 ${distanceKm?.toStringAsFixed(2) ?? "0"} km';
+        statusMsg +=
+            '，步数 $_stepCount，距离 ${distanceKm?.toStringAsFixed(2) ?? "0"} km';
       }
 
       setState(() {
@@ -1397,21 +1395,17 @@ class _SportSessionPageState extends State<SportSessionPage> {
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: () {
-                  final duration =
-                      int.tryParse(_durationController.text) ?? 30;
+                  final duration = int.tryParse(_durationController.text) ?? 30;
                   if (duration <= 0 || duration > 1440) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
-                      const SnackBar(
-                          content: Text('运动时长必须在 1-1440 分钟之间')),
+                      const SnackBar(content: Text('运动时长必须在 1-1440 分钟之间')),
                     );
                     return;
                   }
                   Navigator.pop(ctx, {
                     'durationMinutes': duration,
-                    'distanceKm':
-                        double.tryParse(_distanceController.text),
-                    'calorie':
-                        double.tryParse(_calorieController.text),
+                    'distanceKm': double.tryParse(_distanceController.text),
+                    'calorie': double.tryParse(_calorieController.text),
                     'note': _noteController.text,
                   });
                 },
@@ -1604,8 +1598,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
                               child: Text(e.value),
                             ))
                         .toList(),
-                    onChanged: (v) =>
-                        setState(() => _selectedSportType = v!),
+                    onChanged: (v) => setState(() => _selectedSportType = v!),
                   ),
                 ],
               ),
@@ -1641,11 +1634,11 @@ class _SportSessionPageState extends State<SportSessionPage> {
               value: '$_stepCount 步',
               icon: Icons.directions_walk),
         ],
-        if (running && _selectedCheckinMode == 'photo' && _photoUrl != null) ...[
+        if (running &&
+            _selectedCheckinMode == 'photo' &&
+            _photoUrl != null) ...[
           const _MetricCard(
-              label: '打卡照片',
-              value: '已上传',
-              icon: Icons.check_circle_outline),
+              label: '打卡照片', value: '已上传', icon: Icons.check_circle_outline),
         ],
         if (lastRecord != null) ...[
           _MetricCard(
@@ -1660,7 +1653,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
               child: FilledButton.icon(
                 style: FilledButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.errorContainer,
-                  foregroundColor: Theme.of(context).colorScheme.onErrorContainer,
+                  foregroundColor:
+                      Theme.of(context).colorScheme.onErrorContainer,
                 ),
                 icon: const Icon(Icons.report_problem_outlined),
                 label: const Text('对本次记录提起申诉'),
@@ -1670,7 +1664,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
           FutureBuilder<AppealListResponse>(
             future: _appealFuture,
             builder: (context, snapshot) {
-              final appeals = snapshot.data?.appeals ?? const <AppealResponse>[];
+              final appeals =
+                  snapshot.data?.appeals ?? const <AppealResponse>[];
               if (appeals.isEmpty) return const SizedBox.shrink();
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
@@ -1835,8 +1830,7 @@ class _AppealFormSheetState extends State<_AppealFormSheet> {
             if (_message != null) ...[
               const SizedBox(height: 12),
               Text(_message!,
-                  style:
-                      TextStyle(color: Theme.of(context).colorScheme.error)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 16),
             FilledButton.icon(
@@ -2308,11 +2302,13 @@ class _SocialPageState extends State<SocialPage> {
                       trailing: user.isFriend
                           ? const Chip(
                               avatar: Icon(Icons.check, size: 16),
-                              label: Text('已是好友', style: TextStyle(fontSize: 12)),
+                              label:
+                                  Text('已是好友', style: TextStyle(fontSize: 12)),
                             )
                           : FilledButton.tonalIcon(
                               icon: const Icon(Icons.person_add, size: 18),
-                              label: const Text('添加', style: TextStyle(fontSize: 12)),
+                              label: const Text('添加',
+                                  style: TextStyle(fontSize: 12)),
                               onPressed: () => _addFriend(user.userId),
                             ),
                     )),
@@ -2544,7 +2540,8 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
     );
     if (changed == true && mounted) {
-      setState(() => _future = widget.api.listReminders(token: widget.session.token));
+      setState(() =>
+          _future = widget.api.listReminders(token: widget.session.token));
     }
   }
 
@@ -2581,9 +2578,12 @@ class _ProfilePageState extends State<ProfilePage> {
                         const SizedBox(height: 4),
                         Text(
                           _uploading ? '上传中...' : '点击更换头像',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                         ),
                       ],
                     ),
@@ -2610,16 +2610,21 @@ class _ProfilePageState extends State<ProfilePage> {
         FutureBuilder<ReminderListResponse>(
           future: _future,
           builder: (context, snapshot) {
-            final reminders = snapshot.data?.reminders ?? const <ReminderConfig>[];
+            final reminders =
+                snapshot.data?.reminders ?? const <ReminderConfig>[];
             ReminderConfig? findByType(String t) {
               return reminders.where((r) => r.type == t).firstOrNull;
             }
 
             const items = [
-              _ReminderTileData('sport', '运动', Icons.directions_run_outlined, Icons.timer_outlined),
-              _ReminderTileData('sit', '久坐', Icons.chair_outlined, Icons.access_time_outlined),
-              _ReminderTileData('drink', '喝水', Icons.water_drop_outlined, Icons.local_drink_outlined),
-              _ReminderTileData('sleep', '睡眠', Icons.bedtime_outlined, Icons.nightlight_outlined),
+              _ReminderTileData('sport', '运动', Icons.directions_run_outlined,
+                  Icons.timer_outlined),
+              _ReminderTileData('sit', '久坐', Icons.chair_outlined,
+                  Icons.access_time_outlined),
+              _ReminderTileData('drink', '喝水', Icons.water_drop_outlined,
+                  Icons.local_drink_outlined),
+              _ReminderTileData('sleep', '睡眠', Icons.bedtime_outlined,
+                  Icons.nightlight_outlined),
             ];
 
             return Card(
@@ -2630,23 +2635,27 @@ class _ProfilePageState extends State<ProfilePage> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                     child: Text('提醒设置',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            )),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                )),
                   ),
                   ...items.map((item) {
                     final config = findByType(item.type);
                     final enabled = config?.enabled ?? false;
-                    final timeDisplay = config?.time?.substring(0, 5) ?? '--:--';
+                    final timeDisplay =
+                        config?.time?.substring(0, 5) ?? '--:--';
                     return ListTile(
-                      leading: Icon(enabled ? item.filledIcon : item.outlineIcon,
+                      leading: Icon(
+                          enabled ? item.filledIcon : item.outlineIcon,
                           color: enabled
                               ? Theme.of(context).colorScheme.primary
                               : null),
                       title: Text(item.label),
                       subtitle: Text(enabled ? '已开启 · $timeDisplay' : '关闭'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _openSettings(item.type, item.label, item.outlineIcon),
+                      onTap: () => _openSettings(
+                          item.type, item.label, item.outlineIcon),
                     );
                   }),
                 ],
@@ -2660,7 +2669,8 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 class _ReminderTileData {
-  const _ReminderTileData(this.type, this.label, this.outlineIcon, this.filledIcon);
+  const _ReminderTileData(
+      this.type, this.label, this.outlineIcon, this.filledIcon);
   final String type;
   final String label;
   final IconData outlineIcon;
@@ -2703,13 +2713,15 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
   Future<void> _load() async {
     try {
       final resp = await widget.api.listReminders(token: widget.token);
-      final config = resp.reminders.where((r) => r.type == widget.type).firstOrNull;
+      final config =
+          resp.reminders.where((r) => r.type == widget.type).firstOrNull;
       if (config != null && mounted) {
         setState(() {
           _enabled = config.enabled;
           if (config.time != null && config.time!.length >= 5) {
             final parts = config.time!.split(':');
-            _time = TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+            _time = TimeOfDay(
+                hour: int.parse(parts[0]), minute: int.parse(parts[1]));
           }
         });
       }
@@ -2767,7 +2779,8 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
           : ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                Icon(widget.icon, size: 64, color: Theme.of(context).colorScheme.primary),
+                Icon(widget.icon,
+                    size: 64, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(height: 24),
                 SwitchListTile(
                   title: const Text('启用提醒'),
@@ -2830,19 +2843,30 @@ class _AvatarWidget extends StatelessWidget {
         backgroundImage: NetworkImage(avatarUrl!),
       );
     }
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-      child: uploading
-          ? const SizedBox.square(
-              dimension: 48,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(
-              Icons.person,
-              size: 48,
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        const CircleAvatar(
+          radius: radius,
+          backgroundImage: AssetImage(FitLoopAssets.defaultAvatar),
+        ),
+        if (uploading)
+          Container(
+            width: radius * 2,
+            height: radius * 2,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.24),
+              shape: BoxShape.circle,
             ),
+            child: const Padding(
+              padding: EdgeInsets.all(18),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

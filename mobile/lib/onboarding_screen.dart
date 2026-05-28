@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'fitloop_assets.dart';
+
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key, required this.onComplete});
   final VoidCallback onComplete;
@@ -14,17 +16,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   final List<_OnboardingPage> _pages = const [
     _OnboardingPage(
-      icon: Icons.directions_run,
+      imageAsset: FitLoopAssets.onboardingCheckin,
       title: '运动打卡',
       description: '实时 GPS 记录运动轨迹，\n自动计算卡路里消耗',
     ),
     _OnboardingPage(
-      icon: Icons.bar_chart,
+      imageAsset: FitLoopAssets.onboardingStats,
       title: '数据统计',
       description: '查看每周运动趋势、\n体重变化曲线',
     ),
     _OnboardingPage(
-      icon: Icons.people,
+      imageAsset: FitLoopAssets.onboardingSocial,
       title: '社交激励',
       description: '与好友PK排行榜、互相督促，\n让运动更有趣',
     ),
@@ -81,9 +83,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(page.icon,
-                            size: 100, color: const Color(0xFF1F8A70)),
-                        const SizedBox(height: 32),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: Image.asset(
+                            page.imageAsset,
+                            height: 260,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                        const SizedBox(height: 28),
                         Text(
                           page.title,
                           style: Theme.of(context)
@@ -156,11 +164,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
 class _OnboardingPage {
   const _OnboardingPage({
-    required this.icon,
+    required this.imageAsset,
     required this.title,
     required this.description,
   });
-  final IconData icon;
+  final String imageAsset;
   final String title;
   final String description;
 }
