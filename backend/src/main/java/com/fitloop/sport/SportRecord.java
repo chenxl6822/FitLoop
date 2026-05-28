@@ -40,6 +40,9 @@ public class SportRecord {
     @Lob
     private String trackJson = "[]";
 
+    @Column(length = 500)
+    private String note;
+
     private String photoUrl;
     private int status = STATUS_DRAFT;
     private String abnormalReason;
@@ -78,6 +81,8 @@ public class SportRecord {
     public void setTrackJson(String trackJson) { this.trackJson = trackJson; }
     public String getPhotoUrl() { return photoUrl; }
     public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
+    public String getNote() { return note; }
+    public void setNote(String note) { this.note = note; }
     public int getStatus() { return status; }
     public void setStatus(int status) { this.status = status; }
     public String getAbnormalReason() { return abnormalReason; }
