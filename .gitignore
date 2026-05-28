@@ -1,3 +1,12 @@
+# AI working docs and task specs — never commit
+CLAUDE_CONTEXT.md
+task*_spec.md
+docs/PHASE1_HANDOFF.md
+docs/*_summary.md
+
+# Cross-project files
+docs/Table-Miku*
+
 # Local course deliverables and source documents stay outside Git.
 *.docx
 *.pptx
