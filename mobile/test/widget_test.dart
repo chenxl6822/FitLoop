@@ -39,8 +39,9 @@ void main() {
 
     await tester.tap(find.text('运动'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('开始跑步'));
+    await tester.tap(find.text('开始打卡'));
     await tester.pumpAndSettle();
+    await _selectGpsCheckinMode(tester);
 
     expect(find.textContaining('已上传 1 个轨迹点'), findsOneWidget);
   });
@@ -121,6 +122,7 @@ void main() {
     await _openSportPage(tester);
     await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
     await tester.pumpAndSettle();
+    await _selectGpsCheckinMode(tester);
 
     expect(api.startedSports, 0);
     expect(find.textContaining('需要位置权限'), findsOneWidget);
@@ -140,6 +142,7 @@ void main() {
     await _openSportPage(tester);
     await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
     await tester.pumpAndSettle();
+    await _selectGpsCheckinMode(tester);
 
     expect(api.startedSports, 1);
     expect(api.uploadedTrackPoints, 0);
@@ -182,6 +185,7 @@ void main() {
     await _openSportPage(tester);
     await tester.tap(find.widgetWithIcon(FilledButton, Icons.play_arrow));
     await tester.pumpAndSettle();
+    await _selectGpsCheckinMode(tester);
 
     expect(api.startedSports, 1);
     expect(find.byIcon(Icons.stop), findsOneWidget);
@@ -252,9 +256,15 @@ Future<void> _openSportPage(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _selectGpsCheckinMode(WidgetTester tester) async {
+  await tester.tap(find.text('GPS 定位打卡'));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _startSportSession(WidgetTester tester, _FakeApi api) async {
   await tester.tap(find.byKey(const Key('sport-session-toggle')));
   await tester.pumpAndSettle();
+  await _selectGpsCheckinMode(tester);
 
   expect(api.startedSports, 1);
   _expectEnabledSportButton(tester);
@@ -455,7 +465,9 @@ class _FakeApi implements FitLoopApi {
 
   @override
   Future<UserSession> login(
-      {required String account, required String password}) async {
+      {required String account,
+      required String password,
+      String loginType = 'password'}) async {
     return const UserSession(token: 'token', userId: 1, nickname: '测试用户');
   }
 
@@ -463,7 +475,8 @@ class _FakeApi implements FitLoopApi {
   Future<void> register(
       {required String account,
       required String password,
-      required String nickname}) async {}
+      required String nickname,
+      String? code}) async {}
 
   @override
   Future<SportRecord> finishSport({
@@ -471,6 +484,10 @@ class _FakeApi implements FitLoopApi {
     required String sessionId,
     required int durationSeconds,
     required double weightKg,
+    double? distanceKm,
+    double? calorie,
+    String? note,
+    String? photoUrl,
   }) async {
     final error = finishError;
     if (error != null) {
@@ -619,5 +636,18 @@ class _FakeApi implements FitLoopApi {
       ]);
     }
     return const WeightHistoryResponse(points: []);
+  }
+
+  @override
+  Future<Map<String, String>> sendSmsCode({required String phone}) async {
+    return {'message': '验证码已发送', 'debugCode': '123456'};
+  }
+
+  @override
+  Future<String> uploadSportPhoto({
+    required String token,
+    required String imagePath,
+  }) async {
+    return '/uploads/photos/test.jpg';
   }
 }
