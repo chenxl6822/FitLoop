@@ -20,16 +20,18 @@ public final class SportDtos {
     }
 
     public record FinishSessionRequest(@NotBlank String sessionId, Long durationSeconds, Double distanceKm,
-                                       Double calorie, Double weightKg, String photoUrl) {
+                                       Double calorie, Double weightKg, String photoUrl, String note) {
     }
 
     public record SportRecordResponse(Long recordId, String sessionId, String sportType, String checkinMode,
                                       long durationSeconds, double distanceKm, double calorie, int status,
-                                      String abnormalReason, Instant startedAt, Instant endedAt) {
+                                      String abnormalReason, String photoUrl, String note,
+                                      Instant startedAt, Instant endedAt) {
         public static SportRecordResponse from(SportRecord record) {
             return new SportRecordResponse(record.getRecordId(), record.getSessionId(), record.getSportType(),
                     record.getCheckinMode(), record.getDurationSeconds(), record.getDistanceKm(),
                     record.getCalorie(), record.getStatus(), record.getAbnormalReason(),
+                    record.getPhotoUrl(), record.getNote(),
                     record.getStartedAt(), record.getEndedAt());
         }
     }
