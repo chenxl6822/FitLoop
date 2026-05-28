@@ -12,12 +12,14 @@ abstract class FitLoopApi {
   Future<UserSession> login({
     required String account,
     required String password,
+    String loginType = 'password',
   });
 
   Future<void> register({
     required String account,
     required String password,
     required String nickname,
+    String? code,
   });
 
   Future<SportStart> startSport({
@@ -36,6 +38,10 @@ abstract class FitLoopApi {
     required String sessionId,
     required int durationSeconds,
     required double weightKg,
+    double? distanceKm,
+    double? calorie,
+    String? note,
+    String? photoUrl,
   });
 
   Future<SportStats> sportStats({required String token});
@@ -113,6 +119,13 @@ abstract class FitLoopApi {
   });
 
   Future<UserProfileResponse> getUserProfile({required String token});
+
+  Future<Map<String, String>> sendSmsCode({required String phone});
+
+  Future<String> uploadSportPhoto({
+    required String token,
+    required String imagePath,
+  });
 }
 
 class HttpFitLoopApi implements FitLoopApi {
@@ -125,11 +138,12 @@ class HttpFitLoopApi implements FitLoopApi {
   Future<UserSession> login({
     required String account,
     required String password,
+    String loginType = 'password',
   }) async {
     final body = await _post('/api/auth/login', {
       'account': account,
       'password': password,
-      'loginType': 'password',
+      'loginType': loginType,
     });
     final data = body['data'] as Map<String, dynamic>;
     final profile = data['userProfile'] as Map<String, dynamic>;
@@ -146,12 +160,14 @@ class HttpFitLoopApi implements FitLoopApi {
     required String account,
     required String password,
     required String nickname,
+    String? code,
   }) async {
     final isEmail = account.contains('@');
     await _post('/api/user/register', {
       if (isEmail) 'email': account else 'phone': account,
       'password': password,
       'nickname': nickname,
+      if (code != null) 'code': code,
     });
   }
 
@@ -191,6 +207,10 @@ class HttpFitLoopApi implements FitLoopApi {
     required String sessionId,
     required int durationSeconds,
     required double weightKg,
+    double? distanceKm,
+    double? calorie,
+    String? note,
+    String? photoUrl,
   }) async {
     final body = await _post(
       '/api/sport/session/finish',
@@ -198,6 +218,10 @@ class HttpFitLoopApi implements FitLoopApi {
         'sessionId': sessionId,
         'durationSeconds': durationSeconds,
         'weightKg': weightKg,
+        if (distanceKm != null) 'distanceKm': distanceKm,
+        if (calorie != null) 'calorie': calorie,
+        if (note != null && note.isNotEmpty) 'note': note,
+        if (photoUrl != null) 'photoUrl': photoUrl,
       },
       token: token,
     );
@@ -477,6 +501,36 @@ class HttpFitLoopApi implements FitLoopApi {
   Future<UserProfileResponse> getUserProfile({required String token}) async {
     final data = await _get('/api/user/profile', token: token);
     return UserProfileResponse.fromJson(data['data'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Map<String, String>> sendSmsCode({required String phone}) async {
+    final body = await _post('/api/sms/send', {'phone': phone});
+    final data = body['data'] as Map<String, dynamic>;
+    return {
+      'message': data['message'] as String,
+      if (data.containsKey('debugCode'))
+        'debugCode': data['debugCode'] as String,
+    };
+  }
+
+  @override
+  Future<String> uploadSportPhoto({
+    required String token,
+    required String imagePath,
+  }) async {
+    final uri = Uri.parse('$baseUrl/api/sport/photo');
+    final multipart = http.MultipartRequest('POST', uri);
+    multipart.headers['Authorization'] = 'Bearer $token';
+    multipart.files
+        .add(await http.MultipartFile.fromPath('file', imagePath));
+    final streamed = await multipart.send();
+    final response = await http.Response.fromStream(streamed);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body['code'] != 0) {
+      throw ApiException(body['message'] as String? ?? '上传照片失败');
+    }
+    return body['data'] as String;
   }
 
   Future<Map<String, dynamic>> _put(String path,

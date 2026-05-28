@@ -15,6 +15,14 @@ import 'sync_queue.dart';
 
 const _kOnboardingDoneKey = 'onboarding_done';
 
+const _sportTypes = {
+  'running': '跑步',
+  'cycling': '骑行',
+  'walking': '健走',
+  'rope_skipping': '跳绳',
+  'custom': '自定义',
+};
+
 void main() {
   runApp(FitLoopApp());
 }
@@ -264,16 +272,54 @@ class _AuthPageState extends State<AuthPage> {
   final _account = TextEditingController(text: '13800000001');
   final _password = TextEditingController(text: 'pass1234');
   final _nickname = TextEditingController(text: '测试用户');
+  final _code = TextEditingController();
   bool _registerMode = false;
   bool _busy = false;
   String? _message;
+  String _loginTab = 'password';
+  int _countdown = 0;
 
   @override
   void dispose() {
     _account.dispose();
     _password.dispose();
     _nickname.dispose();
+    _code.dispose();
     super.dispose();
+  }
+
+  Future<void> _sendCode() async {
+    final phone = _account.text.trim();
+    if (phone.isEmpty) {
+      setState(() => _message = '请输入手机号');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.api.sendSmsCode(phone: phone);
+      if (!mounted) return;
+      setState(() {
+        _countdown = 60;
+        _message = '验证码已发送（调试模式：查看控制台）';
+      });
+      _startCountdown();
+    } catch (error) {
+      setState(() => _message = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _startCountdown() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      setState(() => _countdown = _countdown > 0 ? _countdown - 1 : 0);
+      return _countdown > 0;
+    });
   }
 
   Future<void> _submit() async {
@@ -282,6 +328,7 @@ class _AuthPageState extends State<AuthPage> {
       _message = null;
     });
     try {
+      final loginType = _loginTab == 'code' ? 'code' : 'password';
       if (_registerMode) {
         await widget.api.register(
           account: _account.text.trim(),
@@ -293,7 +340,8 @@ class _AuthPageState extends State<AuthPage> {
       }
       final session = await widget.api.login(
         account: _account.text.trim(),
-        password: _password.text,
+        password: _loginTab == 'code' ? _code.text.trim() : _password.text,
+        loginType: loginType,
       );
       await TokenStorage.save(session.token, session.userId, session.nickname);
       widget.onSignedIn(session);
@@ -308,6 +356,7 @@ class _AuthPageState extends State<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isCodeLogin = _loginTab == 'code';
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -322,20 +371,78 @@ class _AuthPageState extends State<AuthPage> {
                   ?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            Text('校园运动打卡与健康管理', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 32),
+            Text('校园运动打卡与健康管理',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 24),
+            if (!_registerMode)
+              Row(
+                children: [
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('密码登录'),
+                      selected: _loginTab == 'password',
+                      onSelected:
+                          _busy ? null : (_) => setState(() => _loginTab = 'password'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ChoiceChip(
+                      label: const Text('验证码登录'),
+                      selected: _loginTab == 'code',
+                      onSelected:
+                          _busy ? null : (_) => setState(() => _loginTab = 'code'),
+                    ),
+                  ),
+                ],
+              ),
+            if (!_registerMode) const SizedBox(height: 16),
             TextField(
               controller: _account,
-              decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.phone_android), labelText: '手机号或邮箱'),
+              decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.phone_android),
+                  labelText: isCodeLogin ? '手机号' : '手机号或邮箱'),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _password,
-              obscureText: true,
-              decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.lock_outline), labelText: '密码'),
-            ),
+            if (!isCodeLogin || _registerMode) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.lock_outline), labelText: '密码'),
+              ),
+            ],
+            if (isCodeLogin && !_registerMode) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _code,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.pin_outlined),
+                          labelText: '验证码'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.tonal(
+                    onPressed:
+                        (_busy || _countdown > 0) ? null : _sendCode,
+                    child: Text(_countdown > 0 ? '${_countdown}s' : '获取验证码'),
+                  ),
+                ],
+              ),
+            ],
+            if (_registerMode && isCodeLogin) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _code,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.pin_outlined), labelText: '验证码'),
+              ),
+            ],
             if (_registerMode) ...[
               const SizedBox(height: 12),
               TextField(
@@ -347,7 +454,8 @@ class _AuthPageState extends State<AuthPage> {
             if (_message != null) ...[
               const SizedBox(height: 12),
               Text(_message!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.error)),
             ],
             const SizedBox(height: 20),
             FilledButton.icon(
@@ -363,7 +471,8 @@ class _AuthPageState extends State<AuthPage> {
               onPressed: _busy
                   ? null
                   : () => setState(() => _registerMode = !_registerMode),
-              child: Text(_registerMode ? '已有账号，去登录' : '没有账号，创建账号'),
+              child: Text(
+                  _registerMode ? '已有账号，去登录' : '没有账号，创建账号'),
             ),
           ],
         ),
@@ -849,6 +958,16 @@ class _TargetFormSheetState extends State<_TargetFormSheet> {
   }
 }
 
+String _checkinModeLabel(String mode) {
+  return switch (mode) {
+    'gps' => 'GPS 定位打卡',
+    'sensor' => '传感器打卡',
+    'photo' => '拍照打卡',
+    'manual' => '手动打卡',
+    _ => mode,
+  };
+}
+
 String _periodLabel(String periodType) {
   return switch (periodType.toLowerCase()) {
     'month' => '本月',
@@ -902,30 +1021,232 @@ class _SportSessionPageState extends State<SportSessionPage> {
   int _trackingGeneration = 0;
   Future<AppealListResponse>? _appealFuture;
 
+  String _selectedSportType = 'running';
+  String _selectedCheckinMode = 'gps';
+  int _stepCount = 0;
+  PedometerService? _pedometerService;
+  StreamSubscription<int>? _stepSubscription;
+  String? _photoUrl;
+  bool _photoUploading = false;
+
+  @override
+  void dispose() {
+    _trackingGeneration++;
+    _positionSubscription?.cancel();
+    _stepSubscription?.cancel();
+    _pedometerService?.dispose();
+    _durationController.dispose();
+    _distanceController.dispose();
+    _calorieController.dispose();
+    _noteController.dispose();
+    super.dispose();
+  }
+
+  Future<String?> _chooseCheckinMode() {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            leading: const Icon(Icons.location_on),
+            title: const Text('GPS 定位打卡'),
+            subtitle: const Text('适合跑步、骑行等室外运动'),
+            onTap: () => Navigator.pop(ctx, 'gps'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.directions_walk),
+            title: const Text('传感器打卡'),
+            subtitle: const Text('计步器/跳绳计数'),
+            onTap: () => Navigator.pop(ctx, 'sensor'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.camera_alt),
+            title: const Text('拍照打卡'),
+            subtitle: const Text('上传运动照片作为凭证'),
+            onTap: () => Navigator.pop(ctx, 'photo'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit),
+            title: const Text('手动打卡'),
+            subtitle: const Text('自行输入运动数据'),
+            onTap: () => Navigator.pop(ctx, 'manual'),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _toggle() async {
+    if (_sessionId == null) {
+      final mode = await _chooseCheckinMode();
+      if (mode == null || !mounted) return;
+      _selectedCheckinMode = mode;
+
+      switch (mode) {
+        case 'gps':
+          await _startGpsCheckin();
+        case 'sensor':
+          await _startSensorCheckin();
+        case 'photo':
+          await _startPhotoCheckin();
+        case 'manual':
+          await _startManualCheckin();
+      }
+    } else {
+      await _finishCheckin();
+    }
+  }
+
+  Future<void> _startGpsCheckin() async {
+    final canUseLocation = await _ensureLocationPermission();
+    if (!canUseLocation) return;
+
     setState(() => _busy = true);
     try {
-      if (_sessionId == null) {
-        final canUseLocation = await _ensureLocationPermission();
-        if (!canUseLocation) {
-          return;
-        }
+      await _stopGpsTracking();
+      final start = await widget.api.startSport(
+        token: widget.session.token,
+        sportType: _selectedSportType,
+        checkinMode: 'gps',
+      );
+      final startedAt = DateTime.now();
+      setState(() {
+        _sessionId = start.sessionId;
+        _startedAt = startedAt;
+        _trackPointCount = 0;
+        _status = 'GPS 打卡进行中，正在获取位置...';
+        _busy = false;
+      });
+      _startGpsTracking(start.sessionId);
+    } catch (error) {
+      setState(() {
+        _status = error.toString();
+        _busy = false;
+      });
+    }
+  }
 
-        await _stopGpsTracking();
-        final start = await widget.api.startSport(
-          token: widget.session.token,
-          sportType: 'running',
-          checkinMode: 'gps',
-        );
-        final startedAt = DateTime.now();
+  Future<void> _startSensorCheckin() async {
+    setState(() => _busy = true);
+    try {
+      final start = await widget.api.startSport(
+        token: widget.session.token,
+        sportType: _selectedSportType,
+        checkinMode: 'sensor',
+      );
+      final startedAt = DateTime.now();
+      _stepCount = 0;
+      _pedometerService = AndroidPedometerService();
+      _stepSubscription = _pedometerService!.stepCountStream.listen((steps) {
+        if (mounted) {
+          setState(() {
+            _stepCount = steps;
+            _status = '传感器打卡进行中，当前步数：$steps';
+          });
+        }
+      });
+      setState(() {
+        _sessionId = start.sessionId;
+        _startedAt = startedAt;
+        _status = '传感器打卡进行中，正在记录步数...';
+        _busy = false;
+      });
+    } catch (error) {
+      setState(() {
+        _status = error.toString();
+        _busy = false;
+      });
+    }
+  }
+
+  Future<void> _startPhotoCheckin() async {
+    setState(() => _busy = true);
+    try {
+      final picker = ImagePicker();
+      final xFile = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1920,
+        imageQuality: 85,
+      );
+      if (xFile == null) {
         setState(() {
-          _sessionId = start.sessionId;
-          _startedAt = startedAt;
-          _trackPointCount = 0;
-          _status = 'GPS 打卡进行中，正在获取位置...';
+          _busy = false;
+          _status = '未选择照片，已取消';
         });
-        _startGpsTracking(start.sessionId);
-      } else {
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _photoUploading = true);
+      final photoUrl = await widget.api.uploadSportPhoto(
+        token: widget.session.token,
+        imagePath: xFile.path,
+      );
+      if (!mounted) return;
+      _photoUrl = photoUrl;
+      final start = await widget.api.startSport(
+        token: widget.session.token,
+        sportType: _selectedSportType,
+        checkinMode: 'photo',
+      );
+      final startedAt = DateTime.now();
+      setState(() {
+        _sessionId = start.sessionId;
+        _startedAt = startedAt;
+        _status = '拍照打卡进行中，照片已上传';
+        _busy = false;
+        _photoUploading = false;
+      });
+    } catch (error) {
+      setState(() {
+        _status = error.toString();
+        _busy = false;
+        _photoUploading = false;
+      });
+    }
+  }
+
+  Future<void> _startManualCheckin() async {
+    final data = await _showManualCheckinForm();
+    if (data == null || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      final start = await widget.api.startSport(
+        token: widget.session.token,
+        sportType: _selectedSportType,
+        checkinMode: 'manual',
+      );
+      final durationMinutes = data['durationMinutes'] as int;
+      final distanceKm = data['distanceKm'] as double?;
+      final calorie = data['calorie'] as double?;
+      final note = data['note'] as String?;
+
+      final record = await widget.api.finishSport(
+        token: widget.session.token,
+        sessionId: start.sessionId,
+        durationSeconds: durationMinutes * 60,
+        weightKg: 60,
+        distanceKm: distanceKm,
+        calorie: calorie,
+        note: note,
+      );
+      setState(() {
+        _lastRecord = record;
+        _status = '已保存手动打卡记录 #${record.recordId}';
+        _busy = false;
+      });
+    } catch (error) {
+      setState(() {
+        _status = error.toString();
+        _busy = false;
+      });
+    }
+  }
+
+  Future<void> _finishCheckin() async {
+    setState(() => _busy = true);
+    try {
+      if (_selectedCheckinMode == 'gps') {
         await _stopGpsTracking();
 
         Position? lastPosition;
@@ -937,49 +1258,73 @@ class _SportSessionPageState extends State<SportSessionPage> {
             await _uploadTrackPoint(_sessionId!, lastPosition)) {
           _trackPointCount++;
         }
-
-        final duration = DateTime.now()
-            .difference(_startedAt ?? DateTime.now())
-            .inSeconds
-            .clamp(1, 24 * 3600)
-            .toInt();
-        final record = await widget.api.finishSport(
-          token: widget.session.token,
-          sessionId: _sessionId!,
-          durationSeconds: duration,
-          weightKg: 60,
-        );
-        setState(() {
-          _sessionId = null;
-          _lastRecord = record;
-          _status = '已保存记录 #${record.recordId}，共上传 $_trackPointCount 个轨迹点';
-          if (record.status == _statusAbnormal) {
-            _appealFuture = widget.api.listAppeals(token: widget.session.token);
-          }
-        });
       }
+
+      if (_selectedCheckinMode == 'sensor') {
+        _stepSubscription?.cancel();
+        _pedometerService?.dispose();
+      }
+
+      final duration = DateTime.now()
+          .difference(_startedAt ?? DateTime.now())
+          .inSeconds
+          .clamp(1, 24 * 3600)
+          .toInt();
+
+      double? distanceKm;
+      if (_selectedCheckinMode == 'sensor' && _stepCount > 0) {
+        distanceKm = _stepCount * 0.7 / 1000.0;
+      }
+
+      final record = await widget.api.finishSport(
+        token: widget.session.token,
+        sessionId: _sessionId!,
+        durationSeconds: duration,
+        weightKg: 60,
+        distanceKm: distanceKm,
+        photoUrl: _photoUrl,
+      );
+
+      var statusMsg = '已保存记录 #${record.recordId}';
+      if (_selectedCheckinMode == 'gps') {
+        statusMsg += '，共上传 $_trackPointCount 个轨迹点';
+      } else if (_selectedCheckinMode == 'sensor') {
+        statusMsg += '，步数 $_stepCount，距离 ${distanceKm?.toStringAsFixed(2) ?? "0"} km';
+      }
+
+      setState(() {
+        _sessionId = null;
+        _startedAt = null;
+        _trackPointCount = 0;
+        _stepCount = 0;
+        _photoUrl = null;
+        _lastRecord = record;
+        _status = statusMsg;
+        if (record.status == _statusAbnormal) {
+          _appealFuture = widget.api.listAppeals(token: widget.session.token);
+        }
+      });
     } catch (error) {
       if (_sessionId != null) {
-        // 断网了 — 把打卡数据存到本地队列
         final duration = DateTime.now()
             .difference(_startedAt ?? DateTime.now())
             .inSeconds
             .clamp(1, 24 * 3600)
             .toInt();
-        final record = PendingFinishRecord(
+        final pending = PendingFinishRecord(
           token: widget.session.token,
           sessionId: _sessionId!,
           durationSeconds: duration,
           weightKg: 60,
         );
-        await SyncQueue.enqueueFinish(record);
-        if (!mounted) {
-          return;
-        }
+        await SyncQueue.enqueueFinish(pending);
+        if (!mounted) return;
         setState(() {
           _sessionId = null;
           _startedAt = null;
           _trackPointCount = 0;
+          _stepCount = 0;
+          _photoUrl = null;
           _status = '网络暂时不可用，已加入离线同步队列，联网后自动提交';
         });
       } else {
@@ -990,6 +1335,94 @@ class _SportSessionPageState extends State<SportSessionPage> {
         setState(() => _busy = false);
       }
     }
+  }
+
+  final _durationController = TextEditingController();
+  final _distanceController = TextEditingController();
+  final _calorieController = TextEditingController();
+  final _noteController = TextEditingController();
+
+  Future<Map<String, dynamic>?> _showManualCheckinForm() async {
+    return showModalBottomSheet<Map<String, dynamic>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 16,
+              right: 16,
+              top: 16,
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('手动打卡',
+                  style: Theme.of(ctx)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 16),
+              TextField(
+                decoration: const InputDecoration(
+                    labelText: '运动时长（分钟）',
+                    prefixIcon: Icon(Icons.timer_outlined)),
+                keyboardType: TextInputType.number,
+                controller: _durationController,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                decoration: const InputDecoration(
+                    labelText: '运动距离（公里，可选）',
+                    prefixIcon: Icon(Icons.route_outlined)),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                controller: _distanceController,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                decoration: const InputDecoration(
+                    labelText: '消耗卡路里（可选）',
+                    prefixIcon: Icon(Icons.bolt_outlined)),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                controller: _calorieController,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                decoration: const InputDecoration(
+                    labelText: '备注（可选）',
+                    prefixIcon: Icon(Icons.notes_outlined)),
+                controller: _noteController,
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () {
+                  final duration =
+                      int.tryParse(_durationController.text) ?? 30;
+                  if (duration <= 0 || duration > 1440) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(
+                          content: Text('运动时长必须在 1-1440 分钟之间')),
+                    );
+                    return;
+                  }
+                  Navigator.pop(ctx, {
+                    'durationMinutes': duration,
+                    'distanceKm':
+                        double.tryParse(_distanceController.text),
+                    'calorie':
+                        double.tryParse(_calorieController.text),
+                    'note': _noteController.text,
+                  });
+                },
+                child: const Text('提交'),
+              ),
+              const SizedBox(height: 16),
+            ]),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<bool> _ensureLocationPermission() async {
@@ -1141,33 +1574,79 @@ class _SportSessionPageState extends State<SportSessionPage> {
   }
 
   @override
-  void dispose() {
-    _trackingGeneration++;
-    _positionSubscription?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final running = _sessionId != null;
     final lastRecord = _lastRecord;
     return _PageScaffold(
       title: '运动打卡',
       children: [
+        if (!running) ...[
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('选择运动类型：',
+                      style: Theme.of(context).textTheme.labelLarge),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedSportType,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.fitness_center_outlined),
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    items: _sportTypes.entries
+                        .map((e) => DropdownMenuItem(
+                              value: e.key,
+                              child: Text(e.value),
+                            ))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _selectedSportType = v!),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         FilledButton.icon(
           key: const Key('sport-session-toggle'),
-          onPressed: _busy ? null : _toggle,
+          onPressed: _busy || _photoUploading ? null : _toggle,
           icon: Icon(running ? Icons.stop : Icons.play_arrow),
-          label: Text(running ? '结束打卡' : '开始跑步'),
+          label: Text(running ? '结束打卡' : '开始打卡'),
         ),
+        if (_photoUploading)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: LinearProgressIndicator(),
+          ),
         _MetricCard(
             label: '当前状态', value: _status, icon: Icons.sensors_outlined),
         _MetricCard(
+            label: '运动类型',
+            value: _sportTypes[_selectedSportType] ?? _selectedSportType,
+            icon: Icons.fitness_center_outlined),
+        _MetricCard(
             label: '打卡方式',
             value: running
-                ? 'GPS实时追踪中 (精度: bestForNavigation, 间隔: 10m/5s)'
+                ? _checkinModeLabel(_selectedCheckinMode)
                 : 'GPS / 传感器 / 拍照 / 手动',
             icon: Icons.tune_outlined),
+        if (running && _selectedCheckinMode == 'sensor') ...[
+          _MetricCard(
+              label: '当前步数',
+              value: '$_stepCount 步',
+              icon: Icons.directions_walk),
+        ],
+        if (running && _selectedCheckinMode == 'photo' && _photoUrl != null) ...[
+          const _MetricCard(
+              label: '打卡照片',
+              value: '已上传',
+              icon: Icons.check_circle_outline),
+        ],
         if (lastRecord != null) ...[
           _MetricCard(
             label: '最近一次',
