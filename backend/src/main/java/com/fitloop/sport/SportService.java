@@ -9,15 +9,23 @@ import com.fitloop.sport.SportDtos.StartSessionRequest;
 import com.fitloop.sport.SportDtos.StartSessionResponse;
 import com.fitloop.sport.SportDtos.TrackPointRequest;
 import com.fitloop.target.TargetService;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class SportService {
@@ -28,14 +36,17 @@ public class SportService {
     private final ObjectMapper objectMapper;
     private final TargetService targetService;
     private final SocialService socialService;
+    private final Path photoDir;
 
     public SportService(SportRecordRepository records, CalorieCalculator calorieCalculator, ObjectMapper objectMapper,
-                        TargetService targetService, SocialService socialService) {
+                        TargetService targetService, SocialService socialService,
+                        @Value("${fitloop.upload.photo-dir:uploads/photos}") String photoDir) {
         this.records = records;
         this.calorieCalculator = calorieCalculator;
         this.objectMapper = objectMapper;
         this.targetService = targetService;
         this.socialService = socialService;
+        this.photoDir = Paths.get(photoDir).toAbsolutePath().normalize();
     }
 
     @Transactional
@@ -77,7 +88,13 @@ public class SportService {
         long duration = request.durationSeconds() != null
                 ? request.durationSeconds()
                 : Duration.between(record.getStartedAt(), Instant.now()).toSeconds();
-        TrackSummary summary = summarize(readTrack(record));
+        List<Map<String, Object>> points = readTrack(record);
+        TrackSummary summary;
+        if (points.isEmpty()) {
+            summary = new TrackSummary(0.0, false, null);
+        } else {
+            summary = summarize(points);
+        }
         double distance = request.distanceKm() != null ? request.distanceKm() : summary.distanceKm();
         double calorie = request.calorie() != null
                 ? request.calorie()
@@ -88,6 +105,7 @@ public class SportService {
         record.setDistanceKm(calorieCalculator.round(Math.max(distance, 0)));
         record.setCalorie(calorieCalculator.round(Math.max(calorie, 0)));
         record.setPhotoUrl(request.photoUrl());
+        record.setNote(request.note());
         record.setEndedAt(Instant.now());
         record.setStatus(summary.abnormal() ? SportRecord.STATUS_ABNORMAL : SportRecord.STATUS_VALID);
         record.setAbnormalReason(summary.abnormalReason());
@@ -96,6 +114,35 @@ public class SportService {
             socialService.reward(record);
         }
         return SportRecordResponse.from(record);
+    }
+
+    public String savePhoto(Long userId, MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("文件不能为空");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("只能上传图片文件");
+        }
+        if (file.getSize() > 10 * 1024 * 1024) {
+            throw new IllegalArgumentException("文件不能超过 10MB");
+        }
+        try {
+            Files.createDirectories(photoDir);
+            String extension = switch (contentType.toLowerCase(Locale.ROOT)) {
+                case "image/jpeg", "image/jpg" -> ".jpg";
+                case "image/png" -> ".png";
+                case "image/gif" -> ".gif";
+                case "image/webp" -> ".webp";
+                default -> ".img";
+            };
+            String filename = "photo_" + userId + "_" + Instant.now().toEpochMilli() + extension;
+            Path target = photoDir.resolve(filename);
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            return "/uploads/photos/" + filename;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("照片上传失败: " + e.getMessage());
+        }
     }
 
     @Transactional(readOnly = true)

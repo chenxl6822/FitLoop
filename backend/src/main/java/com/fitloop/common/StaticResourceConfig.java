@@ -10,9 +10,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class StaticResourceConfig implements WebMvcConfigurer {
     private final Path avatarDir;
+    private final Path photoDir;
 
-    public StaticResourceConfig(@Value("${fitloop.upload.avatar-dir:uploads/avatars}") String avatarDir) {
+    public StaticResourceConfig(@Value("${fitloop.upload.avatar-dir:uploads/avatars}") String avatarDir,
+                                @Value("${fitloop.upload.photo-dir:uploads/photos}") String photoDir) {
         this.avatarDir = Paths.get(avatarDir).toAbsolutePath().normalize();
+        this.photoDir = Paths.get(photoDir).toAbsolutePath().normalize();
     }
 
     @Override
@@ -23,5 +26,12 @@ public class StaticResourceConfig implements WebMvcConfigurer {
         }
         registry.addResourceHandler("/uploads/avatars/**")
                 .addResourceLocations(avatarLocation);
+
+        String photoLocation = photoDir.toUri().toString();
+        if (!photoLocation.endsWith("/")) {
+            photoLocation += "/";
+        }
+        registry.addResourceHandler("/uploads/photos/**")
+                .addResourceLocations(photoLocation);
     }
 }
