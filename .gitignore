@@ -1,6 +1,7 @@
 # AI working docs and task specs — never commit
-CLAUDE_CONTEXT.md
-task*_spec.md
+**/CLAUDE_CONTEXT.md
+**/task*_spec.md
+**/task*_spec/**
 docs/PHASE1_HANDOFF.md
 docs/*_summary.md
 
