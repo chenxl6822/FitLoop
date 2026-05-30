@@ -272,11 +272,13 @@ class AuthPage extends StatefulWidget {
 class _AuthPageState extends State<AuthPage> {
   final _account = TextEditingController(text: '13800000001');
   final _password = TextEditingController(text: 'pass1234');
+  final _confirmPassword = TextEditingController(text: 'pass1234');
   final _nickname = TextEditingController(text: '测试用户');
   final _code = TextEditingController();
   bool _registerMode = false;
   bool _busy = false;
   String? _message;
+  bool _messageIsSuccess = false;
   String _loginTab = 'password';
   int _countdown = 0;
 
@@ -284,15 +286,47 @@ class _AuthPageState extends State<AuthPage> {
   void dispose() {
     _account.dispose();
     _password.dispose();
+    _confirmPassword.dispose();
     _nickname.dispose();
     _code.dispose();
     super.dispose();
   }
 
+  String _friendlyError(dynamic error) {
+    final msg = error.toString();
+    if (msg.contains('SocketException') ||
+        msg.contains('Connection failed') ||
+        msg.contains('Operation not permitted') ||
+        msg.contains('Connection refused')) {
+      return '无法连接服务器，请检查网络或稍后重试';
+    }
+    if (msg.contains('401') || msg.contains('403')) {
+      return '登录状态已过期，请重新登录';
+    }
+    if (msg.contains('500')) {
+      return '服务器开小差了，请稍后重试';
+    }
+    // Strip ApiException prefix to show backend message
+    if (msg.startsWith('ApiException: ')) {
+      return msg.substring(14);
+    }
+    return msg;
+  }
+
   Future<void> _sendCode() async {
     final phone = _account.text.trim();
     if (phone.isEmpty) {
-      setState(() => _message = '请输入手机号');
+      setState(() {
+        _message = '请输入手机号';
+        _messageIsSuccess = false;
+      });
+      return;
+    }
+    if (!RegExp(r'^1\d{10}$').hasMatch(phone)) {
+      setState(() {
+        _message = '手机号格式不正确';
+        _messageIsSuccess = false;
+      });
       return;
     }
     setState(() {
@@ -300,15 +334,22 @@ class _AuthPageState extends State<AuthPage> {
       _message = null;
     });
     try {
-      await widget.api.sendSmsCode(phone: phone);
+      final result = await widget.api.sendSmsCode(phone: phone);
       if (!mounted) return;
+      final debugCode = result['debugCode'];
       setState(() {
         _countdown = 60;
-        _message = '验证码已发送（调试模式：查看控制台）';
+        _message = debugCode != null
+            ? '验证码已发送，测试验证码：$debugCode'
+            : '验证码已发送';
+        _messageIsSuccess = true;
       });
       _startCountdown();
     } catch (error) {
-      setState(() => _message = error.toString());
+      setState(() {
+        _message = _friendlyError(error);
+        _messageIsSuccess = false;
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -324,34 +365,73 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   Future<void> _submit() async {
+    final account = _account.text.trim();
+    if (account.isEmpty) {
+      setState(() {
+        _message = '请输入手机号或邮箱';
+        _messageIsSuccess = false;
+      });
+      return;
+    }
+    if (_registerMode) {
+      if (_password.text.isEmpty) {
+        setState(() {
+          _message = '请输入密码';
+          _messageIsSuccess = false;
+        });
+        return;
+      }
+      if (_password.text != _confirmPassword.text) {
+        setState(() {
+          _message = '两次输入的密码不一致';
+          _messageIsSuccess = false;
+        });
+        return;
+      }
+    } else if (_loginTab == 'code') {
+      final code = _code.text.trim();
+      if (code.isEmpty) {
+        setState(() {
+          _message = '请输入验证码';
+          _messageIsSuccess = false;
+        });
+        return;
+      }
+    }
+
     setState(() {
       _busy = true;
       _message = null;
     });
     try {
-      final loginType = _loginTab == 'code' ? 'code' : 'password';
       if (_registerMode) {
         await widget.api.register(
-          account: _account.text.trim(),
+          account: account,
           password: _password.text,
           nickname: _nickname.text.trim().isEmpty
               ? 'FitLoop 用户'
               : _nickname.text.trim(),
         );
       }
+      final loginType = _loginTab == 'code' && !_registerMode ? 'code' : 'password';
       final session = await widget.api.login(
-        account: _account.text.trim(),
-        password: _loginTab == 'code' ? _code.text.trim() : _password.text,
+        account: account,
+        password: _loginTab == 'code' && !_registerMode
+            ? _code.text.trim()
+            : _password.text,
         loginType: loginType,
       );
       await TokenStorage.save(session.token, session.userId, session.nickname);
-      widget.onSignedIn(session);
+      if (mounted) widget.onSignedIn(session);
     } catch (error) {
-      setState(() => _message = error.toString());
-    } finally {
       if (mounted) {
-        setState(() => _busy = false);
+        setState(() {
+          _message = _friendlyError(error);
+          _messageIsSuccess = false;
+        });
       }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -372,8 +452,10 @@ class _AuthPageState extends State<AuthPage> {
                   ?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            Text('校园运动打卡与健康管理', style: Theme.of(context).textTheme.titleMedium),
+            Text(_registerMode ? '创建账号' : '校园运动打卡与健康管理',
+                style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 24),
+            // Login mode: show password/code toggle
             if (!_registerMode)
               Row(
                 children: [
@@ -399,13 +481,17 @@ class _AuthPageState extends State<AuthPage> {
                 ],
               ),
             if (!_registerMode) const SizedBox(height: 16),
+            // Account input
             TextField(
               controller: _account,
               decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.phone_android),
-                  labelText: isCodeLogin ? '手机号' : '手机号或邮箱'),
+                  labelText: _registerMode
+                      ? '手机号或邮箱'
+                      : (isCodeLogin ? '手机号' : '手机号或邮箱')),
             ),
-            if (!isCodeLogin || _registerMode) ...[
+            // Password login: password field only
+            if (!_registerMode && !isCodeLogin) ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _password,
@@ -414,7 +500,31 @@ class _AuthPageState extends State<AuthPage> {
                     prefixIcon: Icon(Icons.lock_outline), labelText: '密码'),
               ),
             ],
-            if (isCodeLogin && !_registerMode) ...[
+            // Register mode: password + confirm + nickname
+            if (_registerMode) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: _password,
+                obscureText: true,
+                decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.lock_outline), labelText: '密码'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _confirmPassword,
+                obscureText: true,
+                decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.lock_outline), labelText: '确认密码'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nickname,
+                decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.badge_outlined), labelText: '昵称'),
+              ),
+            ],
+            // Code login: code input + send button
+            if (!_registerMode && isCodeLogin) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -435,29 +545,21 @@ class _AuthPageState extends State<AuthPage> {
                 ],
               ),
             ],
-            if (_registerMode && isCodeLogin) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _code,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.pin_outlined), labelText: '验证码'),
-              ),
-            ],
-            if (_registerMode) ...[
-              const SizedBox(height: 12),
-              TextField(
-                controller: _nickname,
-                decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.badge_outlined), labelText: '昵称'),
-              ),
-            ],
+            // Message
             if (_message != null) ...[
               const SizedBox(height: 12),
-              Text(_message!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(
+                _message!,
+                style: TextStyle(
+                  color: _messageIsSuccess
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.error,
+                  fontSize: 13,
+                ),
+              ),
             ],
             const SizedBox(height: 20),
+            // Submit button
             FilledButton.icon(
               onPressed: _busy ? null : _submit,
               icon: _busy
@@ -467,10 +569,14 @@ class _AuthPageState extends State<AuthPage> {
                   : Icon(_registerMode ? Icons.person_add_alt : Icons.login),
               label: Text(_registerMode ? '注册并进入' : '登录'),
             ),
+            // Toggle register/login
             TextButton(
               onPressed: _busy
                   ? null
-                  : () => setState(() => _registerMode = !_registerMode),
+                  : () => setState(() {
+                        _registerMode = !_registerMode;
+                        _message = null;
+                      }),
               child: Text(_registerMode ? '已有账号，去登录' : '没有账号，创建账号'),
             ),
           ],
