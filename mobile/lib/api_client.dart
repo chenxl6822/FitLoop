@@ -484,17 +484,30 @@ class HttpFitLoopApi implements FitLoopApi {
     required String token,
     required String imagePath,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/user/avatar');
-    final multipart = http.MultipartRequest('POST', uri);
-    multipart.headers['Authorization'] = 'Bearer $token';
-    multipart.files.add(await http.MultipartFile.fromPath('file', imagePath));
-    final streamed = await multipart.send();
-    final response = await http.Response.fromStream(streamed);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    if (body['code'] != 0) {
-      throw ApiException(body['message'] as String? ?? '上传失败');
+    final safePath = await _safeFilePath(imagePath);
+    try {
+      final uri = Uri.parse('$baseUrl/api/user/avatar');
+      final client = http.Client();
+      try {
+        final multipart = http.MultipartRequest('POST', uri);
+        multipart.headers['Authorization'] = 'Bearer $token';
+        multipart.files
+            .add(await http.MultipartFile.fromPath('file', safePath));
+        final streamed =
+            await client.send(multipart).timeout(const Duration(seconds: 30));
+        final response = await http.Response.fromStream(streamed);
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['code'] != 0) {
+          throw ApiException(body['message'] as String? ?? '上传失败');
+        }
+        return body['data'] as String;
+      } finally {
+        client.close();
+      }
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('头像上传失败，请检查网络后重试');
     }
-    return body['data'] as String;
   }
 
   @override
@@ -519,18 +532,52 @@ class HttpFitLoopApi implements FitLoopApi {
     required String token,
     required String imagePath,
   }) async {
-    final uri = Uri.parse('$baseUrl/api/sport/photo');
-    final multipart = http.MultipartRequest('POST', uri);
-    multipart.headers['Authorization'] = 'Bearer $token';
-    multipart.files
-        .add(await http.MultipartFile.fromPath('file', imagePath));
-    final streamed = await multipart.send();
-    final response = await http.Response.fromStream(streamed);
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    if (body['code'] != 0) {
-      throw ApiException(body['message'] as String? ?? '上传照片失败');
+    final safePath = await _safeFilePath(imagePath);
+    try {
+      final uri = Uri.parse('$baseUrl/api/sport/photo');
+      final client = http.Client();
+      try {
+        final multipart = http.MultipartRequest('POST', uri);
+        multipart.headers['Authorization'] = 'Bearer $token';
+        multipart.files
+            .add(await http.MultipartFile.fromPath('file', safePath));
+        final streamed =
+            await client.send(multipart).timeout(const Duration(seconds: 30));
+        final response = await http.Response.fromStream(streamed);
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['code'] != 0) {
+          throw ApiException(body['message'] as String? ?? '上传照片失败');
+        }
+        return body['data'] as String;
+      } finally {
+        client.close();
+      }
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('照片上传失败，请检查网络后重试');
     }
-    return body['data'] as String;
+  }
+
+  Future<String> _safeFilePath(String imagePath) async {
+    // Try to handle content:// URIs by reading bytes to a temp file
+    try {
+      final file = File(imagePath);
+      if (!await file.exists() && imagePath.startsWith('content://')) {
+        // content:// URIs can't be read via dart:io File on Android
+        // Fall through and let MultipartFile.fromPath handle it
+        return imagePath;
+      }
+      // For valid file paths, copy to temp to ensure clean upload
+      final bytes = await file.readAsBytes();
+      final dir = Directory.systemTemp;
+      final tempFile = File(
+          '${dir.path}/fitloop_upload_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await tempFile.writeAsBytes(bytes);
+      return tempFile.path;
+    } catch (_) {
+      // If anything fails, return original path and let the upload try
+      return imagePath;
+    }
   }
 
   Future<Map<String, dynamic>> _put(String path,
@@ -592,9 +639,9 @@ class HttpFitLoopApi implements FitLoopApi {
         throw ApiException(_extractErrorMessage(body, response.statusCode));
       }
       return body;
-    } on SocketException catch (e) {
+    } on SocketException {
       throw ApiException('无法连接服务器，请检查网络或稍后重试');
-    } on HttpException catch (e) {
+    } on HttpException {
       throw ApiException('无法连接服务器，请检查网络或稍后重试');
     }
   }

@@ -28,6 +28,11 @@ void main() {
     expect(find.text('社交'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
     expect(find.text('测试用户'), findsOneWidget);
+    // Dashboard now has more content, scroll to find the target card
+    await tester.scrollUntilVisible(
+      find.textContaining('本周 运动次数：1 / 3'),
+      200.0,
+    );
     expect(find.textContaining('本周 运动次数：1 / 3'), findsOneWidget);
 
     await tester.tap(find.text('社交'));
@@ -53,14 +58,29 @@ void main() {
     );
     await _enterApp(tester);
 
+    // Dashboard now has more content, scroll to find the target card
+    await tester.scrollUntilVisible(
+      find.text('暂无进行中目标'),
+      200.0,
+    );
     expect(find.text('暂无进行中目标'), findsOneWidget);
 
+    // Scroll to the create target button
+    await tester.scrollUntilVisible(
+      find.text('创建目标'),
+      200.0,
+    );
     await tester.tap(find.text('创建目标'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('保存目标'));
     await tester.pumpAndSettle();
 
     expect(api.createdTargets, 1);
+    // After creating target, scroll back to find the target card
+    await tester.scrollUntilVisible(
+      find.textContaining('本周 运动次数：0 / 3'),
+      200.0,
+    );
     expect(find.textContaining('本周 运动次数：0 / 3'), findsOneWidget);
   });
 
@@ -245,7 +265,14 @@ Future<void> _enterApp(WidgetTester tester) async {
     await tester.tap(find.text('跳过'));
     await tester.pumpAndSettle();
   }
-  // 登录
+  // 登录 — 输入账号密码（预填值已移除）
+  await tester.enterText(find.byType(TextField).first, '13800000001');
+  // 密码字段：password 登录模式下第二个输入框
+  final textFields = find.byType(TextField).evaluate().toList();
+  if (textFields.length >= 2) {
+    await tester.enterText(
+        find.byWidget(textFields[1].widget), 'pass1234');
+  }
   await tester.tap(find.text('登录'));
   await tester.pumpAndSettle();
 }
