@@ -250,6 +250,7 @@ class _AuthGateState extends State<AuthGate> {
         locationService: widget.locationService,
         reminderScheduler: widget.reminderScheduler,
         session: session,
+        onLogout: () => setState(() => _session = null),
       );
     }
     return AuthPage(
@@ -270,17 +271,33 @@ class AuthPage extends StatefulWidget {
 }
 
 class _AuthPageState extends State<AuthPage> {
-  final _account = TextEditingController(text: '13800000001');
-  final _password = TextEditingController(text: 'pass1234');
-  final _confirmPassword = TextEditingController(text: 'pass1234');
-  final _nickname = TextEditingController(text: '测试用户');
+  final _account = TextEditingController();
+  final _password = TextEditingController();
+  final _confirmPassword = TextEditingController();
+  final _nickname = TextEditingController();
   final _code = TextEditingController();
+  final _accountFocus = FocusNode();
   bool _registerMode = false;
   bool _busy = false;
   String? _message;
   bool _messageIsSuccess = false;
   String _loginTab = 'password';
   int _countdown = 0;
+  bool _rememberMe = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedAccount();
+  }
+
+  Future<void> _loadSavedAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('saved_account');
+    if (saved != null && saved.isNotEmpty) {
+      _account.text = saved;
+    }
+  }
 
   @override
   void dispose() {
@@ -289,6 +306,7 @@ class _AuthPageState extends State<AuthPage> {
     _confirmPassword.dispose();
     _nickname.dispose();
     _code.dispose();
+    _accountFocus.dispose();
     super.dispose();
   }
 
@@ -422,6 +440,12 @@ class _AuthPageState extends State<AuthPage> {
         loginType: loginType,
       );
       await TokenStorage.save(session.token, session.userId, session.nickname);
+      final prefs = await SharedPreferences.getInstance();
+      if (_rememberMe) {
+        await prefs.setString('saved_account', account);
+      } else {
+        await prefs.remove('saved_account');
+      }
       if (mounted) widget.onSignedIn(session);
     } catch (error) {
       if (mounted) {
@@ -484,6 +508,8 @@ class _AuthPageState extends State<AuthPage> {
             // Account input
             TextField(
               controller: _account,
+              focusNode: _accountFocus,
+              autofocus: true,
               decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.phone_android),
                   labelText: _registerMode
@@ -559,6 +585,18 @@ class _AuthPageState extends State<AuthPage> {
               ),
             ],
             const SizedBox(height: 20),
+            // Remember me
+            if (!_registerMode)
+              CheckboxListTile(
+                value: _rememberMe,
+                onChanged: _busy
+                    ? null
+                    : (v) => setState(() => _rememberMe = v ?? true),
+                title: const Text('记住账号', style: TextStyle(fontSize: 14)),
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
             // Submit button
             FilledButton.icon(
               onPressed: _busy ? null : _submit,
@@ -593,12 +631,14 @@ class AppShell extends StatefulWidget {
     required this.locationService,
     required this.reminderScheduler,
     required this.session,
+    this.onLogout,
   });
 
   final FitLoopApi api;
   final LocationService locationService;
   final ReminderScheduler reminderScheduler;
   final UserSession session;
+  final VoidCallback? onLogout;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -606,15 +646,25 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   int _index = 0;
+  bool _isSportActive = false;
+  late final List<Widget> _pages;
 
   @override
-  Widget build(BuildContext context) {
-    final pages = [
-      DashboardPage(api: widget.api, session: widget.session),
+  void initState() {
+    super.initState();
+    _pages = [
+      DashboardPage(
+        api: widget.api,
+        session: widget.session,
+        onNavigateToTab: (index) => setState(() => _index = index),
+      ),
       SportSessionPage(
         api: widget.api,
         locationService: widget.locationService,
         session: widget.session,
+        onSportActiveChanged: (active) {
+          if (mounted) setState(() => _isSportActive = active);
+        },
       ),
       StatsPage(api: widget.api, session: widget.session),
       SocialPage(api: widget.api, session: widget.session),
@@ -622,31 +672,47 @@ class _AppShellState extends State<AppShell> {
         api: widget.api,
         reminderScheduler: widget.reminderScheduler,
         session: widget.session,
+        onLogout: () => _handleLogout(),
       ),
     ];
+  }
+
+  void _handleLogout() async {
+    await TokenStorage.clear();
+    widget.onLogout?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(child: pages[_index]),
+      body: SafeArea(
+        child: IndexedStack(index: _index, children: _pages),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (value) => setState(() => _index = value),
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
               icon: Icon(Icons.home_outlined),
               selectedIcon: Icon(Icons.home),
               label: '首页'),
           NavigationDestination(
-              icon: Icon(Icons.directions_run_outlined),
-              selectedIcon: Icon(Icons.directions_run),
+              icon: _isSportActive
+                  ? const Badge(child: Icon(Icons.directions_run_outlined))
+                  : const Icon(Icons.directions_run_outlined),
+              selectedIcon: _isSportActive
+                  ? const Badge(child: Icon(Icons.directions_run))
+                  : const Icon(Icons.directions_run),
               label: '运动'),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.bar_chart_outlined),
               selectedIcon: Icon(Icons.bar_chart),
               label: '统计'),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.groups_outlined),
               selectedIcon: Icon(Icons.groups),
               label: '社交'),
-          NavigationDestination(
+          const NavigationDestination(
               icon: Icon(Icons.person_outline),
               selectedIcon: Icon(Icons.person),
               label: '我的'),
@@ -657,10 +723,16 @@ class _AppShellState extends State<AppShell> {
 }
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key, required this.api, required this.session});
+  const DashboardPage({
+    super.key,
+    required this.api,
+    required this.session,
+    this.onNavigateToTab,
+  });
 
   final FitLoopApi api;
   final UserSession session;
+  final ValueChanged<int>? onNavigateToTab;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -669,12 +741,25 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   Future<List<SportTarget>>? _future;
   Future<TargetReminderListResponse>? _reminderFuture;
+  Future<SportHistoryResponse>? _historyFuture;
+  Future<SportStats>? _statsFuture;
 
   @override
   void initState() {
     super.initState();
+    _loadAll();
+  }
+
+  void _loadAll() {
     _future = _loadTargets();
     _reminderFuture = _loadReminders();
+    _historyFuture =
+        widget.api.sportHistory(token: widget.session.token, period: 'week');
+    _statsFuture = widget.api.sportStats(token: widget.session.token);
+  }
+
+  void _refreshAll() {
+    setState(() => _loadAll());
   }
 
   Future<List<SportTarget>> _loadTargets() {
@@ -683,13 +768,6 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<TargetReminderListResponse> _loadReminders() {
     return widget.api.targetReminders(token: widget.session.token);
-  }
-
-  void _refreshAll() {
-    setState(() {
-      _future = _loadTargets();
-      _reminderFuture = _loadReminders();
-    });
   }
 
   Future<void> _showCreateTargetSheet() async {
@@ -708,24 +786,32 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  String _todayString() {
+    final now = DateTime.now();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$month-$day';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final today = _todayString();
     return _PageScaffold(
       title: 'FitLoop',
       children: [
+        // Welcome card
         _MetricCard(
             label: '欢迎回来',
             value: widget.session.nickname,
             icon: Icons.waving_hand_outlined),
+        // Reminder banners
         FutureBuilder<TargetReminderListResponse>(
           future: _reminderFuture,
           builder: (context, snapshot) {
             final reminders =
                 snapshot.data?.targets ?? const <TargetReminderResponse>[];
             final dueItems = reminders.where((r) => r.due).toList();
-            if (dueItems.isEmpty) {
-              return const SizedBox.shrink();
-            }
+            if (dueItems.isEmpty) return const SizedBox.shrink();
             return _ReminderBannerCard(
               reminders: dueItems,
               onDismiss: (targetId) async {
@@ -733,13 +819,204 @@ class _DashboardPageState extends State<DashboardPage> {
                   token: widget.session.token,
                   targetId: targetId,
                 );
-                if (mounted) {
-                  _refreshAll();
-                }
+                if (mounted) _refreshAll();
               },
             );
           },
         ),
+        // Today's exercise overview
+        FutureBuilder<SportHistoryResponse>(
+          future: _historyFuture,
+          builder: (context, snapshot) {
+            final points = snapshot.data?.points ?? [];
+            final todayPoint =
+                points.where((p) => p.date == today).firstOrNull;
+            final hasData = todayPoint != null && todayPoint.count > 0;
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.today_outlined, size: 20),
+                        const SizedBox(width: 8),
+                        Text('今日运动概览',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (!hasData)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text('今天还没有运动记录',
+                            style: TextStyle(color: Colors.grey)),
+                      )
+                    else
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _OverviewItem(
+                              icon: Icons.repeat,
+                              label: '次数',
+                              value: '${todayPoint.count} 次'),
+                          _OverviewItem(
+                              icon: Icons.timer_outlined,
+                              label: '时长',
+                              value:
+                                  '${(todayPoint.durationSeconds / 60).round()} 分钟'),
+                          _OverviewItem(
+                              icon: Icons.route_outlined,
+                              label: '里程',
+                              value:
+                                  '${todayPoint.distanceKm.toStringAsFixed(1)} km'),
+                          _OverviewItem(
+                              icon: Icons.bolt_outlined,
+                              label: '热量',
+                              value:
+                                  '${todayPoint.calorie.toStringAsFixed(0)} kcal'),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        // Weekly calendar
+        FutureBuilder<SportHistoryResponse>(
+          future: _historyFuture,
+          builder: (context, snapshot) {
+            final points = snapshot.data?.points ?? [];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.calendar_month_outlined, size: 20),
+                        const SizedBox(width: 8),
+                        Text('本周运动日历',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: points.map((p) {
+                        final hasActivity = p.count > 0;
+                        final date = DateTime.tryParse(p.date);
+                        final dayLabel = date != null
+                            ? '${date.month}/${date.day}'
+                            : p.date;
+                        final isToday = p.date == today;
+                        return Column(
+                          children: [
+                            Text(dayLabel,
+                                style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: isToday
+                                        ? FontWeight.w700
+                                        : FontWeight.normal,
+                                    color: isToday
+                                        ? Theme.of(context).colorScheme.primary
+                                        : null)),
+                            const SizedBox(height: 6),
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: hasActivity
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.grey.shade200,
+                                shape: BoxShape.circle,
+                              ),
+                              child: hasActivity
+                                  ? const Icon(Icons.check,
+                                      size: 16, color: Colors.white)
+                                  : null,
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        // Latest stats summary
+        FutureBuilder<SportStats>(
+          future: _statsFuture,
+          builder: (context, snapshot) {
+            final stats = snapshot.data;
+            return _MetricCard(
+              label: '累计统计',
+              value: stats != null
+                  ? '${stats.checkinCount} 次 / ${(stats.durationSeconds / 3600).toStringAsFixed(1)} 小时 / ${stats.distanceKm.toStringAsFixed(1)} km'
+                  : '加载中',
+              icon: Icons.bar_chart_outlined,
+            );
+          },
+        ),
+        // Quick actions
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.flash_on_outlined, size: 20),
+                    const SizedBox(width: 8),
+                    Text('快捷入口',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w600)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _QuickAction(
+                        icon: Icons.directions_run,
+                        label: '开始打卡',
+                        onTap: () =>
+                            widget.onNavigateToTab?.call(1),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _QuickAction(
+                        icon: Icons.bar_chart,
+                        label: '查看统计',
+                        onTap: () =>
+                            widget.onNavigateToTab?.call(2),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Target card
         FutureBuilder<List<SportTarget>>(
           future: _future,
           builder: (context, snapshot) {
@@ -753,9 +1030,56 @@ class _DashboardPageState extends State<DashboardPage> {
             );
           },
         ),
-        const _MetricCard(
-            label: '今日运动', value: '从运动页开始打卡', icon: Icons.timer_outlined),
       ],
+    );
+  }
+}
+
+class _OverviewItem extends StatelessWidget {
+  const _OverviewItem({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Icon(icon, size: 22, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 4),
+        Text(value,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w600)),
+        Text(label, style: Theme.of(context).textTheme.bodySmall),
+      ],
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton.tonalIcon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
     );
   }
 }
@@ -1100,11 +1424,13 @@ class SportSessionPage extends StatefulWidget {
     required this.api,
     required this.locationService,
     required this.session,
+    this.onSportActiveChanged,
   });
 
   final FitLoopApi api;
   final LocationService locationService;
   final UserSession session;
+  final ValueChanged<bool>? onSportActiveChanged;
 
   @override
   State<SportSessionPage> createState() => _SportSessionPageState();
@@ -1134,6 +1460,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
 
   @override
   void dispose() {
+    widget.onSportActiveChanged?.call(false);
     _trackingGeneration++;
     _positionSubscription?.cancel();
     _stepSubscription?.cancel();
@@ -1220,6 +1547,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _status = 'GPS 打卡进行中，正在获取位置...';
         _busy = false;
       });
+      widget.onSportActiveChanged?.call(true);
       _startGpsTracking(start.sessionId);
     } catch (error) {
       setState(() {
@@ -1254,6 +1582,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _status = '传感器打卡进行中，正在记录步数...';
         _busy = false;
       });
+      widget.onSportActiveChanged?.call(true);
     } catch (error) {
       setState(() {
         _status = error.toString();
@@ -1299,6 +1628,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _busy = false;
         _photoUploading = false;
       });
+      widget.onSportActiveChanged?.call(true);
     } catch (error) {
       setState(() {
         _status = error.toString();
@@ -1408,6 +1738,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
           _appealFuture = widget.api.listAppeals(token: widget.session.token);
         }
       });
+      widget.onSportActiveChanged?.call(false);
     } catch (error) {
       if (_sessionId != null) {
         final duration = DateTime.now()
@@ -1431,6 +1762,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
           _photoUrl = null;
           _status = '网络暂时不可用，已加入离线同步队列，联网后自动提交';
         });
+        widget.onSportActiveChanged?.call(false);
       } else {
         setState(() => _status = error.toString());
       }
@@ -2546,11 +2878,13 @@ class ProfilePage extends StatefulWidget {
     required this.api,
     required this.reminderScheduler,
     required this.session,
+    this.onLogout,
   });
 
   final FitLoopApi api;
   final ReminderScheduler reminderScheduler;
   final UserSession session;
+  final VoidCallback? onLogout;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -2769,7 +3103,156 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           },
         ),
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.settings_outlined),
+                title: const Text('设置'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SettingsPage(
+                        session: widget.session,
+                        onLogout: widget.onLogout,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: Icon(Icons.logout,
+                    color: Theme.of(context).colorScheme.error),
+                title: Text('退出登录',
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
+                onTap: () => _showLogoutDialog(context),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('退出登录'),
+        content: const Text('确定要退出当前账号吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              widget.onLogout?.call();
+            },
+            child: const Text('确定退出'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({super.key, required this.session, this.onLogout});
+
+  final UserSession session;
+  final VoidCallback? onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('设置')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text('账号信息',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+                _InfoRow(label: '昵称', value: session.nickname),
+                _InfoRow(
+                    label: '用户ID', value: session.userId.toString()),
+                if (session.avatarUrl != null)
+                  const _InfoRow(label: '头像', value: '已设置'),
+              ],
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text('关于',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+                const _InfoRow(label: '应用名称', value: 'FitLoop'),
+                const _InfoRow(label: '版本', value: '0.1.0'),
+                const _InfoRow(label: '构建号', value: '1'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              onLogout?.call();
+            },
+            icon: const Icon(Icons.logout),
+            label: const Text('退出登录'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: [
+          Text(label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  )),
+          const Spacer(),
+          Text(value, style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      ),
     );
   }
 }
