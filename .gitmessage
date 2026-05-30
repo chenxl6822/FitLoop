@@ -1,0 +1,40 @@
+# Git commit message format
+
+<type>(<scope>): <short summary>
+
+<body> (optional, wrap at 72 chars)
+
+Closes #<issue> (optional)
+
+---
+# Types:
+#   feat     — 新功能
+#   fix      — 修复
+#   refactor — 重构（非功能、非修复）
+#   test     — 添加/修改测试
+#   docs     — 文档改动（README、STATUS、CONTRIBUTING）
+#   style    — 代码格式（空格、缩进、分号等），不影响逻辑
+#   chore    — 杂项（依赖、构建、工具配置等），不影响 src/test
+#
+# Scopes:
+#   mobile   — Flutter 前端
+#   backend  — Spring Boot 后端
+#   deploy   — Docker / Nginx / CI / DevOps
+#   docs     — 文档相关
+#
+# Rules:
+#   1. 每笔 commit 只做一件事
+#   2. feat/fix/refactor 必须包含对应的测试文件
+#   3. 不提交 AI 工作文档（CLAUDE_CONTEXT.md, task*_spec.md 等）
+#   4. 不把后端和前端改动混在同一 commit 里
+#   5. 提交前跑一遍测试：flutter analyze && flutter test（前端）或 mvn test（后端）
+#   6. 标题 ≤ 50 chars，正文 wrap at 72
+#
+# Good examples:
+#   feat(backend): add SMS verification code entity and service
+#   feat(mobile): add multi-sport type selector to checkin page
+#   fix(mobile): correct offline sync queue field name
+#   test(backend): add unit tests for CalorieCalculator
+#   refactor(backend): extract MET calculation into CalorieCalculator
+#   docs: update STATUS.md and README.md for Phase 1 completion
+#   chore(mobile): add pedometer dependency to pubspec.yaml

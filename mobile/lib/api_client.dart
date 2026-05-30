@@ -566,19 +566,37 @@ class HttpFitLoopApi implements FitLoopApi {
     }
   }
 
+  /// 提取后端错误消息；HTTP 40x/50x 统一前置处理
+  String _extractErrorMessage(Map<String, dynamic> body, int statusCode) {
+    // 优先用后端返回的 message
+    if (body.containsKey('message') && body['message'] is String && (body['message'] as String).isNotEmpty) {
+      return body['message'] as String;
+    }
+    // 后端 code != 0 但没有 message
+    if (statusCode >= 500) return '服务器开小差了，请稍后重试';
+    if (statusCode == 401 || statusCode == 403) return '登录状态已过期，请重新登录';
+    return '请求失败（$statusCode）';
+  }
+
   Future<Map<String, dynamic>> _send(HttpClientRequest request) async {
-    final response = await request.close();
-    final text = await response.transform(utf8.decoder).join();
-    final body = text.isEmpty
-        ? <String, dynamic>{}
-        : jsonDecode(text) as Map<String, dynamic>;
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw ApiException('请求失败：HTTP ${response.statusCode}');
+    try {
+      final response = await request.close();
+      final text = await response.transform(utf8.decoder).join();
+      final body = text.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(text) as Map<String, dynamic>;
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw ApiException(_extractErrorMessage(body, response.statusCode));
+      }
+      if (body['code'] != 0 && body['code'] != 200) {
+        throw ApiException(_extractErrorMessage(body, response.statusCode));
+      }
+      return body;
+    } on SocketException catch (e) {
+      throw ApiException('无法连接服务器，请检查网络或稍后重试');
+    } on HttpException catch (e) {
+      throw ApiException('无法连接服务器，请检查网络或稍后重试');
     }
-    if (body['code'] != 0) {
-      throw ApiException(body['message'] as String? ?? '请求失败');
-    }
-    return body;
   }
 }
 

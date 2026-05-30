@@ -175,6 +175,7 @@ SERVER_PORT=8080
 | 4.3 | 域名 + HTTPS + Nginx SSL | Ops | 1h |
 | 4.4 | CI/CD：GitHub Actions 自动构建 Docker 镜像 + 推送 | Ops | 2h |
 | 4.5 | 图片存储切换到 COS（取代本地文件系统） | Backend+Ops | 1h |
+| 4.6 | **APK 下载页**：Nginx 静态页面，用户浏览器一键下载安装包 | Ops | 0.5h |
 
 ### 阶段 5 — iOS 构建 + 发布准备（P2，1 天）
 
@@ -199,9 +200,9 @@ SERVER_PORT=8080
 | # | 任务 | 领域 | 工时 |
 |---|------|------|------|
 | 7.1 | 管理员登录 + JWT 角色鉴权 | Backend | 1h |
-| 7.2 | 用户管理列表 + 数据统计面板 | Backend | 2h |
-| 7.3 | 公告发布 + 系统配置页面 | Backend | 2h |
-| 7.4 | 异常记录审查 + 处理 | Backend | 1h |
+| 7.2 | 用户管理列表 + 数据统计面板（用户数/日活/运动总时长） | Backend+Frontend | 2h |
+| 7.3 | 运动记录查询 + 异常申诉审核 | Backend+Frontend | 2h |
+| 7.4 | 系统公告发布 + 基础配置 | Backend+Frontend | 1h |
 
 ---
 
