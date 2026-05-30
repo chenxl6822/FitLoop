@@ -3,85 +3,434 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FitLoop 下载</title>
+<title>FitLoop — 校园运动打卡与健康管理</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* ===== Reset & Base ===== */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #1F8A70 0%, #145A4A 100%);
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #0b0f14;
+    color: #e8eaed;
+    line-height: 1.6;
+    overflow-x: hidden;
   }
-  .card {
-    background: #fff;
-    border-radius: 24px;
-    padding: 48px 40px;
-    max-width: 420px;
-    width: 100%;
-    text-align: center;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+
+  /* ===== Animated Background ===== */
+  .bg-glow {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 0;
   }
-  .icon {
-    width: 80px;
-    height: 80px;
-    background: #1F8A70;
-    border-radius: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 20px;
-    font-size: 40px;
-    color: #fff;
+  .bg-glow--1 { width: 600px; height: 600px; background: #1F8A70; top: -200px; right: -100px; animation: float1 12s ease-in-out infinite; }
+  .bg-glow--2 { width: 500px; height: 500px; background: #40c9a2; bottom: -150px; left: -100px; animation: float2 15s ease-in-out infinite; }
+  .bg-glow--3 { width: 400px; height: 400px; background: #6ab04c; top: 50%; left: 50%; transform: translate(-50%, -50%); animation: float3 10s ease-in-out infinite; }
+
+  @keyframes float1 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(-60px, 40px) scale(1.1); }
+    66% { transform: translate(30px, -20px) scale(0.9); }
   }
-  h1 { font-size: 28px; color: #1a1a1a; margin-bottom: 8px; }
-  .subtitle { color: #666; font-size: 15px; margin-bottom: 32px; }
-  .info { background: #f5f7fa; border-radius: 12px; padding: 16px; margin-bottom: 24px; text-align: left; font-size: 14px; color: #555; }
-  .info div { margin: 4px 0; }
-  .info span { color: #1F8A70; font-weight: 600; }
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    background: #1F8A70;
-    color: #fff;
-    border: none;
-    border-radius: 14px;
-    padding: 16px 40px;
-    font-size: 18px;
-    font-weight: 600;
-    cursor: pointer;
-    text-decoration: none;
-    transition: background 0.2s, transform 0.1s;
+  @keyframes float2 {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(50px, -30px) scale(1.15); }
   }
-  .btn:hover { background: #166b56; }
-  .btn:active { transform: scale(0.97); }
-  .btn svg { width: 24px; height: 24px; fill: currentColor; }
-  .note { margin-top: 16px; font-size: 13px; color: #999; }
-  .qr { margin: 24px auto 0; width: 140px; height: 140px; background: #eee; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #999; }
+  @keyframes float3 {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.2); }
+  }
+
+  /* ===== Layout ===== */
+  .page { position: relative; z-index: 1; }
+
+  /* ===== Navigation ===== */
+  .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 40px; max-width: 1200px; margin: 0 auto;
+  }
+  .nav-logo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 22px; font-weight: 700; color: #fff; text-decoration: none;
+  }
+  .nav-logo .logo-icon {
+    width: 36px; height: 36px; background: linear-gradient(135deg, #1F8A70, #40c9a2);
+    border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .nav-links { display: flex; gap: 32px; align-items: center; }
+  .nav-links a { color: #9aa0a6; text-decoration: none; font-size: 15px; transition: color 0.2s; }
+  .nav-links a:hover { color: #fff; }
+
+  /* ===== Hero ===== */
+  .hero {
+    text-align: center; padding: 80px 24px 60px; max-width: 800px; margin: 0 auto;
+  }
+  .hero-badge {
+    display: inline-block; background: rgba(31,138,112,0.15); color: #40c9a2;
+    border: 1px solid rgba(31,138,112,0.25); border-radius: 100px;
+    padding: 6px 18px; font-size: 13px; font-weight: 500; margin-bottom: 28px;
+  }
+  .hero-icon {
+    width: 88px; height: 88px; background: linear-gradient(135deg, #1F8A70, #40c9a2);
+    border-radius: 22px; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 28px; font-size: 44px;
+    box-shadow: 0 12px 40px rgba(31,138,112,0.35);
+  }
+  .hero h1 {
+    font-size: clamp(36px, 6vw, 56px); font-weight: 800; color: #fff;
+    letter-spacing: -1px; margin-bottom: 16px;
+  }
+  .hero h1 span { background: linear-gradient(135deg, #40c9a2, #6ab04c); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .hero-desc { font-size: 18px; color: #9aa0a6; max-width: 460px; margin: 0 auto 40px; }
+
+  /* ===== Download Buttons ===== */
+  .dl-group { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .dl-btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 32px; border-radius: 14px; font-size: 16px; font-weight: 600;
+    text-decoration: none; cursor: pointer; transition: all 0.25s; border: none;
+  }
+  .dl-btn--primary {
+    background: linear-gradient(135deg, #1F8A70, #40c9a2);
+    color: #fff; box-shadow: 0 6px 24px rgba(31,138,112,0.3);
+  }
+  .dl-btn--primary:hover { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(31,138,112,0.45); }
+  .dl-btn--primary:active { transform: scale(0.97); }
+  .dl-btn--secondary {
+    background: rgba(255,255,255,0.06); color: #e8eaed; border: 1px solid rgba(255,255,255,0.1);
+  }
+  .dl-btn--secondary:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+  .dl-btn svg { width: 20px; height: 20px; }
+  .dl-btn--primary svg { fill: currentColor; }
+  .dl-btn--secondary svg { stroke: currentColor; fill: none; stroke-width: 2; }
+
+  .dl-info { margin-top: 20px; font-size: 13px; color: #5f6368; }
+  .dl-info span { margin: 0 8px; }
+
+  /* ===== Section titles ===== */
+  .section { max-width: 1100px; margin: 0 auto; padding: 60px 24px; }
+  .section-label {
+    text-align: center; font-size: 13px; font-weight: 600; color: #40c9a2;
+    text-transform: uppercase; letter-spacing: 2px; margin-bottom: 12px;
+  }
+  .section-title {
+    text-align: center; font-size: clamp(26px, 4vw, 38px); font-weight: 700;
+    color: #fff; margin-bottom: 12px;
+  }
+  .section-sub {
+    text-align: center; font-size: 16px; color: #9aa0a6; margin-bottom: 48px;
+  }
+
+  /* ===== Feature Cards ===== */
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+  .feature-card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 18px; padding: 32px 28px; transition: all 0.3s;
+  }
+  .feature-card:hover {
+    background: rgba(255,255,255,0.05); border-color: rgba(31,138,112,0.25);
+    transform: translateY(-2px);
+  }
+  .feature-icon {
+    width: 48px; height: 48px; border-radius: 12px; display: flex;
+    align-items: center; justify-content: center; font-size: 24px; margin-bottom: 18px;
+  }
+  .feature-icon--green { background: rgba(31,138,112,0.15); }
+  .feature-icon--blue { background: rgba(66,133,244,0.15); }
+  .feature-icon--orange { background: rgba(251,140,0,0.15); }
+  .feature-icon--purple { background: rgba(154,78,245,0.15); }
+  .feature-card h3 { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+  .feature-card p { font-size: 14px; color: #9aa0a6; line-height: 1.7; }
+
+  /* ===== Showcase / Preview ===== */
+  .showcase {
+    display: flex; align-items: center; gap: 60px; flex-wrap: wrap; justify-content: center;
+  }
+  .showcase-phone {
+    width: 260px; height: 520px; background: rgba(255,255,255,0.04);
+    border: 2px solid rgba(255,255,255,0.08); border-radius: 32px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+  }
+  .showcase-phone::before {
+    content: ''; position: absolute; top: 12px; width: 60px; height: 6px;
+    background: rgba(255,255,255,0.2); border-radius: 100px;
+  }
+  .showcase-screen {
+    width: 230px; height: 460px; background: linear-gradient(180deg, #1a2f28 0%, #0f1f19 100%);
+    border-radius: 22px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 24px; gap: 12px;
+  }
+  .showcase-screen .mock-stat {
+    width: 100%; background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px 16px;
+  }
+  .showcase-screen .mock-stat .mock-num { font-size: 24px; font-weight: 700; color: #40c9a2; }
+  .showcase-screen .mock-stat .mock-label { font-size: 11px; color: #6b7c75; margin-top: 4px; }
+  .showcase-text h3 { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 12px; }
+  .showcase-text p { color: #9aa0a6; font-size: 15px; margin-bottom: 24px; max-width: 360px; }
+  .showcase-check { display: flex; flex-direction: column; gap: 10px; }
+  .showcase-check li { display: flex; align-items: center; gap: 10px; color: #9aa0a6; font-size: 14px; }
+  .showcase-check li::before { content: '✓'; color: #40c9a2; font-weight: 700; font-size: 16px; }
+
+  /* ===== Stats Bar ===== */
+  .stats-bar {
+    display: flex; justify-content: center; gap: 48px; flex-wrap: wrap;
+    padding: 40px 24px; max-width: 800px; margin: 0 auto;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .stat-item { text-align: center; }
+  .stat-num { font-size: 32px; font-weight: 800; color: #fff; }
+  .stat-label { font-size: 13px; color: #5f6368; margin-top: 4px; }
+
+  /* ===== Platform Cards ===== */
+  .platforms { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .platform-card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px; padding: 28px 24px; text-align: center; transition: all 0.3s;
+  }
+  .platform-card:hover { border-color: rgba(31,138,112,0.25); }
+  .platform-card.soon { opacity: 0.5; pointer-events: none; }
+  .platform-card h4 { font-size: 18px; color: #fff; margin: 12px 0 6px; }
+  .platform-card p { font-size: 13px; color: #5f6368; margin-bottom: 16px; }
+  .platform-card .dl-btn { width: 100%; justify-content: center; }
+  .platform-badge {
+    display: inline-block; background: rgba(31,138,112,0.15); color: #40c9a2;
+    border-radius: 6px; padding: 3px 10px; font-size: 11px; font-weight: 600;
+  }
+
+  /* ===== Footer ===== */
+  .footer {
+    text-align: center; padding: 40px 24px; color: #5f6368; font-size: 13px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .footer a { color: #9aa0a6; text-decoration: none; }
+  .footer a:hover { color: #fff; }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 768px) {
+    .nav { padding: 16px 20px; }
+    .nav-links { display: none; }
+    .hero { padding: 50px 20px 40px; }
+    .showcase { gap: 32px; }
+    .section { padding: 40px 20px; }
+    .stats-bar { gap: 28px; }
+  }
 </style>
 </head>
 <body>
-<div class="card">
-  <div class="icon">🏃</div>
-  <h1>FitLoop</h1>
-  <p class="subtitle">校园运动打卡与健康管理</p>
 
-  <div class="info">
-    <div>📱 版本：<span>v1.0</span></div>
-    <div>📦 大小：<span>~15 MB</span></div>
-    <div>🤖 要求：<span>Android 8.0+</span></div>
-    <div>📅 更新：<span>2026-05-30</span></div>
+<!-- Animated background glows -->
+<div class="bg-glow bg-glow--1"></div>
+<div class="bg-glow bg-glow--2"></div>
+<div class="bg-glow bg-glow--3"></div>
+
+<div class="page">
+
+  <!-- Navigation -->
+  <nav class="nav">
+    <a class="nav-logo" href="#">
+      <span class="logo-icon">🏃</span>
+      FitLoop
+    </a>
+    <div class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#download">下载</a>
+      <a href="#about">关于</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">v1.0 · 现已正式上线</div>
+    <div class="hero-icon">🏃</div>
+    <h1>用<span>FitLoop</span><br>开启校园运动之旅</h1>
+    <p class="hero-desc">GPS 轨迹打卡、拍照签到、健康数据追踪——全方位陪伴你的每一次运动</p>
+    <div class="dl-group">
+      <a class="dl-btn dl-btn--primary" href="/apk/app-release.apk" download>
+        <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.17v4h3.34V9h3.16L12 2z"/></svg>
+        下载安卓版
+      </a>
+      <a class="dl-btn dl-btn--secondary" href="#download">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        更多版本
+      </a>
+    </div>
+    <p class="dl-info">
+      <span>📱 Android 8.0+</span>
+      <span>📦 ~15 MB</span>
+      <span>📅 2026-05-30</span>
+    </p>
+  </section>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="stat-num">GPS</div>
+      <div class="stat-label">精确定位打卡</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">4</div>
+      <div class="stat-label">种打卡模式</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">7</div>
+      <div class="stat-label">天运动日历</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">∞</div>
+      <div class="stat-label">健康数据追踪</div>
+    </div>
   </div>
 
-  <a class="btn" href="/apk/app-release.apk" download>
-    <svg viewBox="0 0 24 24"><path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.17v4h3.34V9h3.16L12 2z"/></svg>
-    下载安卓版
-  </a>
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="section-label">核心功能</div>
+    <h2 class="section-title">为校园运动而生</h2>
+    <p class="section-sub">不止是打卡，更是你的专属运动伙伴</p>
+    <div class="features">
+      <div class="feature-card">
+        <div class="feature-icon feature-icon--green">📍</div>
+        <h3>GPS 轨迹打卡</h3>
+        <p>实时记录运动轨迹，精确到5秒/次的坐标上传。适合跑步、骑行等室外运动，完整还原每一次路线。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon feature-icon--blue">📷</div>
+        <h3>拍照签到</h3>
+        <p>通过拍照记录运动瞬间作为打卡凭证。支持照片上传与审核，确保打卡真实有效。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon feature-icon--orange">📊</div>
+        <h3>健康统计</h3>
+        <p>运动次数、里程、热量消耗一目了然。支持体重趋势记录，图表化展示每周运动数据变化。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon feature-icon--purple">🏆</div>
+        <h3>社交激励</h3>
+        <p>积分等级、勋章系统、好友排行——让运动不再孤单，与同学一起挑战更好的自己。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon feature-icon--green">🎯</div>
+        <h3>运动目标</h3>
+        <p>按周或月设定运动目标：次数、时长、里程、热量。实时进度追踪，到期智能提醒。</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon feature-icon--blue">🔔</div>
+        <h3>智能提醒</h3>
+        <p>久坐提醒、喝水提醒、睡眠提醒、运动提醒——全方位守护你的校园健康生活。</p>
+      </div>
+    </div>
+  </section>
 
-  <p class="note">安装前请开启「允许安装未知来源应用」</p>
+  <!-- Showcase / Preview -->
+  <section class="section">
+    <div class="showcase">
+      <div class="showcase-phone">
+        <div class="showcase-screen">
+          <div class="mock-stat">
+            <div class="mock-num">3 次</div>
+            <div class="mock-label">今日运动次数</div>
+          </div>
+          <div class="mock-stat">
+            <div class="mock-num">5.2 km</div>
+            <div class="mock-label">本周里程</div>
+          </div>
+          <div class="mock-stat">
+            <div class="mock-num">320 kcal</div>
+            <div class="mock-label">累计消耗</div>
+          </div>
+          <div class="mock-stat">
+            <div class="mock-num">Lv.2</div>
+            <div class="mock-label">当前等级</div>
+          </div>
+        </div>
+      </div>
+      <div class="showcase-text">
+        <h3>简洁直观的运动看板</h3>
+        <p>打开 App 即可查看今日概览、本周日历和快捷操作入口。所有数据一目了然，不冗余不杂乱。</p>
+        <ul class="showcase-check">
+          <li>今日运动概览（次数 / 时长 / 里程 / 热量）</li>
+          <li>7 天运动日历，有记录的日子标绿点</li>
+          <li>一键开始打卡，切换页面运动不中断</li>
+          <li>离线同步——断网也能记录，联网自动上传</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Platforms -->
+  <section class="section" id="download">
+    <div class="section-label">下载 FitLoop</div>
+    <h2 class="section-title">选择你的平台</h2>
+    <p class="section-sub">当前优先支持 Android，更多平台即将上线</p>
+    <div class="platforms">
+      <div class="platform-card">
+        <span style="font-size:40px">🤖</span>
+        <h4>Android</h4>
+        <p>Android 8.0 及以上</p>
+        <span class="platform-badge">正式版</span>
+        <div style="margin-top:14px">
+          <a class="dl-btn dl-btn--primary" href="/apk/app-release.apk" download>
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.17v4h3.34V9h3.16L12 2z" fill="currentColor"/></svg>
+            下载 APK
+          </a>
+        </div>
+        <p style="margin-top:10px;font-size:12px;color:#5f6368">v1.0 · ~15 MB</p>
+      </div>
+      <div class="platform-card soon">
+        <span style="font-size:40px">🍎</span>
+        <h4>iOS</h4>
+        <p>iPhone / iPad</p>
+        <span class="platform-badge" style="background:rgba(255,255,255,0.05);color:#5f6368">即将上线</span>
+        <div style="margin-top:14px">
+          <span class="dl-btn dl-btn--secondary" style="cursor:default">敬请期待</span>
+        </div>
+      </div>
+      <div class="platform-card soon">
+        <span style="font-size:40px">💻</span>
+        <h4>Web 管理端</h4>
+        <p>管理员数据看板</p>
+        <span class="platform-badge" style="background:rgba(255,255,255,0.05);color:#5f6368">即将上线</span>
+        <div style="margin-top:14px">
+          <span class="dl-btn dl-btn--secondary" style="cursor:default">敬请期待</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install Guide -->
+  <section class="section" style="text-align:center">
+    <div class="section-label">安装指引</div>
+    <h2 class="section-title">快速上手</h2>
+    <p class="section-sub" style="margin-bottom:32px">三步完成安装，即刻开始运动打卡</p>
+    <div style="display:flex;gap:24px;flex-wrap:wrap;justify-content:center;max-width:800px;margin:0 auto">
+      <div style="flex:1;min-width:200px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:24px 20px;text-align:center">
+        <div style="width:40px;height:40px;background:rgba(31,138,112,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:18px;font-weight:700;color:#40c9a2">1</div>
+        <h4 style="color:#fff;margin-bottom:6px">下载安装</h4>
+        <p style="color:#9aa0a6;font-size:13px">点击上方下载按钮获取 APK，允许安装未知来源应用</p>
+      </div>
+      <div style="flex:1;min-width:200px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:24px 20px;text-align:center">
+        <div style="width:40px;height:40px;background:rgba(31,138,112,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:18px;font-weight:700;color:#40c9a2">2</div>
+        <h4 style="color:#fff;margin-bottom:6px">注册账号</h4>
+        <p style="color:#9aa0a6;font-size:13px">使用手机号注册，设置昵称即可创建专属运动档案</p>
+      </div>
+      <div style="flex:1;min-width:200px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:24px 20px;text-align:center">
+        <div style="width:40px;height:40px;background:rgba(31,138,112,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:18px;font-weight:700;color:#40c9a2">3</div>
+        <h4 style="color:#fff;margin-bottom:6px">开始打卡</h4>
+        <p style="color:#9aa0a6;font-size:13px">选择运动类型和打卡模式，点击开始即可记录运动数据</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer" id="about">
+    <p style="margin-bottom:6px">&copy; 2026 FitLoop · 校园运动打卡与健康管理</p>
+    <p>如有问题请通过应用内反馈渠道联系我们</p>
+  </footer>
+
 </div>
 </body>
 </html>
