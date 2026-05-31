@@ -3,10 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
-const defaultApiBaseUrl = String.fromEnvironment(
-  'FITLOOP_API_BASE_URL',
-  defaultValue: 'http://localhost:8080',
-);
+import 'api_config.dart';
 
 abstract class FitLoopApi {
   Future<UserSession> login({
@@ -129,7 +126,7 @@ abstract class FitLoopApi {
 }
 
 class HttpFitLoopApi implements FitLoopApi {
-  HttpFitLoopApi({this.baseUrl = defaultApiBaseUrl});
+  HttpFitLoopApi({String? baseUrl}) : baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
   final String baseUrl;
   final HttpClient _client = HttpClient();

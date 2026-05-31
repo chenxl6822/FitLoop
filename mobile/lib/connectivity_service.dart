@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'api_config.dart';
+
 /// 网络连通性监测（HTTP 探测式，纯 dart:io，无需原生插件）
 class ConnectivityService {
   ConnectivityService({this.checkInterval = const Duration(seconds: 30)});
@@ -37,8 +39,8 @@ class ConnectivityService {
   Future<bool> _check() async {
     final old = _online;
 
-    // 尝试访问自己的后端，同时 fallback 到外网
-    _online = await _reachable('http://localhost:8080/api/user/info') ||
+    // 后端健康检查 + 外网 fallback
+    _online = await _reachable('${ApiConfig.baseUrl}/actuator/health') ||
         await _reachable('https://www.baidu.com');
 
     if (old != _online) {

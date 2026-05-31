@@ -24,6 +24,50 @@ const _sportTypes = {
   'custom': '自定义',
 };
 
+/// 将各类异常转换为用户可读的错误消息
+String friendlyErrorMsg(dynamic error) {
+  final msg = error.toString();
+  // 网络连接类错误
+  if (msg.contains('SocketException') ||
+      msg.contains('Connection refused') ||
+      msg.contains('Connection failed') ||
+      msg.contains('Connection reset') ||
+      msg.contains('Network is unreachable') ||
+      msg.contains('No route to host') ||
+      msg.contains('Software caused connection abort') ||
+      msg.contains('Operation not permitted')) {
+    return '服务器连接失败，请检查网络或稍后重试';
+  }
+  // 超时类
+  if (msg.contains('Timeout') ||
+      msg.contains('timed out') ||
+      msg.contains('Time out')) {
+    return '请求超时，请检查网络后重试';
+  }
+  // DNS 解析失败
+  if (msg.contains('No address associated with hostname') ||
+      msg.contains('nodename nor servname') ||
+      msg.contains('Service not available')) {
+    return '无法解析服务器地址，请检查网络配置';
+  }
+  // TLS/证书错误
+  if (msg.contains('TLS') || msg.contains('SSL') || msg.contains('Certificate')) {
+    return '安全连接失败，请稍后重试';
+  }
+  // 认证相关（非网络）
+  if (msg.contains('401') || msg.contains('403')) {
+    return '登录状态已过期，请重新登录';
+  }
+  if (msg.contains('500')) {
+    return '服务器开小差了，请稍后重试';
+  }
+  // 去除 ApiException: 前缀，展示后端返回的原始消息
+  if (msg.startsWith('ApiException: ')) {
+    return msg.substring(14);
+  }
+  return msg;
+}
+
 void main() {
   runApp(FitLoopApp());
 }
@@ -310,26 +354,7 @@ class _AuthPageState extends State<AuthPage> {
     super.dispose();
   }
 
-  String _friendlyError(dynamic error) {
-    final msg = error.toString();
-    if (msg.contains('SocketException') ||
-        msg.contains('Connection failed') ||
-        msg.contains('Operation not permitted') ||
-        msg.contains('Connection refused')) {
-      return '无法连接服务器，请检查网络或稍后重试';
-    }
-    if (msg.contains('401') || msg.contains('403')) {
-      return '登录状态已过期，请重新登录';
-    }
-    if (msg.contains('500')) {
-      return '服务器开小差了，请稍后重试';
-    }
-    // Strip ApiException prefix to show backend message
-    if (msg.startsWith('ApiException: ')) {
-      return msg.substring(14);
-    }
-    return msg;
-  }
+  String _friendlyError(dynamic error) => friendlyErrorMsg(error);
 
   Future<void> _sendCode() async {
     final phone = _account.text.trim();
@@ -1200,7 +1225,7 @@ class _TargetSummaryCard extends StatelessWidget {
     if (loading) {
       value = '加载中';
     } else if (error != null) {
-      value = error.toString();
+      value = friendlyErrorMsg(error);
     } else if (target == null) {
       value = '暂无进行中目标';
     } else {
@@ -1294,7 +1319,7 @@ class _TargetFormSheetState extends State<_TargetFormSheet> {
         Navigator.of(context).pop(true);
       }
     } catch (error) {
-      setState(() => _message = error.toString());
+      setState(() => _message = friendlyErrorMsg(error));
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -1551,7 +1576,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       _startGpsTracking(start.sessionId);
     } catch (error) {
       setState(() {
-        _status = error.toString();
+        _status = friendlyErrorMsg(error);
         _busy = false;
       });
     }
@@ -1585,7 +1610,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       widget.onSportActiveChanged?.call(true);
     } catch (error) {
       setState(() {
-        _status = error.toString();
+        _status = friendlyErrorMsg(error);
         _busy = false;
       });
     }
@@ -1631,7 +1656,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       widget.onSportActiveChanged?.call(true);
     } catch (error) {
       setState(() {
-        _status = error.toString();
+        _status = friendlyErrorMsg(error);
         _busy = false;
         _photoUploading = false;
       });
@@ -1670,7 +1695,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       });
     } catch (error) {
       setState(() {
-        _status = error.toString();
+        _status = friendlyErrorMsg(error);
         _busy = false;
       });
     }
@@ -1764,7 +1789,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         });
         widget.onSportActiveChanged?.call(false);
       } else {
-        setState(() => _status = error.toString());
+        setState(() => _status = friendlyErrorMsg(error));
       }
     } finally {
       if (mounted) {
@@ -1954,7 +1979,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         }
       } catch (error) {
         if (mounted) {
-          setState(() => _status = 'GPS轨迹点上传失败：$error');
+          setState(() => _status = 'GPS轨迹点上传失败：${friendlyErrorMsg(error)}');
         }
       }
     }, onError: (Object error) {
@@ -1962,7 +1987,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         return;
       }
       if (mounted) {
-        setState(() => _status = 'GPS定位失败：$error');
+        setState(() => _status = 'GPS定位失败：${friendlyErrorMsg(error)}');
       }
     });
   }
@@ -2373,7 +2398,7 @@ class _StatsPageState extends State<StatsPage> {
             if (snapshot.hasError)
               _MetricCard(
                   label: '统计状态',
-                  value: snapshot.error.toString(),
+                  value: friendlyErrorMsg(snapshot.error),
                   icon: Icons.error_outline)
             else if (!snapshot.hasData)
               const _MetricCard(
@@ -2493,7 +2518,7 @@ class _HealthDataFormSheetState extends State<_HealthDataFormSheet> {
         Navigator.of(context).pop(healthData);
       }
     } catch (error) {
-      setState(() => _message = error.toString());
+      setState(() => _message = friendlyErrorMsg(error));
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -2658,7 +2683,7 @@ class _SocialPageState extends State<SocialPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('搜索失败: $e')),
+          SnackBar(content: Text(friendlyErrorMsg(e))),
         );
       }
     } finally {
@@ -2676,7 +2701,7 @@ class _SocialPageState extends State<SocialPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('添加失败: $e')),
+          SnackBar(content: Text(friendlyErrorMsg(e))),
         );
       }
     }
@@ -2804,7 +2829,7 @@ class _SocialPageState extends State<SocialPage> {
             if (snapshot.hasError) {
               return _MetricCard(
                 label: '激励状态',
-                value: snapshot.error.toString(),
+                value: friendlyErrorMsg(snapshot.error),
                 icon: Icons.error_outline,
               );
             }
@@ -2961,7 +2986,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (!mounted) return;
       setState(() => _uploading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('头像上传失败：$e')),
+        SnackBar(content: Text(friendlyErrorMsg(e))),
       );
     }
   }
@@ -3351,7 +3376,7 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败: $e')),
+          SnackBar(content: Text(friendlyErrorMsg(e))),
         );
       }
     } finally {
