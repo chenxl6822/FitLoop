@@ -1,6 +1,19 @@
-# FitLoop 项目状态（2026-05-28）
+# FitLoop 项目状态（2026-05-31）
 
-## GitHub HEAD: `6b46e32` — 仓库清理完成，阶段 1 全部落地
+## GitHub HEAD: `3c3c654` — Sprint A 内测稳定化进行中
+
+### Sprint A 进展
+
+| 任务 | 状态 |
+|------|------|
+| ✅ `GET /api/user/profile` 端点 | ✅ 新增 Controller + Service + 测试 |
+| ✅ Nginx `/uploads/` 代理 | ✅ nginx.conf / nginx.ssl.conf |
+| ✅ Docker uploads volume | ✅ docker-compose.yml + application.yml |
+| ✅ 端口安全（127.0.0.1 绑定） | ✅ MySQL/Redis ports 加固 |
+| 🚀 真机冒烟测试 | 待验证 |
+| 🚀 下载页版本号 | 待补充 |
+
+### 阶段 1 完成清单（补全打卡方式 + 多运动类型 + 验证码）
 
 ### 阶段 1 完成清单（补全打卡方式 + 多运动类型 + 验证码）
 
@@ -18,7 +31,7 @@
 
 | 项目 | 值 |
 |------|-----|
-| **Commit 总数** | 35（原始 11 + 阶段 1 新增 24） |
+| **Commit 总数** | 36（原始 11 + 阶段 1 新增 24 + Sprint A 新增 1） |
 | **远程同步** | ✅ `origin/main` 已同步 |
 | **未提交修改** | ✅ 无 |
 | **跟踪文件数** | 163 |
@@ -40,6 +53,7 @@ FitLoop/
 │       ├── stats/StatsServiceTest.java
 │       ├── target/TargetServiceTest.java
 │       ├── user/SmsServiceTest.java             ← 新增（验证码测试）
+│       ├── user/UserControllerTest.java          ← 新增（Sprint A Controller 测试）
 │       └── user/UserServiceTest.java
 ├── mobile/               # Flutter 移动端应用
 │   └── test/widget_test.dart  (9 widget tests)
@@ -53,13 +67,13 @@ FitLoop/
 |------|--------|------|
 | sport/ | 2 files | ✅ CalorieCalculator + SportService（含新打卡模式） |
 | stats/ | 2 files | ✅ StatsService + StatsHistory |
-| user/ | 2 files | ✅ UserService + SmsService（新增验证码） |
+| user/ | 3 files | ✅ UserService + SmsService + UserController（Sprint A 新增） |
 | reminder/ | 1 file | ✅ 12 tests |
 | social/ | 1 file | ✅ 8 tests |
 | appeal/ | 1 file | ✅ 2 tests |
 | target/ | 1 file | ✅ 1 test |
 | integration | 1 file | ✅ 1 test |
-| **合计** | **11 files** | ✅ |
+| **合计** | **12 files** | ✅ |
 
 ### 前端模块
 
@@ -95,4 +109,4 @@ mobile/lib/
 
 ---
 
-*文档版本 2026-05-28 — HEAD `6b46e32`，35 commits，11 后端测试文件，163 跟踪文件*
+*文档版本 2026-05-31 — HEAD `3c3c654`，Sprint A 进行中，12 后端测试文件，60 测试全通过*

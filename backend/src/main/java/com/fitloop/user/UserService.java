@@ -76,4 +76,11 @@ public class UserService {
         UserInfo user = users.findById(userId).orElseThrow(() -> new IllegalArgumentException("用户不存在"));
         user.setAvatarUrl(avatarUrl);
     }
+
+    @Transactional(readOnly = true)
+    public UserProfile getProfile(Long userId) {
+        UserInfo user = users.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        return UserProfile.from(user);
+    }
 }

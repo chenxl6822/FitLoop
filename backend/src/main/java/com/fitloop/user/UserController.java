@@ -8,6 +8,7 @@ import com.fitloop.user.UserDtos.RegisterRequest;
 import com.fitloop.user.UserDtos.UpdateProfileRequest;
 import com.fitloop.user.UserDtos.UserProfile;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,5 +36,10 @@ public class UserController {
     @PutMapping("/api/user/update")
     public ApiResponse<UserProfile> update(@RequestBody UpdateProfileRequest request) {
         return ApiResponse.ok(users.updateProfile(AuthSupport.currentUserId(), request));
+    }
+
+    @GetMapping("/api/user/profile")
+    public ApiResponse<UserProfile> profile() {
+        return ApiResponse.ok(users.getProfile(AuthSupport.currentUserId()));
     }
 }

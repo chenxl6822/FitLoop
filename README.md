@@ -56,9 +56,10 @@ FitLoop/
 
 ## 当前进度
 
-**最新 HEAD：** `6b46e32`（35 commits）
+**最新 HEAD：** `3c3c654`（Sprint A 内测稳定化进行中）
 **阶段 1（补全 4 种打卡 + 多种运动 + 验证码）：** ✅ 已完成
-**阶段 2（腾讯云部署）：** ❌ 未开始
+**Sprint A（内测稳定化）：** 🚀 进行中（P0 完成，P1 进行中）
+**阶段 2（腾讯云部署）：** ⏳ 下一个
 
 查看 [`STATUS.md`](STATUS.md) 获取实时状态详情。
 
@@ -120,7 +121,7 @@ curl http://localhost:8080/actuator/health
 
 | 类型 | 数量 | 命令 |
 |------|------|------|
-| 后端单元测试 | 11 个文件 | `mvn test` |
+| 后端单元测试 | 12 个文件（60 测试） | `mvn test` |
 | 前端 Widget 测试 | 9 个用例 | `flutter test` |
 | 代码分析 | 0 issues | `flutter analyze` |
 

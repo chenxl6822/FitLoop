@@ -26,3 +26,5 @@ fitloop:
     ttl-seconds: ${FITLOOP_JWT_TTL_SECONDS:604800}
   admin:
     key: ${FITLOOP_ADMIN_KEY:change-me-admin-key}
+  upload:
+    path: ${FITLOOP_UPLOAD_PATH:./uploads}

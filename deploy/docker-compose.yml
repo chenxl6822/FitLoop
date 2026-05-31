@@ -9,7 +9,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-fitloop}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-fitloop-root}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
@@ -25,7 +25,7 @@ services:
     container_name: fitloop-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -52,8 +52,11 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       FITLOOP_JWT_SECRET: ${FITLOOP_JWT_SECRET:-replace-with-a-long-random-production-secret}
       FITLOOP_ADMIN_KEY: ${FITLOOP_ADMIN_KEY:-replace-with-an-admin-review-key}
+      FITLOOP_UPLOAD_PATH: /app/uploads
     ports:
       - "${SERVER_PORT:-8080}:8080"
+    volumes:
+      - uploads_data:/app/uploads
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 10s
@@ -77,3 +80,4 @@ services:
 
 volumes:
   mysql-data:
+  uploads_data:

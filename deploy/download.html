@@ -378,7 +378,7 @@
             下载 APK
           </a>
         </div>
-        <p style="margin-top:10px;font-size:12px;color:#5f6368">v1.0 · ~15 MB</p>
+        <p style="margin-top:10px;font-size:12px;color:#5f6368" id="apk-version">v1.0 · ~15 MB</p>
       </div>
       <div class="platform-card soon">
         <span style="font-size:40px">🍎</span>
@@ -432,5 +432,25 @@
   </footer>
 
 </div>
+
+<script>
+// 自动加载 APK 版本信息
+(async function() {
+  const el = document.getElementById('apk-version');
+  if (!el) return;
+  try {
+    const resp = await fetch('/apk/version.json');
+    if (resp.ok) {
+      const info = await resp.json();
+      el.textContent = `v${info.version || '1.0'} · ${info.size || '~15 MB'}`;
+      if (info.buildDate) {
+        el.title = `构建日期: ${info.buildDate}`;
+      }
+    }
+  } catch (_) {
+    // 保持默认版本号
+  }
+})();
+</script>
 </body>
 </html>
