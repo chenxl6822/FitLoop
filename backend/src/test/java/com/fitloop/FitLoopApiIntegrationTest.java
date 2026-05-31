@@ -30,15 +30,30 @@ class FitLoopApiIntegrationTest {
 
     @Test
     void registersLogsInAndFinishesSportSession() throws Exception {
+        String phone = "13800000000";
+        String smsBody = mockMvc.perform(post("/api/sms/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of("phone", phone))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String code = objectMapper.readTree(smsBody).at("/data/debugCode").asText();
+        assertThat(code).isNotBlank();
+
         mockMvc.perform(post("/api/user/register")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("phone", "13800000000", "password", "pass1234", "nickname", "测试用户"))))
+                        .content(json(Map.of(
+                                "phone", phone,
+                                "password", "pass1234",
+                                "nickname", "测试用户",
+                                "code", code))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.userId").exists());
 
         String loginBody = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json(Map.of("account", "13800000000", "password", "pass1234", "loginType", "password"))))
+                        .content(json(Map.of("account", phone, "password", "pass1234", "loginType", "password"))))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()
