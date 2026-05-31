@@ -356,6 +356,8 @@ class _AuthPageState extends State<AuthPage> {
 
   String _friendlyError(dynamic error) => friendlyErrorMsg(error);
 
+  bool _isPhoneAccount(String value) => RegExp(r'^1\d{10}$').hasMatch(value);
+
   Future<void> _sendCode() async {
     final phone = _account.text.trim();
     if (phone.isEmpty) {
@@ -431,6 +433,13 @@ class _AuthPageState extends State<AuthPage> {
         });
         return;
       }
+      if (_isPhoneAccount(account) && _code.text.trim().isEmpty) {
+        setState(() {
+          _message = '请输入验证码';
+          _messageIsSuccess = false;
+        });
+        return;
+      }
     } else if (_loginTab == 'code') {
       final code = _code.text.trim();
       if (code.isEmpty) {
@@ -454,14 +463,14 @@ class _AuthPageState extends State<AuthPage> {
           nickname: _nickname.text.trim().isEmpty
               ? 'FitLoop 用户'
               : _nickname.text.trim(),
+          code: _isPhoneAccount(account) ? _code.text.trim() : null,
         );
       }
       final loginType = _loginTab == 'code' && !_registerMode ? 'code' : 'password';
       final session = await widget.api.login(
         account: account,
-        password: _loginTab == 'code' && !_registerMode
-            ? _code.text.trim()
-            : _password.text,
+        password: loginType == 'password' ? _password.text : null,
+        code: loginType == 'code' ? _code.text.trim() : null,
         loginType: loginType,
       );
       await TokenStorage.save(session.token, session.userId, session.nickname);
@@ -535,6 +544,7 @@ class _AuthPageState extends State<AuthPage> {
               controller: _account,
               focusNode: _accountFocus,
               autofocus: true,
+              onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.phone_android),
                   labelText: _registerMode
@@ -573,6 +583,28 @@ class _AuthPageState extends State<AuthPage> {
                 decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.badge_outlined), labelText: '昵称'),
               ),
+              if (_isPhoneAccount(_account.text.trim())) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _code,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.pin_outlined),
+                            labelText: '验证码'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    FilledButton.tonal(
+                      onPressed: (_busy || _countdown > 0) ? null : _sendCode,
+                      child:
+                          Text(_countdown > 0 ? '${_countdown}s' : '获取验证码'),
+                    ),
+                  ],
+                ),
+              ],
             ],
             // Code login: code input + send button
             if (!_registerMode && isCodeLogin) ...[

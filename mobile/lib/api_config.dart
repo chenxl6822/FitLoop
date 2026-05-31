@@ -2,9 +2,11 @@
 ///
 /// 使用方法：
 ///
+/// **生产 APK / 下载站：**
+///   默认使用 http://43.139.72.25
+///
 /// **开发调试（电脑本机）：**
-///   flutter run
-///   → 默认使用 http://localhost:8080
+///   flutter run --dart-define=FITLOOP_API_BASE_URL=http://localhost:8080
 ///
 /// **Android 模拟器访问本机后端：**
 ///   flutter run --dart-define=FITLOOP_API_BASE_URL=http://10.0.2.2:8080
@@ -17,7 +19,7 @@
 ///   flutter run --dart-define=FITLOOP_API_BASE_URL=https://your-domain.com
 ///
 /// **构建 APK（真机 / 生产环境）：**
-///   flutter build apk --release --dart-define=FITLOOP_API_BASE_URL=https://your-server.com
+///   flutter build apk --release --dart-define=FITLOOP_API_BASE_URL=http://43.139.72.25
 ///
 /// **运行时覆盖（用于设置页面）：**
 ///   ApiConfig.setBaseUrl('http://new-server:8080');
@@ -31,7 +33,7 @@ class ApiConfig {
   /// 编译时默认值（可通过 --dart-define=FITLOOP_API_BASE_URL 覆盖）
   static const String _buildTimeBaseUrl = String.fromEnvironment(
     'FITLOOP_API_BASE_URL',
-    defaultValue: 'http://localhost:8080',
+    defaultValue: 'http://43.139.72.25',
   );
 
   /// 当前生效的 base URL

@@ -175,8 +175,8 @@ static const String baseUrl = 'http://<你的服务器IP>/api';
 然后重新打包 APK：
 
 ```bash
-cd mobile
-flutter build apk --release
+cd D:\AIWorkspace\projects\FitLoop
+powershell -ExecutionPolicy Bypass -File deploy/build-apk.ps1 -ApiBaseUrl http://43.139.72.25
 ```
 
 APK 位置：`mobile/build/app/outputs/flutter-apk/app-release.apk`

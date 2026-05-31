@@ -8,7 +8,8 @@ import 'api_config.dart';
 abstract class FitLoopApi {
   Future<UserSession> login({
     required String account,
-    required String password,
+    String? password,
+    String? code,
     String loginType = 'password',
   });
 
@@ -129,18 +130,21 @@ class HttpFitLoopApi implements FitLoopApi {
   HttpFitLoopApi({String? baseUrl}) : baseUrl = baseUrl ?? ApiConfig.baseUrl;
 
   final String baseUrl;
-  final HttpClient _client = HttpClient();
+  final HttpClient _client = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 10);
 
   @override
   Future<UserSession> login({
     required String account,
-    required String password,
+    String? password,
+    String? code,
     String loginType = 'password',
   }) async {
+    final isCodeLogin = loginType.toLowerCase() == 'code';
     final body = await _post('/api/auth/login', {
       'account': account,
-      'password': password,
       'loginType': loginType,
+      if (isCodeLogin) 'code': code else 'password': password,
     });
     final data = body['data'] as Map<String, dynamic>;
     final profile = data['userProfile'] as Map<String, dynamic>;
@@ -640,6 +644,8 @@ class HttpFitLoopApi implements FitLoopApi {
       throw ApiException('无法连接服务器，请检查网络或稍后重试');
     } on HttpException {
       throw ApiException('无法连接服务器，请检查网络或稍后重试');
+    } on FormatException {
+      throw ApiException('服务器响应异常，请稍后重试');
     }
   }
 }

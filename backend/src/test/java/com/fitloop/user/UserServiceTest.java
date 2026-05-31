@@ -34,10 +34,14 @@ class UserServiceTest {
     @Autowired
     private SmsService smsService;
 
+    private UserDtos.UserProfile registerWithCode(String phone, String password, String nickname) {
+        String code = smsService.sendCode(phone);
+        return userService.register(new RegisterRequest(phone, null, password, code, nickname));
+    }
+
     @Test
     void registerCreatesUser() {
-        var profile = userService.register(
-                new RegisterRequest("13800000001", null, "pass1234", null, "TestUser"));
+        var profile = registerWithCode("13800000001", "pass1234", "TestUser");
 
         assertThat(profile.userId()).isNotNull();
         assertThat(profile.phone()).isEqualTo("13800000001");
@@ -48,15 +52,14 @@ class UserServiceTest {
 
     @Test
     void registerDefaultsNicknameWhenNotProvided() {
-        var profile = userService.register(
-                new RegisterRequest("13800000002", null, "pass1234", null, null));
+        var profile = registerWithCode("13800000002", "pass1234", null);
 
         assertThat(profile.nickname()).isEqualTo("FitLoop 用户");
     }
 
     @Test
     void registerRejectsDuplicatePhone() {
-        userService.register(new RegisterRequest("13800000003", null, "pass1234", null, "A"));
+        registerWithCode("13800000003", "pass1234", "A");
 
         assertThatThrownBy(() -> userService.register(
                 new RegisterRequest("13800000003", null, "pass1234", null, "B")))
@@ -71,9 +74,15 @@ class UserServiceTest {
     }
 
     @Test
+    void registerRejectsMissingPhoneCode() {
+        assertThatThrownBy(() -> userService.register(
+                new RegisterRequest("13800000008", null, "pass1234", null, "NoCode")))
+                .hasMessageContaining("验证码");
+    }
+
+    @Test
     void loginWithCorrectPasswordReturnsToken() {
-        userService.register(
-                new RegisterRequest("13800000004", null, "correct", null, "User4"));
+        registerWithCode("13800000004", "correct", "User4");
 
         var result = userService.login(
                 new LoginRequest("13800000004", "correct", null, "password"));
@@ -84,8 +93,7 @@ class UserServiceTest {
 
     @Test
     void loginRejectsWrongPassword() {
-        userService.register(
-                new RegisterRequest("13800000005", null, "correct", null, "User5"));
+        registerWithCode("13800000005", "correct", "User5");
 
         assertThatThrownBy(() -> userService.login(
                 new LoginRequest("13800000005", "wrong", null, "password")))
@@ -101,8 +109,7 @@ class UserServiceTest {
 
     @Test
     void updateProfileChangesNickname() {
-        var created = userService.register(
-                new RegisterRequest("13800000006", null, "pass1234", null, "OldName"));
+        var created = registerWithCode("13800000006", "pass1234", "OldName");
 
         var updated = userService.updateProfile(created.userId(),
                 new UpdateProfileRequest("NewName", null, null, null, null));
@@ -112,8 +119,7 @@ class UserServiceTest {
 
     @Test
     void updateProfileDoesNotChangeUnspecifiedFields() {
-        var created = userService.register(
-                new RegisterRequest("13800000007", null, "pass1234", null, "KeepName"));
+        var created = registerWithCode("13800000007", "pass1234", "KeepName");
 
         var updated = userService.updateProfile(created.userId(),
                 new UpdateProfileRequest(null, "https://example.com/avatar.png", "男", "2023级", "计算机学院"));
@@ -134,8 +140,7 @@ class UserServiceTest {
 
     @Test
     void loginWithValidCodeSucceeds() {
-        userService.register(
-                new RegisterRequest("13800000010", null, "pass1234", null, "CodeUser"));
+        registerWithCode("13800000010", "pass1234", "CodeUser");
         String code = smsService.sendCode("13800000010");
 
         var result = userService.login(
@@ -147,8 +152,7 @@ class UserServiceTest {
 
     @Test
     void loginWithWrongCodeRejected() {
-        userService.register(
-                new RegisterRequest("13800000011", null, "pass1234", null, "CodeUser2"));
+        registerWithCode("13800000011", "pass1234", "CodeUser2");
         smsService.sendCode("13800000011");
 
         assertThatThrownBy(() -> userService.login(
@@ -158,8 +162,7 @@ class UserServiceTest {
 
     @Test
     void loginWithExpiredCodeRejected() {
-        userService.register(
-                new RegisterRequest("13800000012", null, "pass1234", null, "CodeUser3"));
+        registerWithCode("13800000012", "pass1234", "CodeUser3");
         String code = smsService.sendCode("13800000012");
         smsService.verifyCode("13800000012", code);
 

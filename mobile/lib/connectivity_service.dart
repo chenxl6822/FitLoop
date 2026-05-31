@@ -40,8 +40,7 @@ class ConnectivityService {
     final old = _online;
 
     // 后端健康检查 + 外网 fallback
-    _online = await _reachable('${ApiConfig.baseUrl}/actuator/health') ||
-        await _reachable('https://www.baidu.com');
+    _online = await _reachable('${ApiConfig.baseUrl}/actuator/health');
 
     if (old != _online) {
       _statusController.add(_online);

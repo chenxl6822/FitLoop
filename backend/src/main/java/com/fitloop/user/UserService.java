@@ -37,6 +37,9 @@ public class UserService {
         if (StringUtils.hasText(request.email()) && users.existsByEmail(request.email())) {
             throw new IllegalArgumentException("邮箱已注册");
         }
+        if (StringUtils.hasText(request.phone()) && !smsService.verifyCode(request.phone(), request.code())) {
+            throw new IllegalArgumentException("验证码错误或已过期");
+        }
         UserInfo user = new UserInfo();
         user.setPhone(request.phone());
         user.setEmail(request.email());
@@ -45,7 +48,7 @@ public class UserService {
         return UserProfile.from(users.save(user));
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponse login(LoginRequest request) {
         UserInfo user = users.findByPhoneOrEmail(request.account(), request.account())
                 .orElseThrow(() -> new IllegalArgumentException("账号或密码错误"));
@@ -54,7 +57,8 @@ public class UserService {
             if (!smsService.verifyCode(request.account(), request.code())) {
                 throw new IllegalArgumentException("验证码错误或已过期");
             }
-        } else if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        } else if (!StringUtils.hasText(request.password())
+                || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new IllegalArgumentException("账号或密码错误");
         }
         return new LoginResponse(jwtService.issue(user.getUserId()), UserProfile.from(user));

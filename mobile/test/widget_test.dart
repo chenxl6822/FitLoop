@@ -408,6 +408,10 @@ class _FakeApi implements FitLoopApi {
   int createdTargets = 0;
   int createdHealthData = 0;
   double? _lastWeight;
+  String? lastLoginPassword;
+  String? lastLoginCode;
+  String? lastLoginType;
+  String? lastRegisterCode;
 
   @override
   Future<HealthData> addHealthData({
@@ -493,8 +497,12 @@ class _FakeApi implements FitLoopApi {
   @override
   Future<UserSession> login(
       {required String account,
-      required String password,
+      String? password,
+      String? code,
       String loginType = 'password'}) async {
+    lastLoginPassword = password;
+    lastLoginCode = code;
+    lastLoginType = loginType;
     return const UserSession(token: 'token', userId: 1, nickname: '测试用户');
   }
 
@@ -503,7 +511,9 @@ class _FakeApi implements FitLoopApi {
       {required String account,
       required String password,
       required String nickname,
-      String? code}) async {}
+      String? code}) async {
+    lastRegisterCode = code;
+  }
 
   @override
   Future<SportRecord> finishSport({

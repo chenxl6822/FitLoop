@@ -29,7 +29,11 @@ public class SmsService {
         return code;
     }
 
+    @Transactional
     public boolean verifyCode(String phone, String code) {
+        if (phone == null || phone.isBlank() || code == null || code.isBlank()) {
+            return false;
+        }
         return smsCodes.findTopByPhoneAndCodeAndUsedFalseOrderByCreatedAtDesc(phone, code)
                 .filter(entity -> !Instant.now().isAfter(entity.getExpiresAt()))
                 .map(entity -> {

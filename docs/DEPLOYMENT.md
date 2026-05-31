@@ -353,8 +353,8 @@ static const String baseUrl = 'https://your-domain.cn/api';
 ### 5.2 重新构建 APK
 
 ```bash
-cd mobile
-flutter build apk --release
+cd D:\AIWorkspace\projects\FitLoop
+powershell -ExecutionPolicy Bypass -File deploy/build-apk.ps1 -ApiBaseUrl http://43.139.72.25
 ```
 
 APK 文件在 `mobile/build/app/outputs/flutter-apk/app-release.apk`
