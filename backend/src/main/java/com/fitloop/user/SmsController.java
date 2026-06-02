@@ -10,10 +10,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/sms")
 public class SmsController {
-    private final SmsService smsService;
+    private final VerificationCodeService verificationCodes;
 
-    public SmsController(SmsService smsService) {
-        this.smsService = smsService;
+    public SmsController(VerificationCodeService verificationCodes) {
+        this.verificationCodes = verificationCodes;
     }
 
     @PostMapping("/send")
@@ -22,10 +22,12 @@ public class SmsController {
         if (phone == null || phone.isBlank()) {
             throw new IllegalArgumentException("手机号不能为空");
         }
-        String code = smsService.sendCode(phone);
-        return ApiResponse.ok(Map.of(
-                "message", "验证码已发送",
-                "debugCode", code
-        ));
+        String purpose = body.getOrDefault("purpose", VerificationCodeService.PURPOSE_REGISTER);
+        VerificationCodeSendResult result = verificationCodes.sendCode(
+                VerificationCodeService.CHANNEL_PHONE, phone, purpose, null);
+        if (result.debugCode() == null) {
+            return ApiResponse.ok(Map.of("message", result.message()));
+        }
+        return ApiResponse.ok(Map.of("message", result.message(), "debugCode", result.debugCode()));
     }
 }

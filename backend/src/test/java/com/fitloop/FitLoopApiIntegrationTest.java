@@ -1,6 +1,8 @@
 package com.fitloop;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -14,7 +16,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -27,6 +32,9 @@ class FitLoopApiIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockBean
+    private JavaMailSender mailSender;
 
     @Test
     void registersLogsInAndFinishesSportSession() throws Exception {
@@ -95,6 +103,21 @@ class FitLoopApiIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.checkinCount").value(1));
+    }
+
+    @Test
+    void sendsEmailVerificationCode() throws Exception {
+        mockMvc.perform(post("/api/verification/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json(Map.of(
+                                "channel", "email",
+                                "target", "fitloop-user@example.com",
+                                "purpose", "register"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value("验证码已发送"))
+                .andExpect(jsonPath("$.data.debugCode").isNotEmpty());
+
+        verify(mailSender).send(any(SimpleMailMessage.class));
     }
 
     private String json(Object value) throws Exception {

@@ -4,6 +4,7 @@ import com.fitloop.common.ApiResponse;
 import com.fitloop.security.AuthSupport;
 import com.fitloop.user.UserDtos.LoginRequest;
 import com.fitloop.user.UserDtos.LoginResponse;
+import com.fitloop.user.UserDtos.PasswordResetRequest;
 import com.fitloop.user.UserDtos.RegisterRequest;
 import com.fitloop.user.UserDtos.UpdateProfileRequest;
 import com.fitloop.user.UserDtos.UserProfile;
@@ -31,6 +32,12 @@ public class UserController {
     @PostMapping("/api/auth/login")
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.ok(users.login(request));
+    }
+
+    @PostMapping("/api/auth/password/reset")
+    public ApiResponse<Void> resetPassword(@Valid @RequestBody PasswordResetRequest request) {
+        users.resetPassword(request);
+        return ApiResponse.ok(null);
     }
 
     @PutMapping("/api/user/update")

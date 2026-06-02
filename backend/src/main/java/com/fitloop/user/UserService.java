@@ -3,9 +3,11 @@ package com.fitloop.user;
 import com.fitloop.security.JwtService;
 import com.fitloop.user.UserDtos.LoginRequest;
 import com.fitloop.user.UserDtos.LoginResponse;
+import com.fitloop.user.UserDtos.PasswordResetRequest;
 import com.fitloop.user.UserDtos.RegisterRequest;
 import com.fitloop.user.UserDtos.UpdateProfileRequest;
 import com.fitloop.user.UserDtos.UserProfile;
+import java.util.Locale;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,33 +18,45 @@ public class UserService {
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final SmsService smsService;
+    private final VerificationCodeService verificationCodes;
 
     public UserService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService,
-                       SmsService smsService) {
+                       VerificationCodeService verificationCodes) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
-        this.smsService = smsService;
+        this.verificationCodes = verificationCodes;
     }
 
     @Transactional
     public UserProfile register(RegisterRequest request) {
-        if (!StringUtils.hasText(request.phone()) && !StringUtils.hasText(request.email())) {
+        String phone = normalizePhone(request.phone());
+        String email = normalizeEmail(request.email());
+        if (!StringUtils.hasText(phone) && !StringUtils.hasText(email)) {
             throw new IllegalArgumentException("手机号和邮箱至少填写一项");
         }
-        if (StringUtils.hasText(request.phone()) && users.existsByPhone(request.phone())) {
+        if (StringUtils.hasText(phone) && StringUtils.hasText(email)) {
+            throw new IllegalArgumentException("手机号和邮箱只能填写一项");
+        }
+        if (StringUtils.hasText(phone) && users.existsByPhone(phone)) {
             throw new IllegalArgumentException("手机号已注册");
         }
-        if (StringUtils.hasText(request.email()) && users.existsByEmail(request.email())) {
+        if (StringUtils.hasText(email) && users.existsByEmail(email)) {
             throw new IllegalArgumentException("邮箱已注册");
         }
-        if (StringUtils.hasText(request.phone()) && !smsService.verifyCode(request.phone(), request.code())) {
+        if (StringUtils.hasText(phone) && !verificationCodes.verifyCode(
+                VerificationCodeService.CHANNEL_PHONE, phone,
+                VerificationCodeService.PURPOSE_REGISTER, request.code())) {
+            throw new IllegalArgumentException("验证码错误或已过期");
+        }
+        if (StringUtils.hasText(email) && !verificationCodes.verifyCode(
+                VerificationCodeService.CHANNEL_EMAIL, email,
+                VerificationCodeService.PURPOSE_REGISTER, request.code())) {
             throw new IllegalArgumentException("验证码错误或已过期");
         }
         UserInfo user = new UserInfo();
-        user.setPhone(request.phone());
-        user.setEmail(request.email());
+        user.setPhone(phone);
+        user.setEmail(email);
         user.setNickname(StringUtils.hasText(request.nickname()) ? request.nickname() : "FitLoop 用户");
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         return UserProfile.from(users.save(user));
@@ -50,11 +64,14 @@ public class UserService {
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        UserInfo user = users.findByPhoneOrEmail(request.account(), request.account())
+        String account = normalizeAccount(request.account());
+        UserInfo user = users.findByPhoneOrEmail(account, account)
                 .orElseThrow(() -> new IllegalArgumentException("账号或密码错误"));
         boolean codeLogin = "code".equalsIgnoreCase(request.loginType());
         if (codeLogin) {
-            if (!smsService.verifyCode(request.account(), request.code())) {
+            String channel = verificationCodes.inferChannel(account);
+            if (!verificationCodes.verifyCode(channel, account,
+                    VerificationCodeService.PURPOSE_LOGIN, request.code())) {
                 throw new IllegalArgumentException("验证码错误或已过期");
             }
         } else if (!StringUtils.hasText(request.password())
@@ -62,6 +79,31 @@ public class UserService {
             throw new IllegalArgumentException("账号或密码错误");
         }
         return new LoginResponse(jwtService.issue(user.getUserId()), UserProfile.from(user));
+    }
+
+    @Transactional
+    public void resetPassword(PasswordResetRequest request) {
+        String account = normalizeAccount(request.account());
+        String channel = verificationCodes.inferChannel(account);
+        UserInfo user = users.findByPhoneOrEmail(account, account)
+                .orElseThrow(() -> new IllegalArgumentException("账号不存在"));
+        if (!verificationCodes.verifyCode(channel, account,
+                VerificationCodeService.PURPOSE_RESET_PASSWORD, request.code())) {
+            throw new IllegalArgumentException("验证码错误或已过期");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+    }
+
+    private String normalizeAccount(String value) {
+        return value != null && value.contains("@") ? normalizeEmail(value) : normalizePhone(value);
+    }
+
+    private String normalizeEmail(String value) {
+        return StringUtils.hasText(value) ? value.trim().toLowerCase(Locale.ROOT) : value;
+    }
+
+    private String normalizePhone(String value) {
+        return StringUtils.hasText(value) ? value.trim() : value;
     }
 
     @Transactional

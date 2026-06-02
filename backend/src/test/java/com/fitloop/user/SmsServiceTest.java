@@ -7,9 +7,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.ActiveProfiles;
 
 @DataJpaTest
-@Import(SmsService.class)
+@ActiveProfiles("test")
+@Import({SmsService.class, VerificationCodeService.class, PhoneVerificationCodeSender.class})
 class SmsServiceTest {
 
     @Autowired
@@ -19,6 +21,7 @@ class SmsServiceTest {
     void sendCodeGenerates6Digits() {
         String code = smsService.sendCode("13800000001");
 
+        assertThat(code).isNotNull();
         assertThat(code).hasSize(6);
         assertThat(code).containsPattern("^[0-9]{6}$");
     }

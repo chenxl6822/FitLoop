@@ -15,9 +15,19 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.context.ActiveProfiles;
 
 @DataJpaTest
-@Import({UserService.class, SmsService.class, JwtService.class, UserServiceTest.PasswordEncoderConfig.class})
+@ActiveProfiles("test")
+@Import({
+        UserService.class,
+        SmsService.class,
+        VerificationCodeService.class,
+        PhoneVerificationCodeSender.class,
+        UserServiceTest.EmailSenderConfig.class,
+        UserServiceTest.PasswordEncoderConfig.class,
+        JwtService.class
+})
 class UserServiceTest {
 
     @TestConfiguration
@@ -28,11 +38,31 @@ class UserServiceTest {
         }
     }
 
+    @TestConfiguration
+    static class EmailSenderConfig {
+        @Bean
+        VerificationCodeSender emailVerificationCodeSender() {
+            return new VerificationCodeSender() {
+                @Override
+                public String channel() {
+                    return VerificationCodeService.CHANNEL_EMAIL;
+                }
+
+                @Override
+                public void send(String target, String code, String purpose) {
+                }
+            };
+        }
+    }
+
     @Autowired
     private UserService userService;
 
     @Autowired
     private SmsService smsService;
+
+    @Autowired
+    private VerificationCodeService verificationCodes;
 
     private UserDtos.UserProfile registerWithCode(String phone, String password, String nickname) {
         String code = smsService.sendCode(phone);
@@ -141,7 +171,7 @@ class UserServiceTest {
     @Test
     void loginWithValidCodeSucceeds() {
         registerWithCode("13800000010", "pass1234", "CodeUser");
-        String code = smsService.sendCode("13800000010");
+        String code = verificationCodes.sendCode("phone", "13800000010", "login", null).debugCode();
 
         var result = userService.login(
                 new LoginRequest("13800000010", null, code, "code"));
@@ -153,7 +183,7 @@ class UserServiceTest {
     @Test
     void loginWithWrongCodeRejected() {
         registerWithCode("13800000011", "pass1234", "CodeUser2");
-        smsService.sendCode("13800000011");
+        verificationCodes.sendCode("phone", "13800000011", "login", null);
 
         assertThatThrownBy(() -> userService.login(
                 new LoginRequest("13800000011", null, "000000", "code")))
@@ -163,11 +193,36 @@ class UserServiceTest {
     @Test
     void loginWithExpiredCodeRejected() {
         registerWithCode("13800000012", "pass1234", "CodeUser3");
-        String code = smsService.sendCode("13800000012");
-        smsService.verifyCode("13800000012", code);
+        String code = verificationCodes.sendCode("phone", "13800000012", "login", null).debugCode();
+        verificationCodes.verifyCode("phone", "13800000012", "login", code);
 
         assertThatThrownBy(() -> userService.login(
                 new LoginRequest("13800000012", null, code, "code")))
                 .hasMessageContaining("验证码错误或已过期");
+    }
+
+    @Test
+    void resetPasswordWithValidCodeChangesPassword() {
+        registerWithCode("13800000013", "oldpass", "ResetUser");
+        String code = verificationCodes.sendCode("phone", "13800000013", "reset_password", null).debugCode();
+
+        userService.resetPassword(new UserDtos.PasswordResetRequest("13800000013", code, "newpass"));
+
+        var result = userService.login(new LoginRequest("13800000013", "newpass", null, "password"));
+        assertThat(result.token()).isNotBlank();
+    }
+
+    @Test
+    void emailRegisterAndCodeLoginSucceed() {
+        String email = "Student@Example.com";
+        String registerCode = verificationCodes.sendCode("email", email, "register", null).debugCode();
+        var profile = userService.register(new RegisterRequest(null, email, "pass1234", registerCode, "EmailUser"));
+
+        assertThat(profile.email()).isEqualTo("student@example.com");
+
+        String loginCode = verificationCodes.sendCode("email", "student@example.com", "login", null).debugCode();
+        var result = userService.login(new LoginRequest("student@example.com", null, loginCode, "code"));
+
+        assertThat(result.userProfile().nickname()).isEqualTo("EmailUser");
     }
 }

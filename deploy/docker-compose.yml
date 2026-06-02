@@ -52,6 +52,13 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       FITLOOP_JWT_SECRET: ${FITLOOP_JWT_SECRET:-replace-with-a-long-random-production-secret}
       FITLOOP_ADMIN_KEY: ${FITLOOP_ADMIN_KEY:-replace-with-an-admin-review-key}
+      FITLOOP_OTP_HASH_SECRET: ${FITLOOP_OTP_HASH_SECRET:-replace-with-a-long-random-otp-hash-secret}
+      FITLOOP_OTP_DEBUG_RETURN: ${FITLOOP_OTP_DEBUG_RETURN:-false}
+      FITLOOP_MAIL_HOST: ${FITLOOP_MAIL_HOST:-smtp.qq.com}
+      FITLOOP_MAIL_PORT: ${FITLOOP_MAIL_PORT:-465}
+      FITLOOP_MAIL_USERNAME: ${FITLOOP_MAIL_USERNAME:-}
+      FITLOOP_MAIL_PASSWORD: ${FITLOOP_MAIL_PASSWORD:-}
+      FITLOOP_MAIL_FROM: ${FITLOOP_MAIL_FROM:-}
       FITLOOP_UPLOAD_PATH: /app/uploads
     ports:
       - "${SERVER_PORT:-8080}:8080"

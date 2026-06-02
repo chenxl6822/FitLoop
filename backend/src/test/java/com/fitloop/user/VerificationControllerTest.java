@@ -1,0 +1,61 @@
+package com.fitloop.user;
+
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.fitloop.security.JwtAuthenticationFilter;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+
+@WebMvcTest(VerificationController.class)
+@AutoConfigureMockMvc(addFilters = false)
+@TestPropertySource(properties = "fitloop.admin.key=test-admin-key")
+class VerificationControllerTest {
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private VerificationCodeService verificationCodes;
+
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @Test
+    void sendReturnsDebugCodeWhenServiceProvidesOne() throws Exception {
+        when(verificationCodes.sendCode(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(new VerificationCodeSendResult("验证码已发送", "123456"));
+
+        mockMvc.perform(post("/api/verification/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"channel":"email","target":"user@example.com","purpose":"login"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value("验证码已发送"))
+                .andExpect(jsonPath("$.data.debugCode").value("123456"));
+    }
+
+    @Test
+    void sendAllowsProductionResponseWithoutDebugCode() throws Exception {
+        when(verificationCodes.sendCode(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(new VerificationCodeSendResult("验证码已发送", null));
+
+        mockMvc.perform(post("/api/verification/send")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"channel":"phone","target":"13800000001","purpose":"register"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.message").value("验证码已发送"))
+                .andExpect(jsonPath("$.data.debugCode").doesNotExist());
+    }
+}

@@ -51,6 +51,83 @@ void main() {
     expect(find.textContaining('已上传 1 个轨迹点'), findsOneWidget);
   });
 
+  testWidgets('registers with email verification code', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _openAuthPage(tester);
+
+    await tester.tap(find.text('没有账号，创建账号'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).at(0), 'student@example.com');
+    await tester.enterText(find.byType(TextField).at(1), 'pass1234');
+    await tester.enterText(find.byType(TextField).at(2), 'pass1234');
+    await tester.enterText(find.byType(TextField).at(3), '邮箱用户');
+    await tester.tap(find.text('获取验证码'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+
+    expect(api.lastVerificationChannel, 'email');
+    expect(api.lastVerificationTarget, 'student@example.com');
+    expect(api.lastVerificationPurpose, 'register');
+
+    await tester.enterText(find.byType(TextField).at(4), '123456');
+    await tester.tap(find.text('注册并进入'));
+    await tester.pump();
+
+    expect(api.lastRegisterCode, '123456');
+  });
+
+  testWidgets('logs in with email verification code', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _openAuthPage(tester);
+
+    await tester.tap(find.text('验证码登录'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).at(0), 'student@example.com');
+    await tester.tap(find.text('获取验证码'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.enterText(find.byType(TextField).at(1), '123456');
+    await tester.tap(find.text('登录'));
+    await tester.pump();
+
+    expect(api.lastVerificationChannel, 'email');
+    expect(api.lastVerificationPurpose, 'login');
+    expect(api.lastLoginCode, '123456');
+    expect(api.lastLoginType, 'code');
+  });
+
+  testWidgets('resets password with verification code', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _openAuthPage(tester);
+
+    await tester.tap(find.text('忘记密码'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).at(0), 'student@example.com');
+    await tester.enterText(find.byType(TextField).at(1), 'newpass123');
+    await tester.enterText(find.byType(TextField).at(2), 'newpass123');
+    await tester.tap(find.text('获取验证码'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.enterText(find.byType(TextField).at(3), '123456');
+    await tester.tap(find.text('重置密码'));
+    await tester.pump();
+
+    expect(api.lastVerificationPurpose, 'reset_password');
+    expect(api.lastResetAccount, 'student@example.com');
+    expect(api.lastResetCode, '123456');
+    expect(api.lastResetPassword, 'newpass123');
+    expect(find.text('密码已重置，请使用新密码登录'), findsOneWidget);
+  });
+
   testWidgets('creates target from empty dashboard state', (tester) async {
     final api = _FakeApi();
     await tester.pumpWidget(
@@ -257,14 +334,17 @@ void main() {
   });
 }
 
-Future<void> _enterApp(WidgetTester tester) async {
-  // 等待启动页动画完成（AnimationController 1200ms）
+Future<void> _openAuthPage(WidgetTester tester) async {
   await tester.pumpAndSettle();
-  // 首次安装时引导页会出现，点击跳过
   if (find.text('跳过').evaluate().isNotEmpty) {
     await tester.tap(find.text('跳过'));
     await tester.pumpAndSettle();
   }
+}
+
+Future<void> _enterApp(WidgetTester tester) async {
+  // 等待启动页动画完成（AnimationController 1200ms）
+  await _openAuthPage(tester);
   // 登录 — 输入账号密码（预填值已移除）
   await tester.enterText(find.byType(TextField).first, '13800000001');
   // 密码字段：password 登录模式下第二个输入框
@@ -412,6 +492,12 @@ class _FakeApi implements FitLoopApi {
   String? lastLoginCode;
   String? lastLoginType;
   String? lastRegisterCode;
+  String? lastVerificationChannel;
+  String? lastVerificationTarget;
+  String? lastVerificationPurpose;
+  String? lastResetAccount;
+  String? lastResetCode;
+  String? lastResetPassword;
 
   @override
   Future<HealthData> addHealthData({
@@ -678,6 +764,29 @@ class _FakeApi implements FitLoopApi {
   @override
   Future<Map<String, String>> sendSmsCode({required String phone}) async {
     return {'message': '验证码已发送', 'debugCode': '123456'};
+  }
+
+  @override
+  Future<Map<String, String>> sendVerificationCode({
+    required String channel,
+    required String target,
+    required String purpose,
+  }) async {
+    lastVerificationChannel = channel;
+    lastVerificationTarget = target;
+    lastVerificationPurpose = purpose;
+    return {'message': '验证码已发送', 'debugCode': '123456'};
+  }
+
+  @override
+  Future<void> resetPassword({
+    required String account,
+    required String code,
+    required String newPassword,
+  }) async {
+    lastResetAccount = account;
+    lastResetCode = code;
+    lastResetPassword = newPassword;
   }
 
   @override

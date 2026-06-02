@@ -322,12 +322,14 @@ class _AuthPageState extends State<AuthPage> {
   final _code = TextEditingController();
   final _accountFocus = FocusNode();
   bool _registerMode = false;
+  bool _resetPasswordMode = false;
   bool _busy = false;
   String? _message;
   bool _messageIsSuccess = false;
   String _loginTab = 'password';
   int _countdown = 0;
   bool _rememberMe = true;
+  Timer? _countdownTimer;
 
   @override
   void initState() {
@@ -351,25 +353,37 @@ class _AuthPageState extends State<AuthPage> {
     _nickname.dispose();
     _code.dispose();
     _accountFocus.dispose();
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
   String _friendlyError(dynamic error) => friendlyErrorMsg(error);
 
   bool _isPhoneAccount(String value) => RegExp(r'^1\d{10}$').hasMatch(value);
+  bool _isEmailAccount(String value) =>
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value);
+  bool _isValidAccount(String value) =>
+      _isPhoneAccount(value) || _isEmailAccount(value);
+  String _channelForAccount(String value) =>
+      _isEmailAccount(value) ? 'email' : 'phone';
+  String _verificationPurpose() {
+    if (_resetPasswordMode) return 'reset_password';
+    if (_registerMode) return 'register';
+    return 'login';
+  }
 
   Future<void> _sendCode() async {
-    final phone = _account.text.trim();
-    if (phone.isEmpty) {
+    final account = _account.text.trim();
+    if (account.isEmpty) {
       setState(() {
-        _message = '请输入手机号';
+        _message = '请输入手机号或邮箱';
         _messageIsSuccess = false;
       });
       return;
     }
-    if (!RegExp(r'^1\d{10}$').hasMatch(phone)) {
+    if (!_isValidAccount(account)) {
       setState(() {
-        _message = '手机号格式不正确';
+        _message = '请输入正确的手机号或邮箱';
         _messageIsSuccess = false;
       });
       return;
@@ -379,7 +393,11 @@ class _AuthPageState extends State<AuthPage> {
       _message = null;
     });
     try {
-      final result = await widget.api.sendSmsCode(phone: phone);
+      final result = await widget.api.sendVerificationCode(
+        channel: _channelForAccount(account),
+        target: account,
+        purpose: _verificationPurpose(),
+      );
       if (!mounted) return;
       final debugCode = result['debugCode'];
       setState(() {
@@ -401,11 +419,16 @@ class _AuthPageState extends State<AuthPage> {
   }
 
   void _startCountdown() {
-    Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return false;
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       setState(() => _countdown = _countdown > 0 ? _countdown - 1 : 0);
-      return _countdown > 0;
+      if (_countdown <= 0) {
+        timer.cancel();
+      }
     });
   }
 
@@ -417,6 +440,36 @@ class _AuthPageState extends State<AuthPage> {
         _messageIsSuccess = false;
       });
       return;
+    }
+    if (!_isValidAccount(account)) {
+      setState(() {
+        _message = '请输入正确的手机号或邮箱';
+        _messageIsSuccess = false;
+      });
+      return;
+    }
+    if (_resetPasswordMode) {
+      if (_code.text.trim().isEmpty) {
+        setState(() {
+          _message = '请输入验证码';
+          _messageIsSuccess = false;
+        });
+        return;
+      }
+      if (_password.text.isEmpty) {
+        setState(() {
+          _message = '请输入新密码';
+          _messageIsSuccess = false;
+        });
+        return;
+      }
+      if (_password.text != _confirmPassword.text) {
+        setState(() {
+          _message = '两次输入的密码不一致';
+          _messageIsSuccess = false;
+        });
+        return;
+      }
     }
     if (_registerMode) {
       if (_password.text.isEmpty) {
@@ -433,7 +486,7 @@ class _AuthPageState extends State<AuthPage> {
         });
         return;
       }
-      if (_isPhoneAccount(account) && _code.text.trim().isEmpty) {
+      if (_code.text.trim().isEmpty) {
         setState(() {
           _message = '请输入验证码';
           _messageIsSuccess = false;
@@ -456,6 +509,24 @@ class _AuthPageState extends State<AuthPage> {
       _message = null;
     });
     try {
+      if (_resetPasswordMode) {
+        await widget.api.resetPassword(
+          account: account,
+          code: _code.text.trim(),
+          newPassword: _password.text,
+        );
+        if (!mounted) return;
+        setState(() {
+          _resetPasswordMode = false;
+          _registerMode = false;
+          _password.clear();
+          _confirmPassword.clear();
+          _code.clear();
+          _message = '密码已重置，请使用新密码登录';
+          _messageIsSuccess = true;
+        });
+        return;
+      }
       if (_registerMode) {
         await widget.api.register(
           account: account,
@@ -463,7 +534,7 @@ class _AuthPageState extends State<AuthPage> {
           nickname: _nickname.text.trim().isEmpty
               ? 'FitLoop 用户'
               : _nickname.text.trim(),
-          code: _isPhoneAccount(account) ? _code.text.trim() : null,
+          code: _code.text.trim(),
         );
       }
       final loginType = _loginTab == 'code' && !_registerMode ? 'code' : 'password';
@@ -496,6 +567,9 @@ class _AuthPageState extends State<AuthPage> {
   @override
   Widget build(BuildContext context) {
     final isCodeLogin = _loginTab == 'code';
+    final showCodeInput = _resetPasswordMode ||
+        (!_registerMode && isCodeLogin) ||
+        _registerMode;
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -510,11 +584,14 @@ class _AuthPageState extends State<AuthPage> {
                   ?.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 8),
-            Text(_registerMode ? '创建账号' : '校园运动打卡与健康管理',
+            Text(
+                _resetPasswordMode
+                    ? '找回账号密码'
+                    : (_registerMode ? '创建账号' : '校园运动打卡与健康管理'),
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 24),
             // Login mode: show password/code toggle
-            if (!_registerMode)
+            if (!_registerMode && !_resetPasswordMode)
               Row(
                 children: [
                   Expanded(
@@ -545,14 +622,12 @@ class _AuthPageState extends State<AuthPage> {
               focusNode: _accountFocus,
               autofocus: true,
               onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                  prefixIcon: const Icon(Icons.phone_android),
-                  labelText: _registerMode
-                      ? '手机号或邮箱'
-                      : (isCodeLogin ? '手机号' : '手机号或邮箱')),
+              decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.phone_android),
+                  labelText: '手机号或邮箱'),
             ),
             // Password login: password field only
-            if (!_registerMode && !isCodeLogin) ...[
+            if (!_registerMode && !_resetPasswordMode && !isCodeLogin) ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _password,
@@ -562,13 +637,14 @@ class _AuthPageState extends State<AuthPage> {
               ),
             ],
             // Register mode: password + confirm + nickname
-            if (_registerMode) ...[
+            if (_registerMode || _resetPasswordMode) ...[
               const SizedBox(height: 12),
               TextField(
                 controller: _password,
                 obscureText: true,
-                decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.lock_outline), labelText: '密码'),
+                decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    labelText: _resetPasswordMode ? '新密码' : '密码'),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -577,37 +653,17 @@ class _AuthPageState extends State<AuthPage> {
                 decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.lock_outline), labelText: '确认密码'),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _nickname,
-                decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.badge_outlined), labelText: '昵称'),
-              ),
-              if (_isPhoneAccount(_account.text.trim())) ...[
+              if (_registerMode) ...[
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _code,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.pin_outlined),
-                            labelText: '验证码'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    FilledButton.tonal(
-                      onPressed: (_busy || _countdown > 0) ? null : _sendCode,
-                      child:
-                          Text(_countdown > 0 ? '${_countdown}s' : '获取验证码'),
-                    ),
-                  ],
+                TextField(
+                  controller: _nickname,
+                  decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.badge_outlined), labelText: '昵称'),
                 ),
               ],
             ],
-            // Code login: code input + send button
-            if (!_registerMode && isCodeLogin) ...[
+            // Verification code input + send button
+            if (showCodeInput) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -643,7 +699,7 @@ class _AuthPageState extends State<AuthPage> {
             ],
             const SizedBox(height: 20),
             // Remember me
-            if (!_registerMode)
+            if (!_registerMode && !_resetPasswordMode)
               CheckboxListTile(
                 value: _rememberMe,
                 onChanged: _busy
@@ -661,18 +717,43 @@ class _AuthPageState extends State<AuthPage> {
                   ? const SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : Icon(_registerMode ? Icons.person_add_alt : Icons.login),
-              label: Text(_registerMode ? '注册并进入' : '登录'),
+                  : Icon(_resetPasswordMode
+                      ? Icons.lock_reset
+                      : (_registerMode ? Icons.person_add_alt : Icons.login)),
+              label: Text(_resetPasswordMode
+                  ? '重置密码'
+                  : (_registerMode ? '注册并进入' : '登录')),
             ),
+            if (!_registerMode && !_resetPasswordMode)
+              TextButton(
+                onPressed: _busy
+                    ? null
+                    : () => setState(() {
+                          _resetPasswordMode = true;
+                          _message = null;
+                          _code.clear();
+                          _password.clear();
+                          _confirmPassword.clear();
+                        }),
+                child: const Text('忘记密码'),
+              ),
             // Toggle register/login
             TextButton(
               onPressed: _busy
                   ? null
                   : () => setState(() {
-                        _registerMode = !_registerMode;
+                        if (_resetPasswordMode) {
+                          _resetPasswordMode = false;
+                          _registerMode = false;
+                        } else {
+                          _registerMode = !_registerMode;
+                        }
                         _message = null;
+                        _code.clear();
                       }),
-              child: Text(_registerMode ? '已有账号，去登录' : '没有账号，创建账号'),
+              child: Text(_resetPasswordMode
+                  ? '返回登录'
+                  : (_registerMode ? '已有账号，去登录' : '没有账号，创建账号')),
             ),
           ],
         ),

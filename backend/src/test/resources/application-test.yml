@@ -11,8 +11,22 @@ spring:
     redis:
       host: localhost
       port: 6379
+  mail:
+    username: test@example.com
+    password: test-password
+management:
+  health:
+    mail:
+      enabled: false
 
 fitloop:
   jwt:
     secret: test-secret-test-secret-test-secret
     ttl-seconds: 3600
+  admin:
+    key: test-admin-key
+  verification:
+    hash-secret: test-otp-hash-secret
+    debug-return: true
+  mail:
+    from: test@example.com

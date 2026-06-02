@@ -120,6 +120,18 @@ abstract class FitLoopApi {
 
   Future<Map<String, String>> sendSmsCode({required String phone});
 
+  Future<Map<String, String>> sendVerificationCode({
+    required String channel,
+    required String target,
+    required String purpose,
+  });
+
+  Future<void> resetPassword({
+    required String account,
+    required String code,
+    required String newPassword,
+  });
+
   Future<String> uploadSportPhoto({
     required String token,
     required String imagePath,
@@ -526,6 +538,38 @@ class HttpFitLoopApi implements FitLoopApi {
       if (data.containsKey('debugCode'))
         'debugCode': data['debugCode'] as String,
     };
+  }
+
+  @override
+  Future<Map<String, String>> sendVerificationCode({
+    required String channel,
+    required String target,
+    required String purpose,
+  }) async {
+    final body = await _post('/api/verification/send', {
+      'channel': channel,
+      'target': target,
+      'purpose': purpose,
+    });
+    final data = body['data'] as Map<String, dynamic>;
+    return {
+      'message': data['message'] as String,
+      if (data.containsKey('debugCode') && data['debugCode'] != null)
+        'debugCode': data['debugCode'] as String,
+    };
+  }
+
+  @override
+  Future<void> resetPassword({
+    required String account,
+    required String code,
+    required String newPassword,
+  }) async {
+    await _post('/api/auth/password/reset', {
+      'account': account,
+      'code': code,
+      'newPassword': newPassword,
+    });
   }
 
   @override
