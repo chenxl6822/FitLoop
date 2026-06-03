@@ -53,6 +53,11 @@ abstract class FitLoopApi {
     required double targetValue,
   });
 
+  Future<void> deleteTarget({
+    required String token,
+    required int targetId,
+  });
+
   Future<MedalSummary> medalSummary({required String token});
 
   Future<RankingResult> ranking({
@@ -288,6 +293,14 @@ class HttpFitLoopApi implements FitLoopApi {
     );
     final data = body['data'] as Map<String, dynamic>;
     return SportTarget.fromJson(data);
+  }
+
+  @override
+  Future<void> deleteTarget({
+    required String token,
+    required int targetId,
+  }) async {
+    await _delete('/api/targets/$targetId', token: token);
   }
 
   @override
@@ -604,7 +617,6 @@ class HttpFitLoopApi implements FitLoopApi {
   }
 
   Future<String> _safeFilePath(String imagePath) async {
-    // Try to handle content:// URIs by reading bytes to a temp file
     try {
       final file = File(imagePath);
       if (!await file.exists() && imagePath.startsWith('content://')) {
@@ -612,17 +624,33 @@ class HttpFitLoopApi implements FitLoopApi {
         // Fall through and let MultipartFile.fromPath handle it
         return imagePath;
       }
+      // Preserve original extension if valid, otherwise default to .jpg
+      String ext = '.jpg';
+      final lower = imagePath.toLowerCase();
+      if (lower.endsWith('.jpeg')) {
+        ext = '.jpeg';
+      } else if (lower.endsWith('.png')) {
+        ext = '.png';
+      } else if (lower.endsWith('.jpg')) {
+        ext = '.jpg';
+      }
       // For valid file paths, copy to temp to ensure clean upload
       final bytes = await file.readAsBytes();
       final dir = Directory.systemTemp;
       final tempFile = File(
-          '${dir.path}/fitloop_upload_${DateTime.now().millisecondsSinceEpoch}.jpg');
+          '${dir.path}/fitloop_upload_${DateTime.now().millisecondsSinceEpoch}$ext');
       await tempFile.writeAsBytes(bytes);
       return tempFile.path;
     } catch (_) {
       // If anything fails, return original path and let the upload try
       return imagePath;
     }
+  }
+
+  Future<Map<String, dynamic>> _delete(String path, {String? token}) async {
+    final request = await _client.deleteUrl(Uri.parse('$baseUrl$path'));
+    _setHeaders(request, token);
+    return _send(request);
   }
 
   Future<Map<String, dynamic>> _put(String path,

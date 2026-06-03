@@ -47,6 +47,16 @@ public class TargetService {
     }
 
     @Transactional
+    public void delete(Long userId, Long targetId) {
+        SportTarget target = targets.findByTargetIdAndUserId(targetId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("目标不存在"));
+        if ("deleted".equals(target.getStatus())) {
+            throw new IllegalArgumentException("目标已被删除");
+        }
+        target.setStatus("deleted");
+    }
+
+    @Transactional
     public void applySportRecord(SportRecord record) {
         LocalDate now = LocalDate.now();
         List<SportTarget> active = targets.findByUserIdAndStatusAndStartDateLessThanEqualAndEndDateGreaterThanEqual(

@@ -544,6 +544,14 @@ class _FakeApi implements FitLoopApi {
   }
 
   @override
+  Future<void> deleteTarget({
+    required String token,
+    required int targetId,
+  }) async {
+    _targets.removeWhere((t) => t.targetId == targetId);
+  }
+
+  @override
   Future<List<SportTarget>> currentTargets({required String token}) async {
     return List.of(_targets);
   }
