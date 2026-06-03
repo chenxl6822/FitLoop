@@ -21,11 +21,13 @@ import org.springframework.http.MediaType;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@TestPropertySource(properties = "fitloop.verification.debug-return=true")
 class FitLoopApiIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
@@ -114,7 +116,7 @@ class FitLoopApiIntegrationTest {
                                 "target", "fitloop-user@example.com",
                                 "purpose", "register"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.message").value("验证码已发送"))
+                .andExpect(jsonPath("$.data.message").value("验证码已生成（调试模式）"))
                 .andExpect(jsonPath("$.data.debugCode").isNotEmpty());
 
         verify(mailSender).send(any(SimpleMailMessage.class));

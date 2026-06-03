@@ -16,9 +16,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 @DataJpaTest
 @ActiveProfiles("test")
+@TestPropertySource(properties = "fitloop.verification.debug-return=true")
 @Import({
         UserService.class,
         SmsService.class,

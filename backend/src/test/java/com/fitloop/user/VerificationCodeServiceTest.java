@@ -12,9 +12,11 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 @DataJpaTest
 @ActiveProfiles("test")
+@TestPropertySource(properties = "fitloop.verification.debug-return=true")
 @Import({
         VerificationCodeService.class,
         PhoneVerificationCodeSender.class,
