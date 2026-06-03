@@ -91,7 +91,18 @@ public class VerificationCodeService {
         codes.save(entity);
 
         senderFor(normalizedChannel).send(normalizedTarget, code, normalizedPurpose);
-        return new VerificationCodeSendResult("验证码已发送", shouldReturnDebugCode() ? code : null);
+
+        String message;
+        if (shouldReturnDebugCode()) {
+            message = CHANNEL_PHONE.equals(normalizedChannel)
+                    ? "验证码已生成（内测模式）"
+                    : "验证码已生成（调试模式）";
+        } else if (CHANNEL_PHONE.equals(normalizedChannel)) {
+            throw new IllegalArgumentException("手机短信通道暂未开放，请使用邮箱验证码");
+        } else {
+            message = "验证码已发送到邮箱，请检查收件箱";
+        }
+        return new VerificationCodeSendResult(message, shouldReturnDebugCode() ? code : null);
     }
 
     @Transactional
@@ -211,7 +222,7 @@ public class VerificationCodeService {
             return false;
         }
         for (String profile : environment.getActiveProfiles()) {
-            if ("local".equals(profile) || "test".equals(profile)) {
+            if ("local".equals(profile) || "test".equals(profile) || "demo".equals(profile) || "staging".equals(profile)) {
                 return true;
             }
         }

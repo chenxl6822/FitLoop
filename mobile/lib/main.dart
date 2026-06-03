@@ -393,18 +393,24 @@ class _AuthPageState extends State<AuthPage> {
       _message = null;
     });
     try {
+      final channel = _channelForAccount(account);
       final result = await widget.api.sendVerificationCode(
-        channel: _channelForAccount(account),
+        channel: channel,
         target: account,
         purpose: _verificationPurpose(),
       );
       if (!mounted) return;
       final debugCode = result['debugCode'];
+      final serverMessage = result['message'] ?? '验证码已发送';
       setState(() {
         _countdown = 60;
-        _message = debugCode != null
-            ? '验证码已发送，测试验证码：$debugCode'
-            : '验证码已发送';
+        if (debugCode != null && channel == 'phone') {
+          _message = '内测验证码：$debugCode';
+        } else if (debugCode != null) {
+          _message = '调试验证码：$debugCode';
+        } else {
+          _message = serverMessage;
+        }
         _messageIsSuccess = true;
       });
       _startCountdown();
@@ -908,6 +914,39 @@ class _DashboardPageState extends State<DashboardPage> {
     return widget.api.targetReminders(token: widget.session.token);
   }
 
+  Future<void> _deleteTarget(SportTarget target) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除目标"${_metricLabel(target.metric)} ${_formatNumber(target.targetValue)}"吗？此操作不可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.api.deleteTarget(
+        token: widget.session.token,
+        targetId: target.targetId,
+      );
+      if (mounted) _refreshAll();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMsg(error))),
+      );
+    }
+  }
+
   Future<void> _showCreateTargetSheet() async {
     final created = await showModalBottomSheet<bool>(
       context: context,
@@ -1165,6 +1204,7 @@ class _DashboardPageState extends State<DashboardPage> {
               target: targets.isEmpty ? null : targets.first,
               onRefresh: _refreshAll,
               onCreate: _showCreateTargetSheet,
+              onDelete: targets.isNotEmpty ? () => _deleteTarget(targets.first) : null,
             );
           },
         ),
@@ -1323,6 +1363,7 @@ class _TargetSummaryCard extends StatelessWidget {
     required this.target,
     required this.onRefresh,
     required this.onCreate,
+    required this.onDelete,
   });
 
   final bool loading;
@@ -1330,6 +1371,7 @@ class _TargetSummaryCard extends StatelessWidget {
   final SportTarget? target;
   final VoidCallback onRefresh;
   final VoidCallback onCreate;
+  final Future<void> Function()? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -1368,7 +1410,7 @@ class _TargetSummaryCard extends StatelessWidget {
                     label: const Text('刷新'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: onCreate,
@@ -1376,6 +1418,17 @@ class _TargetSummaryCard extends StatelessWidget {
                     label: const Text('创建目标'),
                   ),
                 ),
+                if (target != null && onDelete != null) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: onDelete,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text(''),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
