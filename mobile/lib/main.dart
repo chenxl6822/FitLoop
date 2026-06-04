@@ -2395,7 +2395,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
     final h = totalSeconds ~/ 3600;
     final m = (totalSeconds % 3600) ~/ 60;
     final s = totalSeconds % 60;
-    if (h > 0) return '${h}时${m.toString().padLeft(2, '0')}分${s.toString().padLeft(2, '0')}秒';
+    if (h > 0) return '$h时${m.toString().padLeft(2, '0')}分${s.toString().padLeft(2, '0')}秒';
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
@@ -4032,7 +4032,7 @@ class _AdminFeedbackTabState extends State<_AdminFeedbackTab> {
                             );
                             _refresh();
                           } catch (e) {
-                            if (!mounted) return;
+                            if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text(friendlyErrorMsg(e))),
                             );
