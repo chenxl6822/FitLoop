@@ -34,6 +34,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/password/reset",
                                 "/api/user/register", "/api/sms/send", "/api/verification/send",
+                                "/api/config/features",
                                 "/actuator/health").permitAll()
                         .requestMatchers("/uploads/avatars/**", "/uploads/photos/**").permitAll()
                         .requestMatchers("/api/admin/**").access((authentication, context) ->

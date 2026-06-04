@@ -19,7 +19,7 @@ class WorkoutCountChartCard extends StatelessWidget {
     return _ChartCard(
       title: '本周运动次数',
       icon: Icons.bar_chart,
-      empty: maxValue == 0,
+      empty: points.isEmpty || maxValue == 0,
       child: BarChart(
         BarChartData(
           alignment: BarChartAlignment.spaceAround,
@@ -37,6 +37,7 @@ class WorkoutCountChartCard extends StatelessWidget {
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
+                interval: points.length > 7 ? (points.length / 7).ceilToDouble() : 1,
                 getTitlesWidget: (value, meta) =>
                     _weekdayLabel(points, value.toInt()),
               ),
@@ -81,7 +82,7 @@ class DistanceCalorieChartCard extends StatelessWidget {
     return _ChartCard(
       title: '里程 / 热量趋势',
       icon: Icons.show_chart,
-      empty: maxValue <= 0,
+      empty: points.isEmpty || maxValue <= 0,
       footer: '热量按 100 kcal 缩放显示',
       child: LineChart(
         LineChartData(
@@ -106,6 +107,7 @@ class DistanceCalorieChartCard extends StatelessWidget {
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
+                interval: points.length > 7 ? (points.length / 7).ceilToDouble() : 1,
                 getTitlesWidget: (value, meta) =>
                     _weekdayLabel(points, value.toInt()),
               ),
@@ -120,7 +122,7 @@ class DistanceCalorieChartCard extends StatelessWidget {
               isCurved: true,
               color: Theme.of(context).colorScheme.primary,
               barWidth: 3,
-              dotData: const FlDotData(show: false),
+              dotData: FlDotData(show: points.length <= 1),
             ),
             LineChartBarData(
               spots: [
@@ -130,7 +132,7 @@ class DistanceCalorieChartCard extends StatelessWidget {
               isCurved: true,
               color: Theme.of(context).colorScheme.tertiary,
               barWidth: 3,
-              dotData: const FlDotData(show: false),
+              dotData: FlDotData(show: points.length <= 1),
             ),
           ],
         ),
@@ -272,7 +274,7 @@ class _ChartCard extends StatelessWidget {
             SizedBox(
               height: 180,
               child: empty
-                  ? const Center(child: Text('暂无趋势数据'))
+                  ? const Center(child: Text('暂无数据，完成运动打卡后将在此展示趋势'))
                   : Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: child,

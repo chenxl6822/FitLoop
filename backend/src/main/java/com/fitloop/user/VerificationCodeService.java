@@ -41,15 +41,17 @@ public class VerificationCodeService {
     private final Clock clock;
     private final String hashSecret;
     private final boolean debugReturnEnabled;
+    private final boolean smsEnabled;
 
     @Autowired
     public VerificationCodeService(VerificationCodeRepository codes,
                                    List<VerificationCodeSender> senders,
                                    Environment environment,
                                    @Value("${fitloop.verification.hash-secret}") String hashSecret,
-                                   @Value("${fitloop.verification.debug-return:false}") boolean debugReturnEnabled) {
+                                   @Value("${fitloop.verification.debug-return:false}") boolean debugReturnEnabled,
+                                   @Value("${fitloop.sms.enabled:false}") boolean smsEnabled) {
         this(codes, senders, environment, new SecureRandom(), Clock.systemUTC(),
-                hashSecret, debugReturnEnabled);
+                hashSecret, debugReturnEnabled, smsEnabled);
     }
 
     VerificationCodeService(VerificationCodeRepository codes,
@@ -58,7 +60,8 @@ public class VerificationCodeService {
                             SecureRandom random,
                             Clock clock,
                             String hashSecret,
-                            boolean debugReturnEnabled) {
+                            boolean debugReturnEnabled,
+                            boolean smsEnabled) {
         this.codes = codes;
         this.senders = senders.stream()
                 .collect(Collectors.toMap(VerificationCodeSender::channel, Function.identity()));
@@ -67,6 +70,7 @@ public class VerificationCodeService {
         this.clock = clock;
         this.hashSecret = hashSecret;
         this.debugReturnEnabled = debugReturnEnabled;
+        this.smsEnabled = smsEnabled;
     }
 
     @Transactional
@@ -74,6 +78,12 @@ public class VerificationCodeService {
         String normalizedChannel = normalizeChannel(channel);
         String normalizedPurpose = normalizePurpose(purpose);
         String normalizedTarget = normalizeTarget(normalizedChannel, target);
+
+        // 手机验证码未开放时直接拒绝，不存储验证码
+        if (CHANNEL_PHONE.equals(normalizedChannel) && !smsEnabled && !shouldReturnDebugCode()) {
+            throw new IllegalArgumentException("手机短信通道暂未开放，请使用邮箱验证码");
+        }
+
         String requestIpHash = StringUtils.hasText(requestIp) ? hashIp(requestIp) : null;
         enforceRateLimit(normalizedChannel, normalizedTarget, normalizedPurpose, requestIpHash);
 
@@ -97,8 +107,6 @@ public class VerificationCodeService {
             message = CHANNEL_PHONE.equals(normalizedChannel)
                     ? "验证码已生成（内测模式）"
                     : "验证码已生成（调试模式）";
-        } else if (CHANNEL_PHONE.equals(normalizedChannel)) {
-            throw new IllegalArgumentException("手机短信通道暂未开放，请使用邮箱验证码");
         } else {
             message = "验证码已发送到邮箱，请检查收件箱";
         }

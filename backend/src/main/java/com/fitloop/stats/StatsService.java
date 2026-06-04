@@ -85,12 +85,11 @@ public class StatsService {
                         LinkedHashMap::new,
                         Collectors.toList()));
 
-        // 填充缺失日期
-        List<SportHistoryPoint> points = new ArrayList<>();
-        for (LocalDate d = start; !d.isAfter(today); d = d.plusDays(1)) {
-            List<SportRecord> dayRecords = byDate.getOrDefault(d, List.of());
-            points.add(aggregateDay(d, dayRecords));
-        }
+        // 只输出有运动记录的日期，不补零
+        List<SportHistoryPoint> points = byDate.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> aggregateDay(entry.getKey(), entry.getValue()))
+                .toList();
 
         return new SportHistoryResponse(
                 period == null ? "week" : period,

@@ -330,11 +330,15 @@ class _AuthPageState extends State<AuthPage> {
   int _countdown = 0;
   bool _rememberMe = true;
   Timer? _countdownTimer;
+  FeatureFlags? _features;
+
+  bool get _smsAvailable => _features?.smsEnabled ?? false;
 
   @override
   void initState() {
     super.initState();
     _loadSavedAccount();
+    _fetchFeatures();
   }
 
   Future<void> _loadSavedAccount() async {
@@ -342,6 +346,15 @@ class _AuthPageState extends State<AuthPage> {
     final saved = prefs.getString('saved_account');
     if (saved != null && saved.isNotEmpty) {
       _account.text = saved;
+    }
+  }
+
+  Future<void> _fetchFeatures() async {
+    try {
+      final features = await widget.api.fetchFeatureFlags();
+      if (mounted) setState(() => _features = features);
+    } catch (_) {
+      // 获取失败时使用默认值（SMS 不可用）
     }
   }
 
@@ -388,12 +401,19 @@ class _AuthPageState extends State<AuthPage> {
       });
       return;
     }
+    final channel = _channelForAccount(account);
+    if (channel == 'phone' && !_smsAvailable) {
+      setState(() {
+        _message = '手机验证码暂未开放，请使用邮箱验证码';
+        _messageIsSuccess = false;
+      });
+      return;
+    }
     setState(() {
       _busy = true;
       _message = null;
     });
     try {
-      final channel = _channelForAccount(account);
       final result = await widget.api.sendVerificationCode(
         channel: channel,
         target: account,
@@ -404,7 +424,7 @@ class _AuthPageState extends State<AuthPage> {
       final serverMessage = result['message'] ?? '验证码已发送';
       setState(() {
         _countdown = 60;
-        if (debugCode != null && channel == 'phone') {
+        if (debugCode != null && channel == 'phone' && _smsAvailable) {
           _message = '内测验证码：$debugCode';
         } else if (debugCode != null) {
           _message = '调试验证码：$debugCode';
@@ -632,6 +652,19 @@ class _AuthPageState extends State<AuthPage> {
                   prefixIcon: Icon(Icons.phone_android),
                   labelText: '手机号或邮箱'),
             ),
+            // 手机验证码未开放提示
+            if (isCodeLogin &&
+                _isPhoneAccount(_account.text.trim()) &&
+                !_smsAvailable) ...[
+              const SizedBox(height: 8),
+              Text(
+                '手机验证码暂未开放，请使用邮箱',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
+            ],
             // Password login: password field only
             if (!_registerMode && !_resetPasswordMode && !isCodeLogin) ...[
               const SizedBox(height: 12),
@@ -963,6 +996,23 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _showEditTargetSheet(SportTarget target) async {
+    final updated = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return _TargetFormSheet(
+          api: widget.api,
+          token: widget.session.token,
+          existingTarget: target,
+        );
+      },
+    );
+    if (updated == true && mounted) {
+      _refreshAll();
+    }
+  }
+
   String _todayString() {
     final now = DateTime.now();
     final month = now.month.toString().padLeft(2, '0');
@@ -1201,10 +1251,11 @@ class _DashboardPageState extends State<DashboardPage> {
             return _TargetSummaryCard(
               loading: snapshot.connectionState == ConnectionState.waiting,
               error: snapshot.error,
-              target: targets.isEmpty ? null : targets.first,
+              targets: targets,
               onRefresh: _refreshAll,
               onCreate: _showCreateTargetSheet,
-              onDelete: targets.isNotEmpty ? () => _deleteTarget(targets.first) : null,
+              onEdit: _showEditTargetSheet,
+              onDelete: (t) => _deleteTarget(t),
             );
           },
         ),
@@ -1360,36 +1411,23 @@ class _TargetSummaryCard extends StatelessWidget {
   const _TargetSummaryCard({
     required this.loading,
     required this.error,
-    required this.target,
+    required this.targets,
     required this.onRefresh,
     required this.onCreate,
+    required this.onEdit,
     required this.onDelete,
   });
 
   final bool loading;
   final Object? error;
-  final SportTarget? target;
+  final List<SportTarget> targets;
   final VoidCallback onRefresh;
   final VoidCallback onCreate;
-  final Future<void> Function()? onDelete;
+  final void Function(SportTarget)? onEdit;
+  final Future<void> Function(SportTarget)? onDelete;
 
   @override
   Widget build(BuildContext context) {
-    final target = this.target;
-    String value;
-    if (loading) {
-      value = '加载中';
-    } else if (error != null) {
-      value = friendlyErrorMsg(error);
-    } else if (target == null) {
-      value = '暂无进行中目标';
-    } else {
-      value =
-          '${_periodLabel(target.periodType)} ${_metricLabel(target.metric)}：'
-          '${_formatNumber(target.completedValue)} / ${_formatNumber(target.targetValue)}，'
-          '进度 ${target.progress.toStringAsFixed(1)}%';
-    }
-
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -1397,8 +1435,20 @@ class _TargetSummaryCard extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.flag_outlined),
             title: const Text('运动目标'),
-            subtitle: Text(value),
+            subtitle: loading
+                ? const Text('加载中')
+                : error != null
+                    ? Text(friendlyErrorMsg(error))
+                    : targets.isEmpty
+                        ? const Text('暂无进行中目标')
+                        : null,
           ),
+          if (!loading && error == null)
+            ...targets.map((target) => _TargetTile(
+                  target: target,
+                  onEdit: onEdit != null ? () => onEdit!(target) : null,
+                  onDelete: onDelete != null ? () => onDelete!(target) : null,
+                )),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Row(
@@ -1418,17 +1468,6 @@ class _TargetSummaryCard extends StatelessWidget {
                     label: const Text('创建目标'),
                   ),
                 ),
-                if (target != null && onDelete != null) ...[
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text(''),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -1438,25 +1477,88 @@ class _TargetSummaryCard extends StatelessWidget {
   }
 }
 
+class _TargetTile extends StatelessWidget {
+  const _TargetTile({
+    required this.target,
+    this.onEdit,
+    this.onDelete,
+  });
+
+  final SportTarget target;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final value =
+        '${_periodLabel(target.periodType)} ${_metricLabel(target.metric)}：'
+        '${_formatNumber(target.completedValue)} / ${_formatNumber(target.targetValue)}，'
+        '进度 ${target.progress.toStringAsFixed(1)}%';
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        child: ListTile(
+          dense: true,
+          title: Text(value, style: const TextStyle(fontSize: 13)),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (onEdit != null)
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  onPressed: onEdit,
+                  tooltip: '编辑',
+                ),
+              if (onDelete != null)
+                IconButton(
+                  icon: Icon(Icons.delete_outline, size: 18,
+                      color: Theme.of(context).colorScheme.error),
+                  onPressed: onDelete,
+                  tooltip: '删除',
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _TargetFormSheet extends StatefulWidget {
   const _TargetFormSheet({
     required this.api,
     required this.token,
+    this.existingTarget,
   });
 
   final FitLoopApi api;
   final String token;
+  final SportTarget? existingTarget;
 
   @override
   State<_TargetFormSheet> createState() => _TargetFormSheetState();
 }
 
 class _TargetFormSheetState extends State<_TargetFormSheet> {
-  final _value = TextEditingController(text: '3');
-  String _periodType = 'week';
-  String _metric = 'count';
+  late final TextEditingController _value;
+  late String _periodType;
+  late String _metric;
   bool _busy = false;
   String? _message;
+
+  bool get _isEditMode => widget.existingTarget != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.existingTarget;
+    _periodType = t?.periodType ?? 'week';
+    _metric = t?.metric ?? 'count';
+    _value = TextEditingController(
+      text: t != null ? _formatNumber(t.targetValue) : '3',
+    );
+  }
 
   @override
   void dispose() {
@@ -1475,12 +1577,22 @@ class _TargetFormSheetState extends State<_TargetFormSheet> {
       _message = null;
     });
     try {
-      await widget.api.createTarget(
-        token: widget.token,
-        periodType: _periodType,
-        metric: _metric,
-        targetValue: targetValue,
-      );
+      if (_isEditMode) {
+        await widget.api.editTarget(
+          token: widget.token,
+          targetId: widget.existingTarget!.targetId,
+          periodType: _periodType,
+          metric: _metric,
+          targetValue: targetValue,
+        );
+      } else {
+        await widget.api.createTarget(
+          token: widget.token,
+          periodType: _periodType,
+          metric: _metric,
+          targetValue: targetValue,
+        );
+      }
       if (mounted) {
         Navigator.of(context).pop(true);
       }
@@ -1504,7 +1616,7 @@ class _TargetFormSheetState extends State<_TargetFormSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              '创建运动目标',
+              _isEditMode ? '编辑运动目标' : '创建运动目标',
               style: Theme.of(context)
                   .textTheme
                   .titleLarge
@@ -1567,7 +1679,7 @@ class _TargetFormSheetState extends State<_TargetFormSheet> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.check),
-              label: const Text('保存目标'),
+              label: Text(_isEditMode ? '更新目标' : '保存目标'),
             ),
           ],
         ),
@@ -1663,29 +1775,43 @@ class _SportSessionPageState extends State<SportSessionPage> {
     super.dispose();
   }
 
+  bool _isOutdoorSport(String type) {
+    return {'running', 'cycling', 'walking'}.contains(type);
+  }
+
   Future<String?> _chooseCheckinMode() {
+    final outdoor = _isOutdoorSport(_selectedSportType);
     return showModalBottomSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (outdoor)
+            ListTile(
+              leading: const Icon(Icons.location_on),
+              title: const Text('GPS 定位打卡'),
+              subtitle: const Text('实时定位追踪轨迹'),
+              onTap: () => Navigator.pop(ctx, 'gps'),
+            ),
           ListTile(
-            leading: const Icon(Icons.location_on),
-            title: const Text('GPS 定位打卡'),
-            subtitle: const Text('适合跑步、骑行等室外运动'),
-            onTap: () => Navigator.pop(ctx, 'gps'),
+            leading: const Icon(Icons.timer_outlined),
+            title: const Text('计时打卡'),
+            subtitle: const Text('记录运动时长'),
+            onTap: () => Navigator.pop(ctx, 'timer'),
           ),
-          ListTile(
-            leading: const Icon(Icons.directions_walk),
-            title: const Text('传感器打卡'),
-            subtitle: const Text('计步器/跳绳计数'),
-            onTap: () => Navigator.pop(ctx, 'sensor'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.camera_alt),
-            title: const Text('拍照打卡'),
-            subtitle: const Text('上传运动照片作为凭证'),
-            onTap: () => Navigator.pop(ctx, 'photo'),
-          ),
+          if (!outdoor)
+            ListTile(
+              leading: const Icon(Icons.fitness_center),
+              title: const Text('次数打卡'),
+              subtitle: const Text('记录运动次数/组数'),
+              onTap: () => Navigator.pop(ctx, 'count'),
+            ),
+          if (!outdoor)
+            ListTile(
+              leading: const Icon(Icons.local_fire_department),
+              title: const Text('热量估算'),
+              subtitle: const Text('根据运动类型估算消耗'),
+              onTap: () => Navigator.pop(ctx, 'calorie'),
+            ),
           ListTile(
             leading: const Icon(Icons.edit),
             title: const Text('手动打卡'),
@@ -1821,11 +1947,20 @@ class _SportSessionPageState extends State<SportSessionPage> {
       });
       widget.onSportActiveChanged?.call(true);
     } catch (error) {
-      setState(() {
-        _status = friendlyErrorMsg(error);
-        _busy = false;
-        _photoUploading = false;
-      });
+      final msg = error.toString();
+      if (msg.contains('denied') || msg.contains('permission') || msg.contains('camera')) {
+        setState(() {
+          _status = '无法访问相机，请检查权限设置';
+          _busy = false;
+          _photoUploading = false;
+        });
+      } else {
+        setState(() {
+          _status = friendlyErrorMsg(error);
+          _busy = false;
+          _photoUploading = false;
+        });
+      }
     }
   }
 
@@ -3307,7 +3442,24 @@ class _ProfilePageState extends State<ProfilePage> {
                     MaterialPageRoute(
                       builder: (_) => SettingsPage(
                         session: widget.session,
+                        api: widget.api,
                         onLogout: widget.onLogout,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              ListTile(
+                leading: const Icon(Icons.feedback_outlined),
+                title: const Text('意见反馈'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => _FeedbackPage(
+                        api: widget.api,
+                        token: widget.session.token,
                       ),
                     ),
                   );
@@ -3354,9 +3506,10 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key, required this.session, this.onLogout});
+  const SettingsPage({super.key, required this.session, required this.api, this.onLogout});
 
   final UserSession session;
+  final FitLoopApi api;
   final VoidCallback? onLogout;
 
   @override
@@ -3408,6 +3561,12 @@ class SettingsPage extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
+            onPressed: () => _showAdminLogin(context),
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+            label: const Text('管理后台'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
             onPressed: () {
               Navigator.of(context).pop();
               onLogout?.call();
@@ -3417,6 +3576,545 @@ class SettingsPage extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: Theme.of(context).colorScheme.error,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAdminLogin(BuildContext context) {
+    final keyController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('管理后台'),
+        content: TextField(
+          controller: keyController,
+          obscureText: true,
+          decoration: const InputDecoration(
+            labelText: '管理员密钥',
+            hintText: '请输入 Admin Key',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              final key = keyController.text.trim();
+              if (key.isEmpty) return;
+              Navigator.pop(ctx);
+              // 验证 admin key
+              try {
+                await api.adminGetStats(adminKey: key);
+                if (!context.mounted) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => _AdminDashboardPage(
+                      api: api,
+                      adminKey: key,
+                    ),
+                  ),
+                );
+              } catch (e) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('管理后台访问失败: ${friendlyErrorMsg(e)}')),
+                );
+              }
+            },
+            child: const Text('进入'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminDashboardPage extends StatefulWidget {
+  const _AdminDashboardPage({required this.api, required this.adminKey});
+  final FitLoopApi api;
+  final String adminKey;
+
+  @override
+  State<_AdminDashboardPage> createState() => _AdminDashboardPageState();
+}
+
+class _AdminDashboardPageState extends State<_AdminDashboardPage> {
+  int _tabIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('管理后台')),
+      body: IndexedStack(
+        index: _tabIndex,
+        children: [
+          _AdminStatsTab(api: widget.api, adminKey: widget.adminKey),
+          _AdminUsersTab(api: widget.api, adminKey: widget.adminKey),
+          _AdminFeedbackTab(api: widget.api, adminKey: widget.adminKey),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (i) => setState(() => _tabIndex = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.dashboard), label: '概览'),
+          NavigationDestination(icon: Icon(Icons.people), label: '用户'),
+          NavigationDestination(icon: Icon(Icons.feedback), label: '反馈'),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminStatsTab extends StatelessWidget {
+  const _AdminStatsTab({required this.api, required this.adminKey});
+  final FitLoopApi api;
+  final String adminKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AdminStats>(
+      future: api.adminGetStats(adminKey: adminKey),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text(friendlyErrorMsg(snapshot.error)));
+        }
+        final stats = snapshot.data!;
+        return ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            _AdminStatCard(title: '总用户数', value: '${stats.totalUsers}'),
+            _AdminStatCard(title: '今日新增', value: '${stats.todayNewUsers}'),
+            _AdminStatCard(title: '总运动记录', value: '${stats.totalSportRecords}'),
+            _AdminStatCard(title: '今日打卡', value: '${stats.todayCheckins}'),
+            _AdminStatCard(
+                title: '待处理反馈', value: '${stats.pendingFeedbackCount}'),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _AdminStatCard extends StatelessWidget {
+  const _AdminStatCard({required this.title, required this.value});
+  final String title;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        title: Text(title),
+        trailing: Text(value,
+            style: Theme.of(context)
+                .textTheme
+                .headlineSmall
+                ?.copyWith(fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+}
+
+class _AdminUsersTab extends StatelessWidget {
+  const _AdminUsersTab({required this.api, required this.adminKey});
+  final FitLoopApi api;
+  final String adminKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AdminUserListResponse>(
+      future: api.adminListUsers(adminKey: adminKey),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text(friendlyErrorMsg(snapshot.error)));
+        }
+        final users = snapshot.data!.users;
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: users.length,
+          itemBuilder: (context, index) {
+            final u = users[index];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                title: Text(u.nickname),
+                subtitle: Text(u.email ?? u.phone ?? ''),
+                trailing: Text('ID: ${u.userId}'),
+                onTap: () async {
+                  try {
+                    final detail = await api.adminGetUserDetail(
+                        adminKey: adminKey, userId: u.userId);
+                    if (!context.mounted) return;
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: Text(detail.nickname),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('邮箱: ${detail.email ?? "-"}'),
+                            Text('手机: ${detail.phone ?? "-"}'),
+                            Text('运动记录: ${detail.sportRecordCount}'),
+                            Text('目标数: ${detail.targetCount}'),
+                            Text('注册时间: ${detail.createdAt ?? "-"}'),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('关闭'),
+                          ),
+                        ],
+                      ),
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(friendlyErrorMsg(e))),
+                    );
+                  }
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _AdminFeedbackTab extends StatefulWidget {
+  const _AdminFeedbackTab({required this.api, required this.adminKey});
+  final FitLoopApi api;
+  final String adminKey;
+
+  @override
+  State<_AdminFeedbackTab> createState() => _AdminFeedbackTabState();
+}
+
+class _AdminFeedbackTabState extends State<_AdminFeedbackTab> {
+  late Future<FeedbackListResponse> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.api.adminListFeedback(adminKey: widget.adminKey);
+  }
+
+  void _refresh() {
+    setState(() {
+      _future = widget.api.adminListFeedback(adminKey: widget.adminKey);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<FeedbackListResponse>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text(friendlyErrorMsg(snapshot.error)));
+        }
+        final feedbacks = snapshot.data!.feedbacks;
+        if (feedbacks.isEmpty) {
+          return const Center(child: Text('暂无反馈'));
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: feedbacks.length,
+          itemBuilder: (context, index) {
+            final f = feedbacks[index];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                title: Text(f.type == 'bug' ? '问题反馈' : (f.type == 'feature' ? '功能建议' : '其他')),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(f.content, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    Text('状态: ${f.status}',
+                        style: TextStyle(
+                            color: f.status == 'pending'
+                                ? Colors.orange
+                                : Colors.green,
+                            fontSize: 12)),
+                  ],
+                ),
+                trailing: f.status == 'pending'
+                    ? TextButton(
+                        onPressed: () async {
+                          try {
+                            await widget.api.adminUpdateFeedback(
+                              adminKey: widget.adminKey,
+                              feedbackId: f.feedbackId,
+                              status: 'reviewed',
+                              adminNote: '已查看',
+                            );
+                            _refresh();
+                          } catch (e) {
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(friendlyErrorMsg(e))),
+                            );
+                          }
+                        },
+                        child: const Text('标记已处理'),
+                      )
+                    : null,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _FeedbackPage extends StatefulWidget {
+  const _FeedbackPage({required this.api, required this.token});
+
+  final FitLoopApi api;
+  final String token;
+
+  @override
+  State<_FeedbackPage> createState() => _FeedbackPageState();
+}
+
+class _FeedbackPageState extends State<_FeedbackPage> {
+  final _content = TextEditingController();
+  final _contact = TextEditingController();
+  String _type = 'feature';
+  bool _busy = false;
+  String? _message;
+  bool _messageIsSuccess = false;
+  late Future<FeedbackListResponse> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.api.listFeedback(token: widget.token);
+  }
+
+  @override
+  void dispose() {
+    _content.dispose();
+    _contact.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final content = _content.text.trim();
+    if (content.isEmpty) {
+      setState(() {
+        _message = '请输入反馈内容';
+        _messageIsSuccess = false;
+      });
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.api.submitFeedback(
+        token: widget.token,
+        type: _type,
+        content: content,
+        contact: _contact.text.trim().isEmpty ? null : _contact.text.trim(),
+      );
+      _content.clear();
+      _contact.clear();
+      setState(() {
+        _message = '反馈提交成功，感谢您的建议！';
+        _messageIsSuccess = true;
+        _future = widget.api.listFeedback(token: widget.token);
+      });
+    } catch (error) {
+      setState(() {
+        _message = friendlyErrorMsg(error);
+        _messageIsSuccess = false;
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _typeLabel(String type) {
+    return switch (type) {
+      'bug' => '问题反馈',
+      'feature' => '功能建议',
+      _ => '其他',
+    };
+  }
+
+  String _statusLabel(String status) {
+    return switch (status) {
+      'pending' => '待处理',
+      'reviewed' => '已查看',
+      'closed' => '已关闭',
+      _ => status,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('意见反馈')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text('提交反馈',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _type,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.category_outlined),
+              labelText: '反馈类型',
+            ),
+            items: const [
+              DropdownMenuItem(value: 'feature', child: Text('功能建议')),
+              DropdownMenuItem(value: 'bug', child: Text('问题反馈')),
+              DropdownMenuItem(value: 'other', child: Text('其他')),
+            ],
+            onChanged:
+                _busy ? null : (value) => setState(() => _type = value ?? 'feature'),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _content,
+            maxLines: 4,
+            maxLength: 2000,
+            enabled: !_busy,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.edit_outlined),
+              labelText: '反馈内容',
+              hintText: '请描述您的建议或遇到的问题...',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _contact,
+            enabled: !_busy,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.mail_outline),
+              labelText: '联系方式（选填）',
+              hintText: '邮箱或手机号，方便我们回复',
+            ),
+          ),
+          if (_message != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _message!,
+              style: TextStyle(
+                color: _messageIsSuccess
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.error,
+                fontSize: 13,
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _busy ? null : _submit,
+            icon: _busy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send),
+            label: const Text('提交反馈'),
+          ),
+          const SizedBox(height: 32),
+          Text('我的反馈',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          FutureBuilder<FeedbackListResponse>(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Text(friendlyErrorMsg(snapshot.error),
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.error));
+              }
+              final feedbacks = snapshot.data?.feedbacks ?? [];
+              if (feedbacks.isEmpty) {
+                return const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: Text('暂无反馈记录')),
+                  ),
+                );
+              }
+              return Column(
+                children: feedbacks.map((f) => Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    title: Text(_typeLabel(f.type),
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        Text(f.content, maxLines: 3, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Chip(
+                              label: Text(_statusLabel(f.status),
+                                  style: const TextStyle(fontSize: 11)),
+                              padding: EdgeInsets.zero,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            const Spacer(),
+                            Text(
+                              f.createdAt.length >= 10
+                                  ? f.createdAt.substring(0, 10)
+                                  : f.createdAt,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
+                        ),
+                        if (f.adminNote != null && f.adminNote!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('回复：${f.adminNote}',
+                              style: TextStyle(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontSize: 12)),
+                        ],
+                      ],
+                    ),
+                  ),
+                )).toList(),
+              );
+            },
           ),
         ],
       ),

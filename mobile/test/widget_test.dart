@@ -177,7 +177,7 @@ void main() {
     await tester.scrollUntilVisible(find.text('体重趋势'), 300);
     await tester.pumpAndSettle();
     expect(find.text('体重趋势'), findsOneWidget);
-    expect(find.text('暂无趋势数据'), findsNWidgets(2));
+    expect(find.textContaining('暂无数据'), findsNWidgets(2));
 
     await tester.scrollUntilVisible(find.text('记录健康数据'), -300);
     await tester.pumpAndSettle();
@@ -200,7 +200,7 @@ void main() {
     expect(find.textContaining('饮食 清淡饮食'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('体重趋势'), 300);
     await tester.pumpAndSettle();
-    expect(find.text('暂无趋势数据'), findsOneWidget);
+    expect(find.textContaining('暂无数据'), findsOneWidget);
   });
 
   testWidgets('does not start GPS session when permission is denied forever',
@@ -803,5 +803,84 @@ class _FakeApi implements FitLoopApi {
     required String imagePath,
   }) async {
     return '/uploads/photos/test.jpg';
+  }
+
+  @override
+  Future<FeatureFlags> fetchFeatureFlags() async {
+    return const FeatureFlags(smsEnabled: false);
+  }
+
+  @override
+  Future<FeedbackItem> submitFeedback({
+    required String token,
+    required String type,
+    required String content,
+    String? contact,
+  }) async {
+    return FeedbackItem(
+      feedbackId: 1,
+      type: type,
+      content: content,
+      contact: contact,
+      status: 'pending',
+      adminNote: null,
+      createdAt: '2026-06-04',
+    );
+  }
+
+  @override
+  Future<FeedbackListResponse> listFeedback({required String token}) async {
+    return const FeedbackListResponse(feedbacks: []);
+  }
+
+  @override
+  Future<AdminStats> adminGetStats({required String adminKey}) async {
+    return const AdminStats(
+      totalUsers: 0, todayNewUsers: 0, totalSportRecords: 0,
+      todayCheckins: 0, pendingFeedbackCount: 0,
+    );
+  }
+
+  @override
+  Future<AdminUserListResponse> adminListUsers({
+    required String adminKey, int page = 0, int size = 20,
+  }) async {
+    return const AdminUserListResponse(users: [], total: 0);
+  }
+
+  @override
+  Future<AdminUserDetail> adminGetUserDetail({
+    required String adminKey, required int userId,
+  }) async {
+    return AdminUserDetail(
+      userId: userId, nickname: 'test', sportRecordCount: 0,
+      targetCount: 0, totalDurationSeconds: 0, totalDistanceKm: 0,
+    );
+  }
+
+  @override
+  Future<FeedbackListResponse> adminListFeedback({required String adminKey}) async {
+    return const FeedbackListResponse(feedbacks: []);
+  }
+
+  @override
+  Future<void> adminUpdateFeedback({
+    required String adminKey, required int feedbackId,
+    required String status, String? adminNote,
+  }) async {}
+
+  @override
+  Future<SportTarget> editTarget({
+    required String token,
+    required int targetId,
+    required String periodType,
+    required String metric,
+    required double targetValue,
+  }) async {
+    return SportTarget(
+      targetId: targetId, periodType: periodType, metric: metric,
+      targetValue: targetValue, completedValue: 0, progress: 0,
+      startDate: '2026-06-01', endDate: '2026-06-07', status: 'active',
+    );
   }
 }

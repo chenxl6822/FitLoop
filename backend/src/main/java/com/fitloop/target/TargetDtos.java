@@ -13,6 +13,10 @@ public final class TargetDtos {
                                       @Positive double targetValue) {
     }
 
+    public record UpdateTargetRequest(String periodType, String metric,
+                                      @Positive double targetValue) {
+    }
+
     public record TargetResponse(Long targetId, String periodType, String metric, double targetValue,
                                  double completedValue, double progress, LocalDate startDate,
                                  LocalDate endDate, String status) {

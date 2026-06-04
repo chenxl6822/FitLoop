@@ -41,6 +41,8 @@ fitloop:
     path: ${FITLOOP_UPLOAD_PATH:./uploads}
   mail:
     from: ${FITLOOP_MAIL_FROM:${FITLOOP_MAIL_USERNAME:}}
+  sms:
+    enabled: ${FITLOOP_SMS_ENABLED:false}
   verification:
     hash-secret: ${FITLOOP_OTP_HASH_SECRET:${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}}
     debug-return: ${FITLOOP_OTP_DEBUG_RETURN:false}

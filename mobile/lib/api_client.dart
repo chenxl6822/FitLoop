@@ -58,6 +58,14 @@ abstract class FitLoopApi {
     required int targetId,
   });
 
+  Future<SportTarget> editTarget({
+    required String token,
+    required int targetId,
+    required String periodType,
+    required String metric,
+    required double targetValue,
+  });
+
   Future<MedalSummary> medalSummary({required String token});
 
   Future<RankingResult> ranking({
@@ -140,6 +148,39 @@ abstract class FitLoopApi {
   Future<String> uploadSportPhoto({
     required String token,
     required String imagePath,
+  });
+
+  Future<FeatureFlags> fetchFeatureFlags();
+
+  Future<FeedbackItem> submitFeedback({
+    required String token,
+    required String type,
+    required String content,
+    String? contact,
+  });
+
+  Future<FeedbackListResponse> listFeedback({required String token});
+
+  Future<AdminStats> adminGetStats({required String adminKey});
+
+  Future<AdminUserListResponse> adminListUsers({
+    required String adminKey,
+    int page = 0,
+    int size = 20,
+  });
+
+  Future<AdminUserDetail> adminGetUserDetail({
+    required String adminKey,
+    required int userId,
+  });
+
+  Future<FeedbackListResponse> adminListFeedback({required String adminKey});
+
+  Future<void> adminUpdateFeedback({
+    required String adminKey,
+    required int feedbackId,
+    required String status,
+    String? adminNote,
   });
 }
 
@@ -301,6 +342,27 @@ class HttpFitLoopApi implements FitLoopApi {
     required int targetId,
   }) async {
     await _delete('/api/targets/$targetId', token: token);
+  }
+
+  @override
+  Future<SportTarget> editTarget({
+    required String token,
+    required int targetId,
+    required String periodType,
+    required String metric,
+    required double targetValue,
+  }) async {
+    final body = await _put(
+      '/api/targets/$targetId',
+      body: {
+        'periodType': periodType,
+        'metric': metric,
+        'targetValue': targetValue,
+      },
+      token: token,
+    );
+    final data = body['data'] as Map<String, dynamic>;
+    return SportTarget.fromJson(data);
   }
 
   @override
@@ -616,6 +678,43 @@ class HttpFitLoopApi implements FitLoopApi {
     }
   }
 
+  @override
+  Future<FeatureFlags> fetchFeatureFlags() async {
+    final body = await _get('/api/config/features');
+    final data = body['data'] as Map<String, dynamic>;
+    return FeatureFlags(
+      smsEnabled: data['smsEnabled'] as bool,
+    );
+  }
+
+  @override
+  Future<FeedbackItem> submitFeedback({
+    required String token,
+    required String type,
+    required String content,
+    String? contact,
+  }) async {
+    final body = await _post('/api/feedback', {
+      'type': type,
+      'content': content,
+      if (contact != null && contact.isNotEmpty) 'contact': contact,
+    }, token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    return FeedbackItem.fromJson(data);
+  }
+
+  @override
+  Future<FeedbackListResponse> listFeedback({required String token}) async {
+    final body = await _get('/api/feedback', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['feedbacks'] as List<dynamic>;
+    return FeedbackListResponse(
+      feedbacks: list
+          .map((e) => FeedbackItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
   Future<String> _safeFilePath(String imagePath) async {
     try {
       final file = File(imagePath);
@@ -698,6 +797,84 @@ class HttpFitLoopApi implements FitLoopApi {
     return '请求失败（$statusCode）';
   }
 
+  @override
+  Future<AdminStats> adminGetStats({required String adminKey}) async {
+    final body = await _adminGet('/api/admin/stats', adminKey: adminKey);
+    final data = body['data'] as Map<String, dynamic>;
+    return AdminStats.fromJson(data);
+  }
+
+  @override
+  Future<AdminUserListResponse> adminListUsers({
+    required String adminKey,
+    int page = 0,
+    int size = 20,
+  }) async {
+    final path = '/api/admin/users?page=$page&size=$size';
+    final body = await _adminGet(path, adminKey: adminKey);
+    final data = body['data'] as Map<String, dynamic>;
+    return AdminUserListResponse.fromJson(data);
+  }
+
+  @override
+  Future<AdminUserDetail> adminGetUserDetail({
+    required String adminKey,
+    required int userId,
+  }) async {
+    final body = await _adminGet('/api/admin/users/$userId', adminKey: adminKey);
+    final data = body['data'] as Map<String, dynamic>;
+    return AdminUserDetail.fromJson(data);
+  }
+
+  @override
+  Future<FeedbackListResponse> adminListFeedback({required String adminKey}) async {
+    final body = await _adminGet('/api/admin/feedback', adminKey: adminKey);
+    final data = body['data'] as Map<String, dynamic>;
+    final list = data['feedbacks'] as List<dynamic>;
+    return FeedbackListResponse(
+      feedbacks: list
+          .map((e) => FeedbackItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  @override
+  Future<void> adminUpdateFeedback({
+    required String adminKey,
+    required int feedbackId,
+    required String status,
+    String? adminNote,
+  }) async {
+    await _adminPut(
+      '/api/admin/feedback/$feedbackId',
+      adminKey: adminKey,
+      body: {
+        'status': status,
+        if (adminNote != null) 'adminNote': adminNote,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _adminGet(String path, {required String adminKey}) async {
+    final request = await _client.getUrl(Uri.parse('$baseUrl$path'));
+    _setAdminHeaders(request, adminKey);
+    return _send(request);
+  }
+
+  Future<Map<String, dynamic>> _adminPut(String path,
+      {required String adminKey, Map<String, dynamic>? body}) async {
+    final request = await _client.putUrl(Uri.parse('$baseUrl$path'));
+    _setAdminHeaders(request, adminKey);
+    request.write(jsonEncode(body ?? <String, dynamic>{}));
+    return _send(request);
+  }
+
+  void _setAdminHeaders(HttpClientRequest request, String adminKey) {
+    request.headers.contentType = ContentType.json;
+    request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
+    request.headers.set('X-Admin-Key', adminKey);
+  }
+
   Future<Map<String, dynamic>> _send(HttpClientRequest request) async {
     try {
       final response = await request.close();
@@ -720,6 +897,169 @@ class HttpFitLoopApi implements FitLoopApi {
       throw ApiException('服务器响应异常，请稍后重试');
     }
   }
+}
+
+class FeatureFlags {
+  const FeatureFlags({required this.smsEnabled});
+
+  final bool smsEnabled;
+}
+
+class FeedbackItem {
+  const FeedbackItem({
+    required this.feedbackId,
+    required this.type,
+    required this.content,
+    this.contact,
+    required this.status,
+    this.adminNote,
+    required this.createdAt,
+  });
+
+  factory FeedbackItem.fromJson(Map<String, dynamic> json) {
+    return FeedbackItem(
+      feedbackId: json['feedbackId'] as int,
+      type: json['type'] as String,
+      content: json['content'] as String,
+      contact: json['contact'] as String?,
+      status: json['status'] as String,
+      adminNote: json['adminNote'] as String?,
+      createdAt: json['createdAt'] as String,
+    );
+  }
+
+  final int feedbackId;
+  final String type;
+  final String content;
+  final String? contact;
+  final String status;
+  final String? adminNote;
+  final String createdAt;
+}
+
+class FeedbackListResponse {
+  const FeedbackListResponse({required this.feedbacks});
+
+  final List<FeedbackItem> feedbacks;
+}
+
+class AdminStats {
+  const AdminStats({
+    required this.totalUsers,
+    required this.todayNewUsers,
+    required this.totalSportRecords,
+    required this.todayCheckins,
+    required this.pendingFeedbackCount,
+  });
+
+  factory AdminStats.fromJson(Map<String, dynamic> json) {
+    return AdminStats(
+      totalUsers: json['totalUsers'] as int,
+      todayNewUsers: json['todayNewUsers'] as int,
+      totalSportRecords: json['totalSportRecords'] as int,
+      todayCheckins: json['todayCheckins'] as int,
+      pendingFeedbackCount: json['pendingFeedbackCount'] as int,
+    );
+  }
+
+  final int totalUsers;
+  final int todayNewUsers;
+  final int totalSportRecords;
+  final int todayCheckins;
+  final int pendingFeedbackCount;
+}
+
+class AdminUserListItem {
+  const AdminUserListItem({
+    required this.userId,
+    required this.nickname,
+    this.phone,
+    this.email,
+    this.points,
+    this.level,
+    this.createdAt,
+  });
+
+  factory AdminUserListItem.fromJson(Map<String, dynamic> json) {
+    return AdminUserListItem(
+      userId: json['userId'] as int,
+      nickname: json['nickname'] as String,
+      phone: json['phone'] as String?,
+      email: json['email'] as String?,
+      points: json['points'] as int?,
+      level: json['level'] as int?,
+      createdAt: json['createdAt'] as String?,
+    );
+  }
+
+  final int userId;
+  final String nickname;
+  final String? phone;
+  final String? email;
+  final int? points;
+  final int? level;
+  final String? createdAt;
+}
+
+class AdminUserListResponse {
+  const AdminUserListResponse({
+    required this.users,
+    required this.total,
+  });
+
+  factory AdminUserListResponse.fromJson(Map<String, dynamic> json) {
+    final list = json['users'] as List<dynamic>;
+    return AdminUserListResponse(
+      users: list
+          .map((e) => AdminUserListItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      total: json['total'] as int,
+    );
+  }
+
+  final List<AdminUserListItem> users;
+  final int total;
+}
+
+class AdminUserDetail {
+  const AdminUserDetail({
+    required this.userId,
+    required this.nickname,
+    this.phone,
+    this.email,
+    this.avatarUrl,
+    this.createdAt,
+    required this.sportRecordCount,
+    required this.targetCount,
+    required this.totalDurationSeconds,
+    required this.totalDistanceKm,
+  });
+
+  factory AdminUserDetail.fromJson(Map<String, dynamic> json) {
+    return AdminUserDetail(
+      userId: json['userId'] as int,
+      nickname: json['nickname'] as String,
+      phone: json['phone'] as String?,
+      email: json['email'] as String?,
+      avatarUrl: json['avatarUrl'] as String?,
+      createdAt: json['createdAt'] as String?,
+      sportRecordCount: json['sportRecordCount'] as int,
+      targetCount: json['targetCount'] as int,
+      totalDurationSeconds: json['totalDurationSeconds'] as int,
+      totalDistanceKm: (json['totalDistanceKm'] as num).toDouble(),
+    );
+  }
+
+  final int userId;
+  final String nickname;
+  final String? phone;
+  final String? email;
+  final String? avatarUrl;
+  final String? createdAt;
+  final int sportRecordCount;
+  final int targetCount;
+  final int totalDurationSeconds;
+  final double totalDistanceKm;
 }
 
 class ApiException implements Exception {

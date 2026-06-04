@@ -66,8 +66,7 @@ class StatsHistoryTest {
     @Test
     void sportHistoryShouldReturnEmptyForNoRecords() {
         SportHistoryResponse result = statsService.sportHistory(USER_ID, "week", "all");
-        assertThat(result.points()).isNotEmpty(); // 有日期只是全 0
-        assertThat(result.points().stream().allMatch(p -> p.count() == 0)).isTrue();
+        assertThat(result.points()).isEmpty(); // 无记录时不补零
     }
 
     @Test

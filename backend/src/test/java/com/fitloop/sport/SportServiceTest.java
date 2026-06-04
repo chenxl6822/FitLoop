@@ -1,6 +1,7 @@
 package com.fitloop.sport;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 
@@ -76,5 +77,13 @@ class SportServiceTest {
         assertThat(record.status()).isEqualTo(SportRecord.STATUS_VALID);
         assertThat(record.distanceKm()).isZero();
         assertThat(record.calorie()).isGreaterThan(0);
+    }
+
+    @Test
+    void rejectsGpsForIndoorSport() {
+        assertThatThrownBy(() ->
+                sportService.start(USER_ID, new StartSessionRequest("rope_skipping", "gps")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("不支持");
     }
 }

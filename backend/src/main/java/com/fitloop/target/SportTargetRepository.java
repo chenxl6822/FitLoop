@@ -10,4 +10,6 @@ public interface SportTargetRepository extends JpaRepository<SportTarget, Long> 
             Long userId, String status, LocalDate from, LocalDate to);
 
     Optional<SportTarget> findByTargetIdAndUserId(Long targetId, Long userId);
+
+    long countByUserId(Long userId);
 }

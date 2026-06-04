@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -49,8 +50,24 @@ public class SportService {
         this.photoDir = Paths.get(photoDir).toAbsolutePath().normalize();
     }
 
+    private static final Map<String, Set<String>> SPORT_CHECKIN_MODES = Map.of(
+            "running", Set.of("gps", "timer", "manual", "sensor"),
+            "walking", Set.of("gps", "timer", "manual", "sensor"),
+            "cycling", Set.of("gps", "timer", "manual", "sensor"),
+            "rope_skipping", Set.of("timer", "sensor", "count", "manual", "calorie"),
+            "custom", Set.of("timer", "sensor", "count", "manual", "calorie", "gps", "photo")
+    );
+
     @Transactional
     public StartSessionResponse start(Long userId, StartSessionRequest request) {
+        // 校验打卡方式是否匹配运动类型
+        Set<String> allowedModes = SPORT_CHECKIN_MODES.getOrDefault(
+                request.sportType(), Set.of("timer", "manual"));
+        if (!allowedModes.contains(request.checkinMode())) {
+            throw new IllegalArgumentException(
+                    "运动类型\"" + request.sportType() + "\"不支持\"" + request.checkinMode() + "\"打卡方式");
+        }
+
         SportRecord record = new SportRecord();
         record.setUserId(userId);
         record.setSessionId(UUID.randomUUID().toString());

@@ -23,4 +23,8 @@ public interface SportRecordRepository extends JpaRepository<SportRecord, Long> 
                                        @Param("status") int status,
                                        @Param("start") Instant start,
                                        @Param("end") Instant end);
+
+    long countByUserId(Long userId);
+
+    long countByStartedAtAfter(Instant after);
 }
