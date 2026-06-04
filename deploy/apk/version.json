@@ -1,8 +1,8 @@
 {
-    "buildDate":  "2026-06-03",
+    "buildDate":  "2026-06-04",
     "version":  "0.1.0",
-    "versionCode":  2,
+    "versionCode":  3,
     "apiBaseUrl":  "http://43.139.72.25",
     "minSdkVersion":  "Android 8.0 (API 26)",
-    "size":  "66.5 MB"
+    "size":  "66.7 MB"
 }
