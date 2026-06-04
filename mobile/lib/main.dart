@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -1751,6 +1752,17 @@ class _SportSessionPageState extends State<SportSessionPage> {
   StreamSubscription<Position>? _positionSubscription;
   int _trackPointCount = 0;
   int _trackingGeneration = 0;
+  // GPS 实时状态
+  double? _currentLat;
+  double? _currentLng;
+  double? _currentAccuracy;
+  double _totalDistanceKm = 0;
+  double? _lastLat;
+  double? _lastLng;
+  double? _currentSpeedMs;
+  bool _isPaused = false;
+  Timer? _elapsedTimer;
+  int _activeSeconds = 0;
   Future<AppealListResponse>? _appealFuture;
 
   String _selectedSportType = 'running';
@@ -1768,6 +1780,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
     _positionSubscription?.cancel();
     _stepSubscription?.cancel();
     _pedometerService?.dispose();
+    _elapsedTimer?.cancel();
     _durationController.dispose();
     _distanceController.dispose();
     _calorieController.dispose();
@@ -1861,11 +1874,21 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _sessionId = start.sessionId;
         _startedAt = startedAt;
         _trackPointCount = 0;
+        _totalDistanceKm = 0;
+        _lastLat = null;
+        _lastLng = null;
+        _currentSpeedMs = null;
+        _currentLat = null;
+        _currentLng = null;
+        _currentAccuracy = null;
+        _isPaused = false;
+        _activeSeconds = 0;
         _status = 'GPS 打卡进行中，正在获取位置...';
         _busy = false;
       });
       widget.onSportActiveChanged?.call(true);
       _startGpsTracking(start.sessionId);
+      _startElapsedTimer();
     } catch (error) {
       setState(() {
         _status = friendlyErrorMsg(error);
@@ -2052,12 +2075,20 @@ class _SportSessionPageState extends State<SportSessionPage> {
             '，步数 $_stepCount，距离 ${distanceKm?.toStringAsFixed(2) ?? "0"} km';
       }
 
+      _elapsedTimer?.cancel();
+      _elapsedTimer = null;
       setState(() {
         _sessionId = null;
         _startedAt = null;
         _trackPointCount = 0;
         _stepCount = 0;
         _photoUrl = null;
+        _isPaused = false;
+        _activeSeconds = 0;
+        _totalDistanceKm = 0;
+        _currentLat = null;
+        _currentLng = null;
+        _currentSpeedMs = null;
         _lastRecord = record;
         _status = statusMsg;
         if (record.status == _statusAbnormal) {
@@ -2080,12 +2111,20 @@ class _SportSessionPageState extends State<SportSessionPage> {
         );
         await SyncQueue.enqueueFinish(pending);
         if (!mounted) return;
+        _elapsedTimer?.cancel();
+        _elapsedTimer = null;
         setState(() {
           _sessionId = null;
           _startedAt = null;
           _trackPointCount = 0;
           _stepCount = 0;
           _photoUrl = null;
+          _isPaused = false;
+          _activeSeconds = 0;
+          _totalDistanceKm = 0;
+          _currentLat = null;
+          _currentLng = null;
+          _currentSpeedMs = null;
           _status = '网络暂时不可用，已加入离线同步队列，联网后自动提交';
         });
         widget.onSportActiveChanged?.call(false);
@@ -2235,6 +2274,19 @@ class _SportSessionPageState extends State<SportSessionPage> {
     return true;
   }
 
+  /// Haversine 公式计算两点间距离 (km)
+  double _haversineKm(double lat1, double lng1, double lat2, double lng2) {
+    const r = 6371.0;
+    final dLat = _degToRad(lat2 - lat1);
+    final dLng = _degToRad(lng2 - lng1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_degToRad(lat1)) * cos(_degToRad(lat2)) *
+            sin(dLng / 2) * sin(dLng / 2);
+    return r * 2 * atan2(sqrt(a), sqrt(1 - a));
+  }
+
+  double _degToRad(double deg) => deg * pi / 180.0;
+
   void _startGpsTracking(String sessionId) {
     const throttleSeconds = 5;
     DateTime? lastUpload;
@@ -2247,50 +2299,112 @@ class _SportSessionPageState extends State<SportSessionPage> {
         distanceFilter: 10,
       ),
     )
-        .listen((position) async {
-      if (!_isCurrentTrackingSession(generation, sessionId)) {
+        .listen((position) {
+      if (!_isCurrentTrackingSession(generation, sessionId) || _isPaused) {
         return;
       }
       final now = DateTime.now();
+
+      // 更新实时位置和精度
+      if (mounted) {
+        setState(() {
+          _currentLat = position.latitude;
+          _currentLng = position.longitude;
+          _currentAccuracy = position.accuracy;
+        });
+      }
+
       if (!_hasUsableAccuracy(position)) {
         if (mounted) {
           setState(() {
             _status =
-                'GPS精度不足，已忽略本次轨迹点（${position.accuracy.toStringAsFixed(1)}m）';
+                'GPS精度不足 (${position.accuracy.toStringAsFixed(1)}m)，已忽略';
           });
         }
         return;
       }
+
+      // 计算实时距离增量
+      if (_lastLat != null && _lastLng != null) {
+        final segKm = _haversineKm(
+            _lastLat!, _lastLng!, position.latitude, position.longitude);
+        if (mounted) {
+          setState(() => _totalDistanceKm += segKm);
+        }
+      }
+      _lastLat = position.latitude;
+      _lastLng = position.longitude;
+
+      // 计算当前速度 (m/s)
+      if (position.speed >= 0) {
+        if (mounted) setState(() => _currentSpeedMs = position.speed);
+      }
+
+      // 节流上传
       if (lastUpload != null &&
           now.difference(lastUpload!).inSeconds < throttleSeconds) {
         return;
       }
       lastUpload = now;
 
-      try {
-        await _uploadTrackPoint(sessionId, position);
-        if (!_isCurrentTrackingSession(generation, sessionId)) {
-          return;
-        }
+      // 异步上传到后端
+      _uploadTrackPoint(sessionId, position).then((_) {
+        if (!_isCurrentTrackingSession(generation, sessionId)) return;
         _trackPointCount++;
         if (mounted) {
           setState(() {
             _status = 'GPS 打卡进行中，已上传 $_trackPointCount 个轨迹点';
           });
         }
-      } catch (error) {
+      }).catchError((error) {
         if (mounted) {
           setState(() => _status = 'GPS轨迹点上传失败：${friendlyErrorMsg(error)}');
         }
-      }
+      });
     }, onError: (Object error) {
-      if (!_isCurrentTrackingSession(generation, sessionId)) {
-        return;
-      }
+      if (!_isCurrentTrackingSession(generation, sessionId)) return;
       if (mounted) {
         setState(() => _status = 'GPS定位失败：${friendlyErrorMsg(error)}');
       }
     });
+  }
+
+  void _startElapsedTimer() {
+    _elapsedTimer?.cancel();
+    _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_isPaused || !mounted) return;
+      setState(() => _activeSeconds++);
+    });
+  }
+
+  void _togglePause() {
+    if (!_isPaused) {
+      setState(() {
+        _isPaused = true;
+        _status = 'GPS 打卡已暂停';
+      });
+    } else {
+      setState(() {
+        _isPaused = false;
+        _status = 'GPS 打卡进行中，已上传 $_trackPointCount 个轨迹点';
+      });
+    }
+  }
+
+  String _formatDuration(int totalSeconds) {
+    final h = totalSeconds ~/ 3600;
+    final m = (totalSeconds % 3600) ~/ 60;
+    final s = totalSeconds % 60;
+    if (h > 0) return '${h}时${m.toString().padLeft(2, '0')}分${s.toString().padLeft(2, '0')}秒';
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  String _formatPace(int totalSeconds, double distanceKm) {
+    if (distanceKm < 0.01) return '--';
+    final paceSeconds = totalSeconds / distanceKm;
+    final paceMin = paceSeconds ~/ 60;
+    final paceSec = (paceSeconds % 60).toInt();
+    return '$paceMin\'${paceSec.toString().padLeft(2, '0')}"';
   }
 
   bool _isCurrentTrackingSession(int generation, String sessionId) {
@@ -2304,6 +2418,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
     if (subscription != null) {
       unawaited(subscription.cancel());
     }
+    _elapsedTimer?.cancel();
+    _elapsedTimer = null;
     return Future.value();
   }
 
@@ -2392,6 +2508,54 @@ class _SportSessionPageState extends State<SportSessionPage> {
                 ? _checkinModeLabel(_selectedCheckinMode)
                 : 'GPS / 传感器 / 拍照 / 手动',
             icon: Icons.tune_outlined),
+        // GPS 实时指标
+        if (running && _selectedCheckinMode == 'gps') ...[
+          _MetricCard(
+              label: '已用时间',
+              value: _formatDuration(_activeSeconds),
+              icon: Icons.timer_outlined),
+          if (_currentLat != null)
+            _MetricCard(
+                label: '当前位置',
+                value: '${_currentLat!.toStringAsFixed(5)}, ${_currentLng!.toStringAsFixed(5)}',
+                icon: Icons.my_location),
+          _MetricCard(
+              label: '轨迹点数',
+              value: '$_trackPointCount 个',
+              icon: Icons.route_outlined),
+          _MetricCard(
+              label: '估算距离',
+              value: '${_totalDistanceKm.toStringAsFixed(2)} km',
+              icon: Icons.straighten_outlined),
+          if (_currentSpeedMs != null)
+            _MetricCard(
+                label: '当前速度',
+                value: '${(_currentSpeedMs! * 3.6).toStringAsFixed(1)} km/h',
+                icon: Icons.speed_outlined),
+          _MetricCard(
+              label: '平均配速',
+              value: _formatPace(_activeSeconds, _totalDistanceKm),
+              icon: Icons.trending_down_outlined),
+          if (_currentAccuracy != null && _currentAccuracy! > _maxAcceptedAccuracyMeters)
+            _MetricCard(
+                label: 'GPS 精度',
+                value: '${_currentAccuracy!.toStringAsFixed(1)}m（信号弱）',
+                icon: Icons.warning_amber_outlined),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _togglePause,
+                    icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
+                    label: Text(_isPaused ? '继续' : '暂停'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         if (running && _selectedCheckinMode == 'sensor') ...[
           _MetricCard(
               label: '当前步数',
