@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'api_config.dart';
 import 'api_client.dart';
 import 'fitloop_assets.dart';
 import 'onboarding_screen.dart';
@@ -14,6 +15,17 @@ import 'reminder_scheduler.dart';
 import 'splash_screen.dart';
 import 'stats_charts.dart';
 import 'sync_queue.dart';
+
+String? _resolveMediaUrl(String? url) {
+  if (url == null || url.isEmpty) return url;
+  final parsed = Uri.tryParse(url);
+  if (parsed != null && parsed.hasScheme) return url;
+  if (!url.startsWith('/')) return url;
+  final base = ApiConfig.baseUrl.endsWith('/')
+      ? ApiConfig.baseUrl.substring(0, ApiConfig.baseUrl.length - 1)
+      : ApiConfig.baseUrl;
+  return '$base$url';
+}
 
 const _kOnboardingDoneKey = 'onboarding_done';
 
@@ -52,7 +64,9 @@ String friendlyErrorMsg(dynamic error) {
     return '无法解析服务器地址，请检查网络配置';
   }
   // TLS/证书错误
-  if (msg.contains('TLS') || msg.contains('SSL') || msg.contains('Certificate')) {
+  if (msg.contains('TLS') ||
+      msg.contains('SSL') ||
+      msg.contains('Certificate')) {
     return '安全连接失败，请稍后重试';
   }
   // 认证相关（非网络）
@@ -564,7 +578,8 @@ class _AuthPageState extends State<AuthPage> {
           code: _code.text.trim(),
         );
       }
-      final loginType = _loginTab == 'code' && !_registerMode ? 'code' : 'password';
+      final loginType =
+          _loginTab == 'code' && !_registerMode ? 'code' : 'password';
       final session = await widget.api.login(
         account: account,
         password: loginType == 'password' ? _password.text : null,
@@ -594,9 +609,8 @@ class _AuthPageState extends State<AuthPage> {
   @override
   Widget build(BuildContext context) {
     final isCodeLogin = _loginTab == 'code';
-    final showCodeInput = _resetPasswordMode ||
-        (!_registerMode && isCodeLogin) ||
-        _registerMode;
+    final showCodeInput =
+        _resetPasswordMode || (!_registerMode && isCodeLogin) || _registerMode;
     return Scaffold(
       body: SafeArea(
         child: ListView(
@@ -650,8 +664,7 @@ class _AuthPageState extends State<AuthPage> {
               autofocus: true,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.phone_android),
-                  labelText: '手机号或邮箱'),
+                  prefixIcon: Icon(Icons.phone_android), labelText: '手机号或邮箱'),
             ),
             // 手机验证码未开放提示
             if (isCodeLogin &&
@@ -953,7 +966,8 @@ class _DashboardPageState extends State<DashboardPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('确认删除'),
-        content: Text('确定要删除目标"${_metricLabel(target.metric)} ${_formatNumber(target.targetValue)}"吗？此操作不可恢复。'),
+        content: Text(
+            '确定要删除目标"${_metricLabel(target.metric)} ${_formatNumber(target.targetValue)}"吗？此操作不可恢复。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -1021,6 +1035,24 @@ class _DashboardPageState extends State<DashboardPage> {
     return '${now.year}-$month-$day';
   }
 
+  String _dateKey(DateTime date) {
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '${date.year}-$month-$day';
+  }
+
+  List<DateTime> _currentWeekDays() {
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - DateTime.monday));
+    return List.generate(7, (index) => start.add(Duration(days: index)));
+  }
+
+  String _weekdayLabel(DateTime date) {
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return labels[date.weekday - 1];
+  }
+
   @override
   Widget build(BuildContext context) {
     final today = _todayString();
@@ -1057,8 +1089,7 @@ class _DashboardPageState extends State<DashboardPage> {
           future: _historyFuture,
           builder: (context, snapshot) {
             final points = snapshot.data?.points ?? [];
-            final todayPoint =
-                points.where((p) => p.date == today).firstOrNull;
+            final todayPoint = points.where((p) => p.date == today).firstOrNull;
             final hasData = todayPoint != null && todayPoint.count > 0;
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -1121,6 +1152,9 @@ class _DashboardPageState extends State<DashboardPage> {
           future: _historyFuture,
           builder: (context, snapshot) {
             final points = snapshot.data?.points ?? [];
+            final pointByDate = {
+              for (final point in points) point.date: point,
+            };
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
               child: Padding(
@@ -1142,15 +1176,24 @@ class _DashboardPageState extends State<DashboardPage> {
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: points.map((p) {
-                        final hasActivity = p.count > 0;
-                        final date = DateTime.tryParse(p.date);
-                        final dayLabel = date != null
-                            ? '${date.month}/${date.day}'
-                            : p.date;
-                        final isToday = p.date == today;
+                      children: _currentWeekDays().map((date) {
+                        final key = _dateKey(date);
+                        final point = pointByDate[key];
+                        final hasActivity = (point?.count ?? 0) > 0;
+                        final dayLabel = '${date.month}/${date.day}';
+                        final isToday = key == today;
                         return Column(
                           children: [
+                            Text(_weekdayLabel(date),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: isToday
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                )),
+                            const SizedBox(height: 2),
                             Text(dayLabel,
                                 style: TextStyle(
                                     fontSize: 11,
@@ -1167,8 +1210,20 @@ class _DashboardPageState extends State<DashboardPage> {
                               decoration: BoxDecoration(
                                 color: hasActivity
                                     ? Theme.of(context).colorScheme.primary
-                                    : Colors.grey.shade200,
+                                    : (isToday
+                                        ? Theme.of(context)
+                                            .colorScheme
+                                            .primaryContainer
+                                        : Colors.grey.shade200),
                                 shape: BoxShape.circle,
+                                border: isToday
+                                    ? Border.all(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary,
+                                        width: 2,
+                                      )
+                                    : null,
                               ),
                               child: hasActivity
                                   ? const Icon(Icons.check,
@@ -1225,8 +1280,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       child: _QuickAction(
                         icon: Icons.directions_run,
                         label: '开始打卡',
-                        onTap: () =>
-                            widget.onNavigateToTab?.call(1),
+                        onTap: () => widget.onNavigateToTab?.call(1),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1234,8 +1288,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       child: _QuickAction(
                         icon: Icons.bar_chart,
                         label: '查看统计',
-                        onTap: () =>
-                            widget.onNavigateToTab?.call(2),
+                        onTap: () => widget.onNavigateToTab?.call(2),
                       ),
                     ),
                   ],
@@ -1464,6 +1517,7 @@ class _TargetSummaryCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton.icon(
+                    key: const Key('target-create-button'),
                     onPressed: onCreate,
                     icon: const Icon(Icons.add),
                     label: const Text('创建目标'),
@@ -1513,8 +1567,8 @@ class _TargetTile extends StatelessWidget {
                 ),
               if (onDelete != null)
                 IconButton(
-                  icon: Icon(Icons.delete_outline, size: 18,
-                      color: Theme.of(context).colorScheme.error),
+                  icon: Icon(Icons.delete_outline,
+                      size: 18, color: Theme.of(context).colorScheme.error),
                   onPressed: onDelete,
                   tooltip: '删除',
                 ),
@@ -1673,6 +1727,7 @@ class _TargetFormSheetState extends State<_TargetFormSheet> {
             ],
             const SizedBox(height: 16),
             FilledButton.icon(
+              key: const Key('target-save-button'),
               onPressed: _busy ? null : _submit,
               icon: _busy
                   ? const SizedBox.square(
@@ -1770,9 +1825,6 @@ class _SportSessionPageState extends State<SportSessionPage> {
   int _stepCount = 0;
   PedometerService? _pedometerService;
   StreamSubscription<int>? _stepSubscription;
-  String? _photoUrl;
-  bool _photoUploading = false;
-
   @override
   void dispose() {
     widget.onSportActiveChanged?.call(false);
@@ -1805,6 +1857,12 @@ class _SportSessionPageState extends State<SportSessionPage> {
               subtitle: const Text('实时定位追踪轨迹'),
               onTap: () => Navigator.pop(ctx, 'gps'),
             ),
+          ListTile(
+            leading: const Icon(Icons.sensors_outlined),
+            title: const Text('传感器打卡'),
+            subtitle: const Text('记录步数或活动数据'),
+            onTap: () => Navigator.pop(ctx, 'sensor'),
+          ),
           ListTile(
             leading: const Icon(Icons.timer_outlined),
             title: const Text('计时打卡'),
@@ -1847,8 +1905,12 @@ class _SportSessionPageState extends State<SportSessionPage> {
           await _startGpsCheckin();
         case 'sensor':
           await _startSensorCheckin();
-        case 'photo':
-          await _startPhotoCheckin();
+        case 'timer':
+          await _startTimerCheckin();
+        case 'count':
+          await _startManualCheckin(checkinMode: 'count');
+        case 'calorie':
+          await _startManualCheckin(checkinMode: 'calorie');
         case 'manual':
           await _startManualCheckin();
       }
@@ -1897,6 +1959,33 @@ class _SportSessionPageState extends State<SportSessionPage> {
     }
   }
 
+  Future<void> _startTimerCheckin() async {
+    setState(() => _busy = true);
+    try {
+      final start = await widget.api.startSport(
+        token: widget.session.token,
+        sportType: _selectedSportType,
+        checkinMode: 'timer',
+      );
+      final startedAt = DateTime.now();
+      setState(() {
+        _sessionId = start.sessionId;
+        _startedAt = startedAt;
+        _isPaused = false;
+        _activeSeconds = 0;
+        _status = '计时打卡进行中';
+        _busy = false;
+      });
+      widget.onSportActiveChanged?.call(true);
+      _startElapsedTimer();
+    } catch (error) {
+      setState(() {
+        _status = friendlyErrorMsg(error);
+        _busy = false;
+      });
+    }
+  }
+
   Future<void> _startSensorCheckin() async {
     setState(() => _busy = true);
     try {
@@ -1931,63 +2020,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
     }
   }
 
-  Future<void> _startPhotoCheckin() async {
-    setState(() => _busy = true);
-    try {
-      final picker = ImagePicker();
-      final xFile = await picker.pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1920,
-        imageQuality: 85,
-      );
-      if (xFile == null) {
-        setState(() {
-          _busy = false;
-          _status = '未选择照片，已取消';
-        });
-        return;
-      }
-      if (!mounted) return;
-      setState(() => _photoUploading = true);
-      final photoUrl = await widget.api.uploadSportPhoto(
-        token: widget.session.token,
-        imagePath: xFile.path,
-      );
-      if (!mounted) return;
-      _photoUrl = photoUrl;
-      final start = await widget.api.startSport(
-        token: widget.session.token,
-        sportType: _selectedSportType,
-        checkinMode: 'photo',
-      );
-      final startedAt = DateTime.now();
-      setState(() {
-        _sessionId = start.sessionId;
-        _startedAt = startedAt;
-        _status = '拍照打卡进行中，照片已上传';
-        _busy = false;
-        _photoUploading = false;
-      });
-      widget.onSportActiveChanged?.call(true);
-    } catch (error) {
-      final msg = error.toString();
-      if (msg.contains('denied') || msg.contains('permission') || msg.contains('camera')) {
-        setState(() {
-          _status = '无法访问相机，请检查权限设置';
-          _busy = false;
-          _photoUploading = false;
-        });
-      } else {
-        setState(() {
-          _status = friendlyErrorMsg(error);
-          _busy = false;
-          _photoUploading = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _startManualCheckin() async {
+  Future<void> _startManualCheckin({String checkinMode = 'manual'}) async {
     final data = await _showManualCheckinForm();
     if (data == null || !mounted) return;
 
@@ -1996,7 +2029,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       final start = await widget.api.startSport(
         token: widget.session.token,
         sportType: _selectedSportType,
-        checkinMode: 'manual',
+        checkinMode: checkinMode,
       );
       final durationMinutes = data['durationMinutes'] as int;
       final distanceKm = data['distanceKm'] as double?;
@@ -2026,7 +2059,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
   }
 
   Future<void> _finishCheckin() async {
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _status = '结算中，请稍候...';
+    });
     try {
       if (_selectedCheckinMode == 'gps') {
         await _stopGpsTracking();
@@ -2054,7 +2090,9 @@ class _SportSessionPageState extends State<SportSessionPage> {
           .toInt();
 
       double? distanceKm;
-      if (_selectedCheckinMode == 'sensor' && _stepCount > 0) {
+      if (_selectedCheckinMode == 'gps' && _totalDistanceKm > 0) {
+        distanceKm = _totalDistanceKm;
+      } else if (_selectedCheckinMode == 'sensor' && _stepCount > 0) {
         distanceKm = _stepCount * 0.7 / 1000.0;
       }
 
@@ -2064,7 +2102,6 @@ class _SportSessionPageState extends State<SportSessionPage> {
         durationSeconds: duration,
         weightKg: 60,
         distanceKm: distanceKm,
-        photoUrl: _photoUrl,
       );
 
       var statusMsg = '已保存记录 #${record.recordId}';
@@ -2082,7 +2119,6 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _startedAt = null;
         _trackPointCount = 0;
         _stepCount = 0;
-        _photoUrl = null;
         _isPaused = false;
         _activeSeconds = 0;
         _totalDistanceKm = 0;
@@ -2118,7 +2154,6 @@ class _SportSessionPageState extends State<SportSessionPage> {
           _startedAt = null;
           _trackPointCount = 0;
           _stepCount = 0;
-          _photoUrl = null;
           _isPaused = false;
           _activeSeconds = 0;
           _totalDistanceKm = 0;
@@ -2280,8 +2315,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
     final dLat = _degToRad(lat2 - lat1);
     final dLng = _degToRad(lng2 - lng1);
     final a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_degToRad(lat1)) * cos(_degToRad(lat2)) *
-            sin(dLng / 2) * sin(dLng / 2);
+        cos(_degToRad(lat1)) *
+            cos(_degToRad(lat2)) *
+            sin(dLng / 2) *
+            sin(dLng / 2);
     return r * 2 * atan2(sqrt(a), sqrt(1 - a));
   }
 
@@ -2317,8 +2354,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       if (!_hasUsableAccuracy(position)) {
         if (mounted) {
           setState(() {
-            _status =
-                'GPS精度不足 (${position.accuracy.toStringAsFixed(1)}m)，已忽略';
+            _status = 'GPS精度不足 (${position.accuracy.toStringAsFixed(1)}m)，已忽略';
           });
         }
         return;
@@ -2395,7 +2431,9 @@ class _SportSessionPageState extends State<SportSessionPage> {
     final h = totalSeconds ~/ 3600;
     final m = (totalSeconds % 3600) ~/ 60;
     final s = totalSeconds % 60;
-    if (h > 0) return '$h时${m.toString().padLeft(2, '0')}分${s.toString().padLeft(2, '0')}秒';
+    if (h > 0) {
+      return '$h时${m.toString().padLeft(2, '0')}分${s.toString().padLeft(2, '0')}秒';
+    }
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
@@ -2487,15 +2525,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
         ],
         FilledButton.icon(
           key: const Key('sport-session-toggle'),
-          onPressed: _busy || _photoUploading ? null : _toggle,
+          onPressed: _busy ? null : _toggle,
           icon: Icon(running ? Icons.stop : Icons.play_arrow),
           label: Text(running ? '结束打卡' : '开始打卡'),
         ),
-        if (_photoUploading)
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: LinearProgressIndicator(),
-          ),
         _MetricCard(
             label: '当前状态', value: _status, icon: Icons.sensors_outlined),
         _MetricCard(
@@ -2506,9 +2539,15 @@ class _SportSessionPageState extends State<SportSessionPage> {
             label: '打卡方式',
             value: running
                 ? _checkinModeLabel(_selectedCheckinMode)
-                : 'GPS / 传感器 / 拍照 / 手动',
+                : 'GPS / 计时 / 传感器 / 手动',
             icon: Icons.tune_outlined),
         // GPS 实时指标
+        if (running && _selectedCheckinMode == 'timer') ...[
+          _MetricCard(
+              label: '已用时间',
+              value: _formatDuration(_activeSeconds),
+              icon: Icons.timer_outlined),
+        ],
         if (running && _selectedCheckinMode == 'gps') ...[
           _MetricCard(
               label: '已用时间',
@@ -2517,7 +2556,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
           if (_currentLat != null)
             _MetricCard(
                 label: '当前位置',
-                value: '${_currentLat!.toStringAsFixed(5)}, ${_currentLng!.toStringAsFixed(5)}',
+                value:
+                    '${_currentLat!.toStringAsFixed(5)}, ${_currentLng!.toStringAsFixed(5)}',
                 icon: Icons.my_location),
           _MetricCard(
               label: '轨迹点数',
@@ -2536,7 +2576,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
               label: '平均配速',
               value: _formatPace(_activeSeconds, _totalDistanceKm),
               icon: Icons.trending_down_outlined),
-          if (_currentAccuracy != null && _currentAccuracy! > _maxAcceptedAccuracyMeters)
+          if (_currentAccuracy != null &&
+              _currentAccuracy! > _maxAcceptedAccuracyMeters)
             _MetricCard(
                 label: 'GPS 精度',
                 value: '${_currentAccuracy!.toStringAsFixed(1)}m（信号弱）',
@@ -2547,7 +2588,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _togglePause,
+                    onPressed: _busy ? null : _togglePause,
                     icon: Icon(_isPaused ? Icons.play_arrow : Icons.pause),
                     label: Text(_isPaused ? '继续' : '暂停'),
                   ),
@@ -2561,12 +2602,6 @@ class _SportSessionPageState extends State<SportSessionPage> {
               label: '当前步数',
               value: '$_stepCount 步',
               icon: Icons.directions_walk),
-        ],
-        if (running &&
-            _selectedCheckinMode == 'photo' &&
-            _photoUrl != null) ...[
-          const _MetricCard(
-              label: '打卡照片', value: '已上传', icon: Icons.check_circle_outline),
         ],
         if (lastRecord != null) ...[
           _MetricCard(
@@ -3670,7 +3705,8 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 class SettingsPage extends StatelessWidget {
-  const SettingsPage({super.key, required this.session, required this.api, this.onLogout});
+  const SettingsPage(
+      {super.key, required this.session, required this.api, this.onLogout});
 
   final UserSession session;
   final FitLoopApi api;
@@ -3697,8 +3733,7 @@ class SettingsPage extends StatelessWidget {
                           ?.copyWith(fontWeight: FontWeight.w700)),
                 ),
                 _InfoRow(label: '昵称', value: session.nickname),
-                _InfoRow(
-                    label: '用户ID', value: session.userId.toString()),
+                _InfoRow(label: '用户ID', value: session.userId.toString()),
                 if (session.avatarUrl != null)
                   const _InfoRow(label: '头像', value: '已设置'),
               ],
@@ -4007,11 +4042,14 @@ class _AdminFeedbackTabState extends State<_AdminFeedbackTab> {
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
-                title: Text(f.type == 'bug' ? '问题反馈' : (f.type == 'feature' ? '功能建议' : '其他')),
+                title: Text(f.type == 'bug'
+                    ? '问题反馈'
+                    : (f.type == 'feature' ? '功能建议' : '其他')),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(f.content, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    Text(f.content,
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
                     Text('状态: ${f.status}',
                         style: TextStyle(
                             color: f.status == 'pending'
@@ -4160,8 +4198,9 @@ class _FeedbackPageState extends State<_FeedbackPage> {
               DropdownMenuItem(value: 'bug', child: Text('问题反馈')),
               DropdownMenuItem(value: 'other', child: Text('其他')),
             ],
-            onChanged:
-                _busy ? null : (value) => setState(() => _type = value ?? 'feature'),
+            onChanged: _busy
+                ? null
+                : (value) => setState(() => _type = value ?? 'feature'),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -4223,8 +4262,8 @@ class _FeedbackPageState extends State<_FeedbackPage> {
               }
               if (snapshot.hasError) {
                 return Text(friendlyErrorMsg(snapshot.error),
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.error));
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error));
               }
               final feedbacks = snapshot.data?.feedbacks ?? [];
               if (feedbacks.isEmpty) {
@@ -4236,47 +4275,56 @@ class _FeedbackPageState extends State<_FeedbackPage> {
                 );
               }
               return Column(
-                children: feedbacks.map((f) => Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    title: Text(_typeLabel(f.type),
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 4),
-                        Text(f.content, maxLines: 3, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Chip(
-                              label: Text(_statusLabel(f.status),
-                                  style: const TextStyle(fontSize: 11)),
-                              padding: EdgeInsets.zero,
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              visualDensity: VisualDensity.compact,
+                children: feedbacks
+                    .map((f) => Card(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          child: ListTile(
+                            title: Text(_typeLabel(f.type),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 4),
+                                Text(f.content,
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    Chip(
+                                      label: Text(_statusLabel(f.status),
+                                          style: const TextStyle(fontSize: 11)),
+                                      padding: EdgeInsets.zero,
+                                      materialTapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                      visualDensity: VisualDensity.compact,
+                                    ),
+                                    const Spacer(),
+                                    Text(
+                                      f.createdAt.length >= 10
+                                          ? f.createdAt.substring(0, 10)
+                                          : f.createdAt,
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall,
+                                    ),
+                                  ],
+                                ),
+                                if (f.adminNote != null &&
+                                    f.adminNote!.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text('回复：${f.adminNote}',
+                                      style: TextStyle(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
+                                          fontSize: 12)),
+                                ],
+                              ],
                             ),
-                            const Spacer(),
-                            Text(
-                              f.createdAt.length >= 10
-                                  ? f.createdAt.substring(0, 10)
-                                  : f.createdAt,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                        ),
-                        if (f.adminNote != null && f.adminNote!.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text('回复：${f.adminNote}',
-                              style: TextStyle(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  fontSize: 12)),
-                        ],
-                      ],
-                    ),
-                  ),
-                )).toList(),
+                          ),
+                        ))
+                    .toList(),
               );
             },
           ),
@@ -4341,8 +4389,11 @@ class _ReminderSettingsPage extends StatefulWidget {
 }
 
 class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
+  int _remindId = 0;
   bool _enabled = false;
   TimeOfDay _time = const TimeOfDay(hour: 8, minute: 0);
+  String _cycle = 'daily';
+  int _weeklyTimes = 3;
   bool _loading = true;
   bool _saving = false;
 
@@ -4359,7 +4410,9 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
           resp.reminders.where((r) => r.type == widget.type).firstOrNull;
       if (config != null && mounted) {
         setState(() {
+          _remindId = config.id;
           _enabled = config.enabled;
+          _parseCycle(config.cycle);
           if (config.time != null && config.time!.length >= 5) {
             final parts = config.time!.split(':');
             _time = TimeOfDay(
@@ -4377,6 +4430,60 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
     if (picked != null && mounted) setState(() => _time = picked);
   }
 
+  void _parseCycle(String cycle) {
+    if (cycle.startsWith('weekly:')) {
+      _cycle = 'weekly';
+      _weeklyTimes = int.tryParse(cycle.substring('weekly:'.length))
+              ?.clamp(1, 7)
+              .toInt() ??
+          3;
+      return;
+    }
+    if (cycle == 'once') {
+      _cycle = 'once';
+      return;
+    }
+    _cycle = 'daily';
+  }
+
+  String _cycleValue() {
+    if (_cycle == 'weekly') return 'weekly:$_weeklyTimes';
+    return _cycle;
+  }
+
+  String _cycleLabel() {
+    if (_cycle == 'once') return '不重复';
+    if (_cycle == 'weekly') return '每周 $_weeklyTimes 次';
+    return '每天重复';
+  }
+
+  Future<void> _scheduleReminder() async {
+    switch (_cycle) {
+      case 'once':
+        await widget.reminderScheduler.scheduleOnce(
+          type: widget.type,
+          title: '${widget.label} 提醒',
+          body: _reminderNotificationBody(widget.type),
+          time: _time,
+        );
+      case 'weekly':
+        await widget.reminderScheduler.scheduleWeekly(
+          type: widget.type,
+          title: '${widget.label} 提醒',
+          body: _reminderNotificationBody(widget.type),
+          time: _time,
+          timesPerWeek: _weeklyTimes,
+        );
+      default:
+        await widget.reminderScheduler.scheduleDaily(
+          type: widget.type,
+          title: '${widget.label} 提醒',
+          body: _reminderNotificationBody(widget.type),
+          time: _time,
+        );
+    }
+  }
+
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
@@ -4384,19 +4491,14 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
           '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}:00';
       await widget.api.upsertReminder(
         token: widget.token,
-        remindId: 0,
+        remindId: _remindId,
         type: widget.type,
         time: timeStr,
-        cycle: 'daily',
+        cycle: _cycleValue(),
         enabled: _enabled,
       );
       if (_enabled) {
-        await widget.reminderScheduler.scheduleDaily(
-          type: widget.type,
-          title: '${widget.label} 提醒',
-          body: _reminderNotificationBody(widget.type),
-          time: _time,
-        );
+        await _scheduleReminder();
       } else {
         await widget.reminderScheduler.cancel(widget.type);
       }
@@ -4437,6 +4539,48 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
                   subtitle: Text(_time.format(context)),
                   trailing: const Icon(Icons.edit_calendar_outlined),
                   onTap: _enabled ? _pickTime : null,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _cycle,
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.repeat),
+                    labelText: '重复方式',
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'once', child: Text('不重复')),
+                    DropdownMenuItem(value: 'daily', child: Text('每天重复')),
+                    DropdownMenuItem(value: 'weekly', child: Text('每周重复')),
+                  ],
+                  onChanged: _enabled
+                      ? (value) => setState(() => _cycle = value ?? 'daily')
+                      : null,
+                ),
+                if (_cycle == 'weekly') ...[
+                  const SizedBox(height: 12),
+                  ListTile(
+                    leading: const Icon(Icons.event_repeat),
+                    title: const Text('每周提醒次数'),
+                    subtitle: Slider(
+                      value: _weeklyTimes.toDouble(),
+                      min: 1,
+                      max: 7,
+                      divisions: 6,
+                      label: '$_weeklyTimes 次',
+                      onChanged: _enabled
+                          ? (value) =>
+                              setState(() => _weeklyTimes = value.round())
+                          : null,
+                    ),
+                    trailing: Text('$_weeklyTimes 次'),
+                  ),
+                ],
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    _enabled ? _cycleLabel() : '提醒已关闭',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
                 const SizedBox(height: 32),
                 FilledButton.icon(
@@ -4482,7 +4626,7 @@ class _AvatarWidget extends StatelessWidget {
     if (avatarUrl != null && avatarUrl!.isNotEmpty) {
       return CircleAvatar(
         radius: radius,
-        backgroundImage: NetworkImage(avatarUrl!),
+        backgroundImage: NetworkImage(_resolveMediaUrl(avatarUrl)!),
       );
     }
     return Stack(

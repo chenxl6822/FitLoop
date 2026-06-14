@@ -144,12 +144,14 @@ void main() {
 
     // Scroll to the create target button
     await tester.scrollUntilVisible(
-      find.text('创建目标'),
+      find.byKey(const Key('target-create-button')),
       200.0,
     );
-    await tester.tap(find.text('创建目标'));
+    await tester.drag(find.byType(ListView).first, const Offset(0, -160));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('保存目标'));
+    await tester.tap(find.byKey(const Key('target-create-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('target-save-button')));
     await tester.pumpAndSettle();
 
     expect(api.createdTargets, 1);

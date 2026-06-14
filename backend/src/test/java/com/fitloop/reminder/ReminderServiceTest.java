@@ -180,4 +180,18 @@ class ReminderServiceTest {
         assertThat(updated.type()).isEqualTo("target");
         assertThat(updated.enabled()).isTrue(); // 未传递的值保持不变
     }
+
+    @Test
+    void upsertWithZeroIdUpdatesExistingReminderByType() {
+        var created = reminderService.upsert(1L, 0L,
+                new ReminderRequest("sport", LocalTime.of(7, 0), "daily", true));
+
+        var updated = reminderService.upsert(1L, 0L,
+                new ReminderRequest("sport", LocalTime.of(18, 30), "weekly:3", true));
+
+        assertThat(updated.id()).isEqualTo(created.id());
+        assertThat(updated.time()).isEqualTo(LocalTime.of(18, 30));
+        assertThat(updated.cycle()).isEqualTo("weekly:3");
+        assertThat(reminderService.list(1L).reminders()).hasSize(1);
+    }
 }

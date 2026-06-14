@@ -104,7 +104,8 @@ abstract class FitLoopApi {
 
   Future<FriendListResponse> listFriends({required String token});
 
-  Future<UserSearchResponse> searchUsers({required String token, required String query});
+  Future<UserSearchResponse> searchUsers(
+      {required String token, required String query});
 
   Future<void> addFriend({required String token, required int friendUserId});
 
@@ -210,7 +211,7 @@ class HttpFitLoopApi implements FitLoopApi {
       token: data['token'] as String,
       userId: profile['userId'] as int,
       nickname: profile['nickname'] as String? ?? 'FitLoop 用户',
-      avatarUrl: profile['avatarUrl'] as String?,
+      avatarUrl: _absoluteUrl(profile['avatarUrl'] as String?),
     );
   }
 
@@ -425,8 +426,8 @@ class HttpFitLoopApi implements FitLoopApi {
     final targets = data['targets'] as List<dynamic>;
     return TargetReminderListResponse(
       targets: targets
-          .map((e) =>
-              TargetReminderResponse.fromJson(e as Map<String, dynamic>))
+          .map(
+              (e) => TargetReminderResponse.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }
@@ -506,7 +507,8 @@ class HttpFitLoopApi implements FitLoopApi {
   }
 
   @override
-  Future<void> addFriend({required String token, required int friendUserId}) async {
+  Future<void> addFriend(
+      {required String token, required int friendUserId}) async {
     await _post(
       '/api/social/friend',
       {'friendUserId': friendUserId},
@@ -588,7 +590,7 @@ class HttpFitLoopApi implements FitLoopApi {
         if (body['code'] != 0) {
           throw ApiException(body['message'] as String? ?? '上传失败');
         }
-        return body['data'] as String;
+        return _absoluteUrl(body['data'] as String?) ?? '';
       } finally {
         client.close();
       }
@@ -601,7 +603,13 @@ class HttpFitLoopApi implements FitLoopApi {
   @override
   Future<UserProfileResponse> getUserProfile({required String token}) async {
     final data = await _get('/api/user/profile', token: token);
-    return UserProfileResponse.fromJson(data['data'] as Map<String, dynamic>);
+    final profile =
+        UserProfileResponse.fromJson(data['data'] as Map<String, dynamic>);
+    return UserProfileResponse(
+      userId: profile.userId,
+      nickname: profile.nickname,
+      avatarUrl: _absoluteUrl(profile.avatarUrl),
+    );
   }
 
   @override
@@ -668,7 +676,7 @@ class HttpFitLoopApi implements FitLoopApi {
         if (body['code'] != 0) {
           throw ApiException(body['message'] as String? ?? '上传照片失败');
         }
-        return body['data'] as String;
+        return _absoluteUrl(body['data'] as String?) ?? '';
       } finally {
         client.close();
       }
@@ -694,11 +702,14 @@ class HttpFitLoopApi implements FitLoopApi {
     required String content,
     String? contact,
   }) async {
-    final body = await _post('/api/feedback', {
-      'type': type,
-      'content': content,
-      if (contact != null && contact.isNotEmpty) 'contact': contact,
-    }, token: token);
+    final body = await _post(
+        '/api/feedback',
+        {
+          'type': type,
+          'content': content,
+          if (contact != null && contact.isNotEmpty) 'contact': contact,
+        },
+        token: token);
     final data = body['data'] as Map<String, dynamic>;
     return FeedbackItem.fromJson(data);
   }
@@ -788,7 +799,9 @@ class HttpFitLoopApi implements FitLoopApi {
   /// 提取后端错误消息；HTTP 40x/50x 统一前置处理
   String _extractErrorMessage(Map<String, dynamic> body, int statusCode) {
     // 优先用后端返回的 message
-    if (body.containsKey('message') && body['message'] is String && (body['message'] as String).isNotEmpty) {
+    if (body.containsKey('message') &&
+        body['message'] is String &&
+        (body['message'] as String).isNotEmpty) {
       return body['message'] as String;
     }
     // 后端 code != 0 但没有 message
@@ -821,13 +834,15 @@ class HttpFitLoopApi implements FitLoopApi {
     required String adminKey,
     required int userId,
   }) async {
-    final body = await _adminGet('/api/admin/users/$userId', adminKey: adminKey);
+    final body =
+        await _adminGet('/api/admin/users/$userId', adminKey: adminKey);
     final data = body['data'] as Map<String, dynamic>;
     return AdminUserDetail.fromJson(data);
   }
 
   @override
-  Future<FeedbackListResponse> adminListFeedback({required String adminKey}) async {
+  Future<FeedbackListResponse> adminListFeedback(
+      {required String adminKey}) async {
     final body = await _adminGet('/api/admin/feedback', adminKey: adminKey);
     final data = body['data'] as Map<String, dynamic>;
     final list = data['feedbacks'] as List<dynamic>;
@@ -855,7 +870,8 @@ class HttpFitLoopApi implements FitLoopApi {
     );
   }
 
-  Future<Map<String, dynamic>> _adminGet(String path, {required String adminKey}) async {
+  Future<Map<String, dynamic>> _adminGet(String path,
+      {required String adminKey}) async {
     final request = await _client.getUrl(Uri.parse('$baseUrl$path'));
     _setAdminHeaders(request, adminKey);
     return _send(request);
@@ -873,6 +889,17 @@ class HttpFitLoopApi implements FitLoopApi {
     request.headers.contentType = ContentType.json;
     request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
     request.headers.set('X-Admin-Key', adminKey);
+  }
+
+  String? _absoluteUrl(String? url) {
+    if (url == null || url.isEmpty) return url;
+    final parsed = Uri.tryParse(url);
+    if (parsed != null && parsed.hasScheme) return url;
+    if (!url.startsWith('/')) return url;
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
+    return '$base$url';
   }
 
   Future<Map<String, dynamic>> _send(HttpClientRequest request) async {

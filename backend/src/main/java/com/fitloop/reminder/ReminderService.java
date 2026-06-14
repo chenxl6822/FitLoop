@@ -32,11 +32,16 @@ public class ReminderService {
 
     @Transactional
     public ReminderResponse upsert(Long userId, Long id, ReminderRequest request) {
-        ReminderConfig config = reminders.findByRemindIdAndUserId(id, userId).orElseGet(ReminderConfig::new);
+        ReminderConfig config = reminders.findByRemindIdAndUserId(id, userId)
+                .or(() -> request.type() == null
+                        ? java.util.Optional.empty()
+                        : reminders.findFirstByUserIdAndTypeOrderByRemindIdAsc(userId, request.type()))
+                .orElseGet(ReminderConfig::new);
         config.setUserId(userId);
         if (request.type() != null) config.setType(request.type());
         if (request.time() != null) config.setRemindTime(request.time());
         if (request.cycle() != null) config.setCycle(request.cycle());
+        if (config.getCycle() == null) config.setCycle("daily");
         if (request.enabled() != null) config.setEnabled(request.enabled());
         return ReminderResponse.from(reminders.save(config));
     }
