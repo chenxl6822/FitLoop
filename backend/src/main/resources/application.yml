@@ -60,8 +60,11 @@ fitloop:
     secret: ${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}
     ttl-seconds: ${FITLOOP_JWT_TTL_SECONDS:900}
     refresh-ttl-seconds: ${FITLOOP_REFRESH_TTL_SECONDS:2592000}
-  admin:
-    key: ${FITLOOP_ADMIN_KEY:change-me-admin-key}
+  agent:
+    service-key: ${FITLOOP_AGENT_SERVICE_KEY:change-me-agent-service-key-32-bytes}
+    delegation-secret: ${FITLOOP_AGENT_DELEGATION_SECRET:${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}}
+    delegation-ttl-seconds: ${FITLOOP_AGENT_DELEGATION_TTL_SECONDS:300}
+    stream-key: ${FITLOOP_AGENT_STREAM_KEY:fitloop:agent:runs}
   upload:
     path: ${FITLOOP_UPLOAD_PATH:./uploads}
   mail:

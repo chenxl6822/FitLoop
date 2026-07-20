@@ -40,6 +40,7 @@ class WorkoutConcurrencyIntegrationTest {
         user.setPasswordHash("hash");
         user.setNickname("ConcurrentUser");
         Long userId = users.save(user).getUserId();
+        long outboxBefore = outbox.count();
         var session = workouts.start(userId, new StartSessionRequest("running", "manual"));
         FinishSessionRequest request = new FinishSessionRequest(
                 session.sessionId(), 1800L, 3.0, 240.0, 60.0, null, null);
@@ -66,7 +67,7 @@ class WorkoutConcurrencyIntegrationTest {
 
         SportRecord saved = records.findBySessionIdAndUserId(session.sessionId(), userId).orElseThrow();
         assertThat(saved.workoutStatus()).isEqualTo(WorkoutStatus.VALID);
-        assertThat(outbox.count()).isEqualTo(1);
+        assertThat(outbox.count()).isEqualTo(outboxBefore + 1);
         assertThat(users.findById(userId).orElseThrow().getPoints()).isEqualTo(24);
     }
 }

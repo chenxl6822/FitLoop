@@ -1,5 +1,6 @@
 package com.fitloop.security;
 
+import com.fitloop.agent.AgentDelegationAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -19,7 +20,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter filter) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter filter,
+                                                   AgentDelegationAuthenticationFilter agentFilter) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -28,10 +30,14 @@ public class SecurityConfig {
                                 "/api/v1/auth/login", "/api/v1/auth/refresh", "/api/v1/auth/logout",
                                 "/api/user/register", "/api/sms/send", "/api/verification/send",
                                 "/api/config/features", "/actuator/health", "/actuator/health/**",
+                                "/internal/v1/agent/runs/*/delegation-token",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/uploads/avatars/**", "/uploads/photos/**").permitAll()
                         .requestMatchers("/api/admin/**", "/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/internal/v1/agent/**", "/internal/v1/agent-tools/**")
+                        .hasAuthority("SCOPE_agent.internal")
                         .anyRequest().authenticated())
+                .addFilterBefore(agentFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }

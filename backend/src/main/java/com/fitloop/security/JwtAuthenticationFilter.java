@@ -24,7 +24,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String header = request.getHeader("Authorization");
-        if (header != null && header.startsWith("Bearer ")) {
+        if (SecurityContextHolder.getContext().getAuthentication() == null
+                && header != null && header.startsWith("Bearer ")) {
             try {
                 JwtService.VerifiedToken token = jwtService.verifyClaims(header.substring(7));
                 SecurityContextHolder.getContext()

@@ -25,8 +25,9 @@ fitloop:
   jwt:
     secret: test-secret-test-secret-test-secret
     ttl-seconds: 3600
-  admin:
-    key: test-admin-key
+  agent:
+    service-key: test-agent-service-key-32-bytes-ok
+    delegation-secret: test-agent-delegation-secret-32-bytes
   verification:
     hash-secret: test-otp-hash-secret
     debug-return: true
