@@ -7,11 +7,16 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:fitloop}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate:
         format_sql: true
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
+    locations: classpath:db/migration
   data:
     redis:
       host: ${SPRING_REDIS_HOST:localhost}
@@ -30,11 +35,31 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    level: "%5p [requestId:%X{requestId:-}]"
 
 fitloop:
   jwt:
     secret: ${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}
-    ttl-seconds: ${FITLOOP_JWT_TTL_SECONDS:604800}
+    ttl-seconds: ${FITLOOP_JWT_TTL_SECONDS:900}
+    refresh-ttl-seconds: ${FITLOOP_REFRESH_TTL_SECONDS:2592000}
   admin:
     key: ${FITLOOP_ADMIN_KEY:change-me-admin-key}
   upload:

@@ -16,9 +16,9 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: maven
-      - run: mvn --batch-mode --settings ../.github/maven-settings.xml -U test
+      - run: mvn --batch-mode --settings ../.github/maven-settings.xml -U verify
 
   mobile:
     runs-on: ubuntu-latest
