@@ -1,4 +1,5 @@
 # AI working docs and task specs — never commit
+.tmp*/
 **/CLAUDE_CONTEXT.md
 mobile/README.md
 **/task*_spec.md

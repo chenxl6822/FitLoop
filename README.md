@@ -65,10 +65,9 @@ FitLoop/
 ├── backend/              # Spring Boot 后端服务
 ├── mobile/               # Flutter 移动端应用
 ├── deploy/               # Docker Compose、Nginx、APK 下载页和部署脚本
-├── docs/                 # 部署、冒烟测试、交接和开发说明
+├── docs/                 # 部署、冒烟测试与面试说明
 ├── .github/workflows/    # CI 配置
 ├── CONTRIBUTING.md       # 协作与提交规范
-├── STATUS.md             # 当前项目状态
 └── README.md
 ```
 
@@ -153,7 +152,7 @@ API 地址说明：
 | Flutter 静态分析 | `cd mobile && flutter analyze` |
 | Flutter Widget 测试 | `cd mobile && flutter test` |
 
-当前 Sprint B 状态记录显示：后端 15 个测试文件、89 个测试用例；移动端 9 个 Widget 测试用例。最新结果以本地命令和 CI 为准。
+测试数量会随迭代变化，最新结果以本地命令和 CI 为准。Android 发布前还需执行 [真机冒烟测试清单](docs/SMOKE_TEST_CHECKLIST.md)。
 
 ## 部署
 
@@ -181,7 +180,7 @@ curl http://localhost:8080/actuator/health
 
 ### 生产部署
 
-腾讯云 CVM、Docker、Nginx、备份、监控和 HTTPS 配置见 [docs/DEPLOY_QUICKSTART.md](docs/DEPLOY_QUICKSTART.md) 与 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+腾讯云 CVM、Docker、Nginx、APK 发布、备份、监控和 HTTPS 配置统一见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
 构建生产 APK：
 
@@ -198,18 +197,20 @@ mobile/build/app/outputs/flutter-apk/app-release.apk
 
 ## 项目状态
 
-- 阶段 1：4 种打卡方式、多运动类型、验证码体系已完成。
-- Sprint A：内测稳定化已完成。
-- Sprint B：账号与目标稳定化已完成，详见 [STATUS.md](STATUS.md)。
-- 下一阶段重点：运动体验增强、设置与反馈闭环、腾讯云部署上线。
+- Android 生产包已支持 GPS、传感器、拍照和手动输入四种打卡方式。
+- 账号、目标、统计、提醒、社交、反馈申诉和后台管理已形成主要业务闭环。
+- 腾讯云 Docker Compose 部署、APK 下载、数据库备份和健康检查已投入使用。
+- 本地提醒保存事务、通知权限、通知 ID 隔离及 Android Release 混淆崩溃已修复。
 
 当前已知待办：
 
 | 项 | 优先级 | 说明 |
 | --- | --- | --- |
-| GPS 地图轨迹展示 | P1 | 计划在后续 Sprint 补齐 |
-| 拍照打卡文件校验复用 | P1 | 统一复用头像上传的文件头校验思路 |
 | 邮箱 SMTP 生产配置 | P1 | 需要配置真实邮箱授权码 |
+| HTTPS | P1 | 需要备案域名与正式证书 |
+| Flutter 页面模块化 | P1 | `main.dart` 仍偏大，建议按 feature 拆分 |
+| 标准 JWT 与安全存储 | P1 | 替换轻量 HMAC Token，并将凭据迁移到安全存储 |
+| 数据库迁移 | P1 | 生产环境由 `ddl-auto` 迁移至 Flyway/Liquibase |
 | iOS 构建 | 中 | 需要 macOS 与 Xcode 环境 |
 | CI/CD pipeline 完善 | 中 | 已有基础 CI 配置 |
 
@@ -217,13 +218,10 @@ mobile/build/app/outputs/flutter-apk/app-release.apk
 
 | 文档 | 用途 |
 | --- | --- |
-| [STATUS.md](STATUS.md) | 当前进度、测试覆盖、未解决项 |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 协作流程、提交规范、分支建议 |
-| [docs/DEPLOY_QUICKSTART.md](docs/DEPLOY_QUICKSTART.md) | 腾讯云部署速查 |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 部署细节与运维说明 |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 构建、发布、部署、备份和运维 |
 | [docs/SMOKE_TEST_CHECKLIST.md](docs/SMOKE_TEST_CHECKLIST.md) | 真机冒烟测试清单 |
-| [docs/AI_PROMPTS.md](docs/AI_PROMPTS.md) | AI 协作提示词 |
-| [docs/GPT_GUIDE.md](docs/GPT_GUIDE.md) | GPT 协作指南 |
+| [docs/INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md) | 简历描述、项目问答、架构与面试自测 |
 
 ## Git 规则
 
