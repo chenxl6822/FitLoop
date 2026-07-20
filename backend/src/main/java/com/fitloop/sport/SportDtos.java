@@ -19,6 +19,13 @@ public final class SportDtos {
                                     Double accuracy, @NotNull Instant timestamp) {
     }
 
+    public record TrackPointInput(int sequenceNo, @NotNull Double lat, @NotNull Double lng,
+                                  Double accuracy, @NotNull Instant timestamp) { }
+
+    public record TrackBatchRequest(@NotNull List<TrackPointInput> points) { }
+
+    public record TrackBatchResponse(int accepted, int duplicates, int lastSequenceNo) { }
+
     public record FinishSessionRequest(@NotBlank String sessionId, Long durationSeconds, Double distanceKm,
                                        Double calorie, Double weightKg, String photoUrl, String note) {
     }
@@ -38,4 +45,6 @@ public final class SportDtos {
 
     public record SportListResponse(List<SportRecordResponse> records) {
     }
+
+    public record SportCursorPage(List<SportRecordResponse> records, Long nextCursor, boolean hasMore) { }
 }

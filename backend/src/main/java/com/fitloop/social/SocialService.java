@@ -3,6 +3,7 @@ package com.fitloop.social;
 import com.fitloop.sport.CalorieCalculator;
 import com.fitloop.sport.SportRecord;
 import com.fitloop.sport.SportRecordRepository;
+import com.fitloop.sport.WorkoutCompletedEvent;
 import com.fitloop.user.UserInfo;
 import com.fitloop.user.UserRepository;
 import com.fitloop.social.SocialDtos.FriendInfo;
@@ -24,6 +25,8 @@ import java.util.stream.Collectors;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 @Service
 public class SocialService {
@@ -32,14 +35,25 @@ public class SocialService {
     private final SportRecordRepository sportRecords;
     private final CalorieCalculator calculator;
     private final StringRedisTemplate redis;
+    private final LeaderboardService leaderboard;
 
     public SocialService(UserRepository users, UserFriendRepository friends, SportRecordRepository sportRecords,
-                         CalorieCalculator calculator, StringRedisTemplate redis) {
+                         CalorieCalculator calculator, StringRedisTemplate redis, LeaderboardService leaderboard) {
         this.users = users;
         this.friends = friends;
         this.sportRecords = sportRecords;
         this.calculator = calculator;
         this.redis = redis;
+        this.leaderboard = leaderboard;
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    public void onWorkoutCompleted(WorkoutCompletedEvent event) {
+        SportRecord record = new SportRecord();
+        record.setUserId(event.userId());
+        record.setCalorie(event.calorie());
+        record.setStatus(SportRecord.STATUS_VALID);
+        reward(record);
     }
 
     @Transactional
@@ -70,19 +84,7 @@ public class SocialService {
 
     @Transactional(readOnly = true)
     public RankingResponse ranking(String scope, String period, int page, int size) {
-        Map<Long, double[]> totals = new HashMap<>();
-        sportRecords.findByStatus(SportRecord.STATUS_VALID).forEach(record -> {
-            double[] total = totals.computeIfAbsent(record.getUserId(), ignored -> new double[2]);
-            total[0] += record.getDistanceKm();
-            total[1] += record.getCalorie();
-        });
-        List<RankingRow> rows = totals.entrySet().stream()
-                .sorted(Map.Entry.<Long, double[]>comparingByValue(Comparator.comparingDouble((double[] v) -> -v[0])))
-                .skip((long) Math.max(page - 1, 0) * size)
-                .limit(size)
-                .map(entry -> toRankingRow(entry, totals))
-                .toList();
-        return new RankingResponse(scope, period, rows);
+        return leaderboard.ranking(scope, period, page, size);
     }
 
     @Transactional

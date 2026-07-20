@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Version;
 import java.time.Instant;
 
 @Entity
@@ -51,6 +52,9 @@ public class SportRecord {
     private Instant createdAt;
     private Instant updatedAt;
 
+    @Version
+    private long version;
+
     @PrePersist
     void prePersist() {
         createdAt = Instant.now();
@@ -85,10 +89,21 @@ public class SportRecord {
     public void setNote(String note) { this.note = note; }
     public int getStatus() { return status; }
     public void setStatus(int status) { this.status = status; }
+    public WorkoutStatus workoutStatus() { return WorkoutStatus.fromCode(status); }
+    public void finishAs(WorkoutStatus target) {
+        if (workoutStatus() != WorkoutStatus.DRAFT) {
+            throw new IllegalStateException("Only a draft workout can be finished");
+        }
+        if (target != WorkoutStatus.VALID && target != WorkoutStatus.ABNORMAL) {
+            throw new IllegalArgumentException("Invalid finish state: " + target);
+        }
+        status = target.code();
+    }
     public String getAbnormalReason() { return abnormalReason; }
     public void setAbnormalReason(String abnormalReason) { this.abnormalReason = abnormalReason; }
     public Instant getStartedAt() { return startedAt; }
     public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
     public Instant getEndedAt() { return endedAt; }
     public void setEndedAt(Instant endedAt) { this.endedAt = endedAt; }
+    public long getVersion() { return version; }
 }

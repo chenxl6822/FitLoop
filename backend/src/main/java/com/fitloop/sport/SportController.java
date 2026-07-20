@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -39,8 +40,10 @@ public class SportController {
     }
 
     @PostMapping("/session/finish")
-    public ApiResponse<SportRecordResponse> finish(@Valid @RequestBody FinishSessionRequest request) {
-        return ApiResponse.ok(sportService.finish(AuthSupport.currentUserId(), request));
+    public ApiResponse<SportRecordResponse> finish(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody FinishSessionRequest request) {
+        return ApiResponse.ok(sportService.finish(AuthSupport.currentUserId(), request, idempotencyKey));
     }
 
     @PostMapping("/photo")
@@ -52,4 +55,5 @@ public class SportController {
     public ApiResponse<SportListResponse> list() {
         return ApiResponse.ok(new SportListResponse(sportService.list(AuthSupport.currentUserId())));
     }
+
 }

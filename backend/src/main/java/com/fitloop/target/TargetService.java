@@ -1,6 +1,7 @@
 package com.fitloop.target;
 
 import com.fitloop.sport.SportRecord;
+import com.fitloop.sport.WorkoutCompletedEvent;
 import com.fitloop.target.TargetDtos.CreateTargetRequest;
 import com.fitloop.target.TargetDtos.UpdateTargetRequest;
 import com.fitloop.target.TargetDtos.TargetResponse;
@@ -10,6 +11,8 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 @Service
 public class TargetService {
@@ -102,6 +105,16 @@ public class TargetService {
         }
 
         return TargetResponse.from(targets.save(target));
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
+    public void onWorkoutCompleted(WorkoutCompletedEvent event) {
+        SportRecord record = new SportRecord();
+        record.setUserId(event.userId());
+        record.setDurationSeconds(event.durationSeconds());
+        record.setDistanceKm(event.distanceKm());
+        record.setCalorie(event.calorie());
+        applySportRecord(record);
     }
 
     @Transactional

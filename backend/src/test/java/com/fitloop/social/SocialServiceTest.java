@@ -5,8 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fitloop.social.SocialDtos.FriendRequest;
 import com.fitloop.sport.CalorieCalculator;
+import com.fitloop.sport.SportRecord;
+import com.fitloop.sport.SportRecordRepository;
 import com.fitloop.user.UserInfo;
 import com.fitloop.user.UserRepository;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +18,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Import;
 
 @DataJpaTest
-@Import({SocialService.class, CalorieCalculator.class})
+@Import({SocialService.class, LeaderboardService.class, CalorieCalculator.class})
 class SocialServiceTest {
 
     @Autowired
@@ -27,12 +30,16 @@ class SocialServiceTest {
     @Autowired
     private UserFriendRepository friendRepository;
 
+    @Autowired
+    private SportRecordRepository sportRecordRepository;
+
     @MockitoBean
     private org.springframework.data.redis.core.StringRedisTemplate redis;
 
     @BeforeEach
     void setUp() {
         friendRepository.deleteAll();
+        sportRecordRepository.deleteAll();
         userRepository.deleteAll();
     }
 
@@ -122,5 +129,28 @@ class SocialServiceTest {
         var result = socialService.searchUsers(alice.getUserId(), "1381111");
         assertThat(result.users()).hasSize(1);
         assertThat(result.users().get(0).nickname()).isEqualTo("David");
+    }
+
+    @Test
+    void weeklyRankingFallsBackToMysqlWhenRedisIsDown() {
+        var user = createUser("13800000009", "Runner");
+        SportRecord record = new SportRecord();
+        record.setUserId(user.getUserId());
+        record.setSessionId("redis-fallback-session");
+        record.setSportType("running");
+        record.setCheckinMode("manual");
+        record.setDistanceKm(5.2);
+        record.setCalorie(310);
+        record.setStatus(SportRecord.STATUS_VALID);
+        record.setStartedAt(Instant.now());
+        sportRecordRepository.saveAndFlush(record);
+        org.mockito.Mockito.when(redis.opsForZSet())
+                .thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("redis down"));
+
+        var result = socialService.ranking("personal", "week", 1, 20);
+
+        assertThat(result.rankingList()).hasSize(1);
+        assertThat(result.rankingList().getFirst().userId()).isEqualTo(user.getUserId());
+        assertThat(result.rankingList().getFirst().distanceKm()).isEqualTo(5.2);
     }
 }
