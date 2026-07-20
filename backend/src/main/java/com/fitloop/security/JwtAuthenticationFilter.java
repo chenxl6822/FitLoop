@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -25,9 +26,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             try {
-                Long userId = jwtService.verify(header.substring(7));
+                JwtService.VerifiedToken token = jwtService.verifyClaims(header.substring(7));
                 SecurityContextHolder.getContext()
-                        .setAuthentication(new UsernamePasswordAuthenticationToken(userId, null, List.of()));
+                        .setAuthentication(new UsernamePasswordAuthenticationToken(token.userId(), null,
+                                List.of(new SimpleGrantedAuthority("ROLE_" + token.role().name()))));
             } catch (IllegalArgumentException ignored) {
                 SecurityContextHolder.clearContext();
             }

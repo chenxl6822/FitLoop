@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import java.time.Instant;
@@ -31,6 +33,10 @@ public class UserInfo {
     private String college;
     private int points;
     private int level = 1;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private UserRole role = UserRole.USER;
     private Instant createdAt;
     private Instant updatedAt;
 
@@ -66,4 +72,6 @@ public class UserInfo {
     public void setPoints(int points) { this.points = points; }
     public int getLevel() { return level; }
     public void setLevel(int level) { this.level = level; }
+    public UserRole getRole() { return role; }
+    public void setRole(UserRole role) { this.role = role; }
 }

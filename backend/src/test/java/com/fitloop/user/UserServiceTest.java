@@ -4,12 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fitloop.security.JwtService;
+import com.fitloop.security.AuthTokenService;
 import com.fitloop.user.UserDtos.LoginRequest;
 import com.fitloop.user.UserDtos.RegisterRequest;
 import com.fitloop.user.UserDtos.UpdateProfileRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -28,7 +29,8 @@ import org.springframework.test.context.TestPropertySource;
         PhoneVerificationCodeSender.class,
         UserServiceTest.EmailSenderConfig.class,
         UserServiceTest.PasswordEncoderConfig.class,
-        JwtService.class
+        JwtService.class,
+        AuthTokenService.class
 })
 class UserServiceTest {
 
@@ -120,7 +122,23 @@ class UserServiceTest {
                 new LoginRequest("13800000004", "correct", null, "password"));
 
         assertThat(result.token()).isNotNull().isNotEmpty();
+        assertThat(result.refreshToken()).isNotBlank();
+        assertThat(result.tokenType()).isEqualTo("Bearer");
         assertThat(result.userProfile().nickname()).isEqualTo("User4");
+    }
+
+    @Test
+    void refreshTokenRotatesAndOldTokenCannotBeReused() {
+        registerWithCode("13800000014", "correct", "RotateUser");
+        var login = userService.login(
+                new LoginRequest("13800000014", "correct", null, "password"));
+
+        var refreshed = userService.refresh(login.refreshToken());
+
+        assertThat(refreshed.token()).isNotBlank().isNotEqualTo(login.token());
+        assertThat(refreshed.refreshToken()).isNotBlank().isNotEqualTo(login.refreshToken());
+        assertThatThrownBy(() -> userService.refresh(login.refreshToken()))
+                .hasMessageContaining("重放");
     }
 
     @Test

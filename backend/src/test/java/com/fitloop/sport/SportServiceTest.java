@@ -5,16 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.fitloop.social.SocialService;
 import com.fitloop.sport.SportDtos.FinishSessionRequest;
 import com.fitloop.sport.SportDtos.StartSessionRequest;
 import com.fitloop.target.TargetService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
@@ -33,7 +33,7 @@ class SportServiceTest {
     @Autowired
     private SportService sportService;
 
-    @MockBean
+    @MockitoBean
     private SocialService socialService;
 
     private static final long USER_ID = 1L;

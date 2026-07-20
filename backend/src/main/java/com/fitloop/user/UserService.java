@@ -1,6 +1,6 @@
 package com.fitloop.user;
 
-import com.fitloop.security.JwtService;
+import com.fitloop.security.AuthTokenService;
 import com.fitloop.user.UserDtos.LoginRequest;
 import com.fitloop.user.UserDtos.LoginResponse;
 import com.fitloop.user.UserDtos.PasswordResetRequest;
@@ -17,14 +17,14 @@ import org.springframework.util.StringUtils;
 public class UserService {
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
+    private final AuthTokenService authTokens;
     private final VerificationCodeService verificationCodes;
 
-    public UserService(UserRepository users, PasswordEncoder passwordEncoder, JwtService jwtService,
+    public UserService(UserRepository users, PasswordEncoder passwordEncoder, AuthTokenService authTokens,
                        VerificationCodeService verificationCodes) {
         this.users = users;
         this.passwordEncoder = passwordEncoder;
-        this.jwtService = jwtService;
+        this.authTokens = authTokens;
         this.verificationCodes = verificationCodes;
     }
 
@@ -78,7 +78,18 @@ public class UserService {
                 || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new IllegalArgumentException("账号或密码错误");
         }
-        return new LoginResponse(jwtService.issue(user.getUserId()), UserProfile.from(user));
+        return response(authTokens.issue(user), user);
+    }
+
+    @Transactional
+    public LoginResponse refresh(String refreshToken) {
+        AuthTokenService.RotatedToken rotated = authTokens.rotate(refreshToken);
+        return response(rotated.tokenPair(), rotated.user());
+    }
+
+    @Transactional
+    public void logout(String refreshToken) {
+        authTokens.revoke(refreshToken);
     }
 
     @Transactional
@@ -92,6 +103,7 @@ public class UserService {
             throw new IllegalArgumentException("验证码错误或已过期");
         }
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        authTokens.revokeAll(user.getUserId(), "PASSWORD_CHANGED");
     }
 
     private String normalizeAccount(String value) {
@@ -128,5 +140,10 @@ public class UserService {
         UserInfo user = users.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
         return UserProfile.from(user);
+    }
+
+    private LoginResponse response(AuthTokenService.TokenPair pair, UserInfo user) {
+        return new LoginResponse(pair.accessToken(), pair.refreshToken(), "Bearer", pair.expiresIn(),
+                UserProfile.from(user));
     }
 }

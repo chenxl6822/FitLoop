@@ -1,7 +1,7 @@
 package com.fitloop.sport;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import com.fitloop.social.SocialService;
 import com.fitloop.sport.SportDtos.FinishSessionRequest;
 import com.fitloop.sport.SportDtos.SportRecordResponse;
