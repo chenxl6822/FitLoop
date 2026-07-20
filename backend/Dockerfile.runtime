@@ -1,4 +1,4 @@
-ARG JRE_IMAGE=docker.1ms.run/library/eclipse-temurin:17-jre
+ARG JRE_IMAGE=eclipse-temurin:21-jre
 
 FROM ${JRE_IMAGE}
 WORKDIR /app
