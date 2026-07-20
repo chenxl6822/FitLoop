@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:fitloop/api_client.dart';
 import 'package:fitloop/main.dart';
+import 'package:fitloop/reminder_scheduler.dart';
 import 'package:fitloop/sync_queue.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -334,6 +335,113 @@ void main() {
     expect(find.textContaining('已加入离线同步队列'), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
+
+  testWidgets('saves reminder and refreshes profile without reopening it',
+      (tester) async {
+    final api = _FakeApi(
+      reminders: const [
+        ReminderConfig(
+          id: 1,
+          type: 'sport',
+          time: '08:00:00',
+          cycle: 'daily',
+          enabled: false,
+        ),
+      ],
+    );
+    final scheduler = _FakeReminderScheduler();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(),
+        reminderScheduler: scheduler,
+      ),
+    );
+
+    await _openSportReminderSettings(tester);
+    await tester.tap(find.widgetWithText(SwitchListTile, '启用提醒'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(api.reminderUpsertCalls, 1);
+    expect(scheduler.calls, contains('daily:sport'));
+    expect(find.text('提醒设置已保存'), findsOneWidget);
+    expect(find.text('已开启 · 08:00'), findsOneWidget);
+    expect(find.text('运动 提醒'), findsNothing);
+  });
+
+  testWidgets('does not update server when local reminder scheduling fails',
+      (tester) async {
+    final api = _FakeApi(
+      reminders: const [
+        ReminderConfig(
+          id: 1,
+          type: 'sport',
+          time: '08:00:00',
+          cycle: 'daily',
+          enabled: false,
+        ),
+      ],
+    );
+    final scheduler = _FakeReminderScheduler(
+      scheduleError: Exception('local notification failed'),
+    );
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(),
+        reminderScheduler: scheduler,
+      ),
+    );
+
+    await _openSportReminderSettings(tester);
+    await tester.tap(find.widgetWithText(SwitchListTile, '启用提醒'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(api.reminderUpsertCalls, 0);
+    expect(api.reminders.single.enabled, isFalse);
+    expect(scheduler.calls, ['daily:sport', 'cancel:sport']);
+    expect(find.textContaining('local notification failed'), findsOneWidget);
+    expect(find.text('运动 提醒'), findsOneWidget);
+  });
+
+  testWidgets('restores local reminder when server save fails', (tester) async {
+    final api = _FakeApi(
+      reminders: const [
+        ReminderConfig(
+          id: 1,
+          type: 'sport',
+          time: '08:00:00',
+          cycle: 'daily',
+          enabled: false,
+        ),
+      ],
+      reminderUpsertError: Exception('server save failed'),
+    );
+    final scheduler = _FakeReminderScheduler();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(),
+        reminderScheduler: scheduler,
+      ),
+    );
+
+    await _openSportReminderSettings(tester);
+    await tester.tap(find.widgetWithText(SwitchListTile, '启用提醒'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '保存'));
+    await tester.pumpAndSettle();
+
+    expect(api.reminderUpsertCalls, 1);
+    expect(api.reminders.single.enabled, isFalse);
+    expect(scheduler.calls, ['daily:sport', 'cancel:sport']);
+    expect(find.textContaining('server save failed'), findsOneWidget);
+    expect(find.text('运动 提醒'), findsOneWidget);
+  });
 }
 
 Future<void> _openAuthPage(WidgetTester tester) async {
@@ -363,6 +471,17 @@ Future<void> _openSportPage(WidgetTester tester) async {
   await _enterApp(tester);
   await tester.tap(find.byIcon(Icons.directions_run_outlined));
   await tester.pumpAndSettle();
+}
+
+Future<void> _openSportReminderSettings(WidgetTester tester) async {
+  await _enterApp(tester);
+  await tester.tap(find.text('我的'));
+  await tester.pumpAndSettle();
+  final sportReminderTile = find.widgetWithText(ListTile, '运动');
+  await tester.scrollUntilVisible(sportReminderTile, 200);
+  await tester.tap(sportReminderTile);
+  await tester.pumpAndSettle();
+  expect(find.text('运动 提醒'), findsOneWidget);
 }
 
 Future<void> _selectGpsCheckinMode(WidgetTester tester) async {
@@ -442,6 +561,52 @@ class _FakeLocationService implements LocationService {
   }
 }
 
+class _FakeReminderScheduler implements ReminderScheduler {
+  _FakeReminderScheduler({this.scheduleError});
+
+  final Object? scheduleError;
+  final List<String> calls = [];
+
+  Future<void> _schedule(String cycle, String type) async {
+    calls.add('$cycle:$type');
+    final error = scheduleError;
+    if (error != null) throw error;
+  }
+
+  @override
+  Future<void> cancel(String type) async {
+    calls.add('cancel:$type');
+  }
+
+  @override
+  Future<void> scheduleDaily({
+    required String type,
+    required String title,
+    required String body,
+    required TimeOfDay time,
+  }) =>
+      _schedule('daily', type);
+
+  @override
+  Future<void> scheduleOnce({
+    required String type,
+    required String title,
+    required String body,
+    required TimeOfDay time,
+  }) =>
+      _schedule('once', type);
+
+  @override
+  Future<void> scheduleWeekly({
+    required String type,
+    required String title,
+    required String body,
+    required TimeOfDay time,
+    required int timesPerWeek,
+  }) =>
+      _schedule('weekly:$timesPerWeek', type);
+}
+
 Position _position({double accuracy = 10}) {
   return Position(
     longitude: 121.4737,
@@ -460,9 +625,11 @@ Position _position({double accuracy = 10}) {
 class _FakeApi implements FitLoopApi {
   _FakeApi({
     List<SportTarget> targets = const <SportTarget>[],
+    List<ReminderConfig> reminders = const <ReminderConfig>[],
     this.finishError,
-  })
-      : _targets = List.of(targets);
+    this.reminderUpsertError,
+  })  : _targets = List.of(targets),
+        _reminders = List.of(reminders);
 
   factory _FakeApi.withTarget() {
     return _FakeApi(
@@ -483,12 +650,15 @@ class _FakeApi implements FitLoopApi {
   }
 
   final List<SportTarget> _targets;
+  final List<ReminderConfig> _reminders;
   final Object? finishError;
+  final Object? reminderUpsertError;
   int uploadedTrackPoints = 0;
   int startedSports = 0;
   int finishedSports = 0;
   int createdTargets = 0;
   int createdHealthData = 0;
+  int reminderUpsertCalls = 0;
   double? _lastWeight;
   String? lastLoginPassword;
   String? lastLoginCode;
@@ -500,6 +670,8 @@ class _FakeApi implements FitLoopApi {
   String? lastResetAccount;
   String? lastResetCode;
   String? lastResetPassword;
+
+  List<ReminderConfig> get reminders => List.unmodifiable(_reminders);
 
   @override
   Future<HealthData> addHealthData({
@@ -673,7 +845,7 @@ class _FakeApi implements FitLoopApi {
 
   @override
   Future<ReminderListResponse> listReminders({required String token}) async {
-    return const ReminderListResponse(reminders: []);
+    return ReminderListResponse(reminders: List.of(_reminders));
   }
 
   @override
@@ -684,8 +856,19 @@ class _FakeApi implements FitLoopApi {
       String? time,
       String? cycle,
       bool? enabled}) async {
-    return ReminderConfig(
-        id: 1, type: type, time: time, cycle: cycle ?? 'daily', enabled: enabled ?? true);
+    reminderUpsertCalls += 1;
+    final error = reminderUpsertError;
+    if (error != null) throw error;
+    final saved = ReminderConfig(
+      id: remindId == 0 ? 1 : remindId,
+      type: type,
+      time: time,
+      cycle: cycle ?? 'daily',
+      enabled: enabled ?? true,
+    );
+    _reminders.removeWhere((reminder) => reminder.type == type);
+    _reminders.add(saved);
+    return saved;
   }
 
   @override

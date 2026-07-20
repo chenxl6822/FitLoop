@@ -76,6 +76,10 @@ String friendlyErrorMsg(dynamic error) {
   if (msg.contains('500')) {
     return '服务器开小差了，请稍后重试';
   }
+  if (msg.contains('Missing type parameter') ||
+      msg.contains('flutterlocalnotifications')) {
+    return '提醒服务初始化失败，请重启应用后重试';
+  }
   // 去除 ApiException: 前缀，展示后端返回的原始消息
   if (msg.startsWith('ApiException: ')) {
     return msg.substring(14);
@@ -3492,7 +3496,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _openSettings(String type, String label, IconData icon) async {
-    final changed = await Navigator.of(context).push<bool>(
+    final saved = await Navigator.of(context).push<ReminderConfig>(
       MaterialPageRoute(
         builder: (_) => _ReminderSettingsPage(
           api: widget.api,
@@ -3504,10 +3508,26 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
-    if (changed == true && mounted) {
-      setState(() =>
-          _future = widget.api.listReminders(token: widget.session.token));
+    if (saved == null || !mounted) return;
+
+    var reminders = const <ReminderConfig>[];
+    try {
+      reminders = (await _future)?.reminders ?? reminders;
+    } catch (_) {
+      // The save response is authoritative even if the original list failed.
     }
+    final updated = [
+      for (final reminder in reminders)
+        if (reminder.type != saved.type) reminder,
+      saved,
+    ];
+    if (!mounted) return;
+    setState(() {
+      _future = Future.value(ReminderListResponse(reminders: updated));
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('提醒设置已保存')),
+    );
   }
 
   @override
@@ -4390,12 +4410,14 @@ class _ReminderSettingsPage extends StatefulWidget {
 
 class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
   int _remindId = 0;
+  ReminderConfig? _originalConfig;
   bool _enabled = false;
   TimeOfDay _time = const TimeOfDay(hour: 8, minute: 0);
   String _cycle = 'daily';
   int _weeklyTimes = 3;
   bool _loading = true;
   bool _saving = false;
+  String? _loadError;
 
   @override
   void initState() {
@@ -4404,25 +4426,48 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
   }
 
   Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       final resp = await widget.api.listReminders(token: widget.token);
       final config =
           resp.reminders.where((r) => r.type == widget.type).firstOrNull;
-      if (config != null && mounted) {
+      if (!mounted) return;
+      if (config != null) {
         setState(() {
+          _originalConfig = config;
           _remindId = config.id;
           _enabled = config.enabled;
           _parseCycle(config.cycle);
-          if (config.time != null && config.time!.length >= 5) {
-            final parts = config.time!.split(':');
-            _time = TimeOfDay(
-                hour: int.parse(parts[0]), minute: int.parse(parts[1]));
-          }
+          _time = _parseTime(config.time) ?? _time;
         });
       }
+    } catch (error) {
+      if (mounted) setState(() => _loadError = friendlyErrorMsg(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  TimeOfDay? _parseTime(String? value) {
+    if (value == null) return null;
+    final parts = value.split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null ||
+        minute == null ||
+        hour < 0 ||
+        hour > 23 ||
+        minute < 0 ||
+        minute > 59) {
+      return null;
+    }
+    return TimeOfDay(hour: hour, minute: minute);
   }
 
   Future<void> _pickTime() async {
@@ -4457,56 +4502,104 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
     return '每天重复';
   }
 
-  Future<void> _scheduleReminder() async {
-    switch (_cycle) {
+  Future<void> _applyLocalReminder({
+    required bool enabled,
+    required TimeOfDay time,
+    required String cycle,
+  }) async {
+    if (!enabled) {
+      await widget.reminderScheduler.cancel(widget.type);
+      return;
+    }
+
+    final weeklyTimes = cycle.startsWith('weekly:')
+        ? int.tryParse(cycle.substring('weekly:'.length))
+                ?.clamp(1, 7)
+                .toInt() ??
+            3
+        : 3;
+    switch (cycle.split(':').first) {
       case 'once':
         await widget.reminderScheduler.scheduleOnce(
           type: widget.type,
           title: '${widget.label} 提醒',
           body: _reminderNotificationBody(widget.type),
-          time: _time,
+          time: time,
         );
       case 'weekly':
         await widget.reminderScheduler.scheduleWeekly(
           type: widget.type,
           title: '${widget.label} 提醒',
           body: _reminderNotificationBody(widget.type),
-          time: _time,
-          timesPerWeek: _weeklyTimes,
+          time: time,
+          timesPerWeek: weeklyTimes,
         );
       default:
         await widget.reminderScheduler.scheduleDaily(
           type: widget.type,
           title: '${widget.label} 提醒',
           body: _reminderNotificationBody(widget.type),
-          time: _time,
+          time: time,
         );
     }
   }
 
+  Future<void> _restoreOriginalReminder() async {
+    final original = _originalConfig;
+    if (original == null || !original.enabled) {
+      await widget.reminderScheduler.cancel(widget.type);
+      return;
+    }
+    final originalTime = _parseTime(original.time);
+    if (originalTime == null) return;
+    await _applyLocalReminder(
+      enabled: true,
+      time: originalTime,
+      cycle: original.cycle,
+    );
+  }
+
   Future<void> _save() async {
+    if (_saving) return;
     setState(() => _saving = true);
+    final enabled = _enabled;
+    final time = _time;
+    final cycle = _cycleValue();
+    var localChangeAttempted = false;
     try {
       final timeStr =
-          '${_time.hour.toString().padLeft(2, '0')}:${_time.minute.toString().padLeft(2, '0')}:00';
-      await widget.api.upsertReminder(
+          '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}:00';
+
+      // Apply locally first. If notification scheduling fails, the server state
+      // remains unchanged instead of leaving the page in a half-saved state.
+      localChangeAttempted = true;
+      await _applyLocalReminder(enabled: enabled, time: time, cycle: cycle);
+      final saved = await widget.api.upsertReminder(
         token: widget.token,
         remindId: _remindId,
         type: widget.type,
         time: timeStr,
-        cycle: _cycleValue(),
-        enabled: _enabled,
+        cycle: cycle,
+        enabled: enabled,
       );
-      if (_enabled) {
-        await _scheduleReminder();
-      } else {
-        await widget.reminderScheduler.cancel(widget.type);
+      if (mounted) Navigator.of(context).pop(saved);
+    } catch (error) {
+      var rollbackFailed = false;
+      if (localChangeAttempted && error is! ReminderPermissionDeniedException) {
+        try {
+          await _restoreOriginalReminder();
+        } catch (_) {
+          rollbackFailed = true;
+        }
       }
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
       if (mounted) {
+        final message = friendlyErrorMsg(error);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(friendlyErrorMsg(e))),
+          SnackBar(
+            content: Text(
+              rollbackFailed ? '$message；本地提醒恢复失败，请重新保存' : message,
+            ),
+          ),
         );
       }
     } finally {
@@ -4516,85 +4609,118 @@ class _ReminderSettingsPageState extends State<_ReminderSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('${widget.label} 提醒')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                Icon(widget.icon,
-                    size: 64, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(height: 24),
-                SwitchListTile(
-                  title: const Text('启用提醒'),
-                  subtitle: Text(_enabled ? '每天 $_time 提醒' : '提醒已关闭'),
-                  value: _enabled,
-                  onChanged: (v) => setState(() => _enabled = v),
-                ),
-                const SizedBox(height: 12),
-                ListTile(
-                  leading: const Icon(Icons.access_time),
-                  title: const Text('提醒时间'),
-                  subtitle: Text(_time.format(context)),
-                  trailing: const Icon(Icons.edit_calendar_outlined),
-                  onTap: _enabled ? _pickTime : null,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  initialValue: _cycle,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.repeat),
-                    labelText: '重复方式',
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'once', child: Text('不重复')),
-                    DropdownMenuItem(value: 'daily', child: Text('每天重复')),
-                    DropdownMenuItem(value: 'weekly', child: Text('每周重复')),
-                  ],
-                  onChanged: _enabled
-                      ? (value) => setState(() => _cycle = value ?? 'daily')
-                      : null,
-                ),
-                if (_cycle == 'weekly') ...[
-                  const SizedBox(height: 12),
-                  ListTile(
-                    leading: const Icon(Icons.event_repeat),
-                    title: const Text('每周提醒次数'),
-                    subtitle: Slider(
-                      value: _weeklyTimes.toDouble(),
-                      min: 1,
-                      max: 7,
-                      divisions: 6,
-                      label: '$_weeklyTimes 次',
-                      onChanged: _enabled
-                          ? (value) =>
-                              setState(() => _weeklyTimes = value.round())
-                          : null,
+    return PopScope(
+      canPop: !_saving,
+      child: Scaffold(
+        appBar: AppBar(title: Text('${widget.label} 提醒')),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _loadError != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48),
+                          const SizedBox(height: 12),
+                          Text(_loadError!, textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          OutlinedButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('重新加载'),
+                          ),
+                        ],
+                      ),
                     ),
-                    trailing: Text('$_weeklyTimes 次'),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.all(20),
+                    children: [
+                      Icon(widget.icon,
+                          size: 64,
+                          color: Theme.of(context).colorScheme.primary),
+                      const SizedBox(height: 24),
+                      SwitchListTile(
+                        title: const Text('启用提醒'),
+                        subtitle: Text(
+                          _enabled
+                              ? '${_time.format(context)} · ${_cycleLabel()}'
+                              : '提醒已关闭',
+                        ),
+                        value: _enabled,
+                        onChanged: _saving
+                            ? null
+                            : (value) => setState(() => _enabled = value),
+                      ),
+                      const SizedBox(height: 12),
+                      ListTile(
+                        leading: const Icon(Icons.access_time),
+                        title: const Text('提醒时间'),
+                        subtitle: Text(_time.format(context)),
+                        trailing: const Icon(Icons.edit_calendar_outlined),
+                        onTap: _enabled && !_saving ? _pickTime : null,
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<String>(
+                        initialValue: _cycle,
+                        decoration: const InputDecoration(
+                          prefixIcon: Icon(Icons.repeat),
+                          labelText: '重复方式',
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 'once', child: Text('不重复')),
+                          DropdownMenuItem(value: 'daily', child: Text('每天重复')),
+                          DropdownMenuItem(
+                              value: 'weekly', child: Text('每周重复')),
+                        ],
+                        onChanged: _enabled && !_saving
+                            ? (value) =>
+                                setState(() => _cycle = value ?? 'daily')
+                            : null,
+                      ),
+                      if (_cycle == 'weekly') ...[
+                        const SizedBox(height: 12),
+                        ListTile(
+                          leading: const Icon(Icons.event_repeat),
+                          title: const Text('每周提醒次数'),
+                          subtitle: Slider(
+                            value: _weeklyTimes.toDouble(),
+                            min: 1,
+                            max: 7,
+                            divisions: 6,
+                            label: '$_weeklyTimes 次',
+                            onChanged: _enabled && !_saving
+                                ? (value) =>
+                                    setState(() => _weeklyTimes = value.round())
+                                : null,
+                          ),
+                          trailing: Text('$_weeklyTimes 次'),
+                        ),
+                      ],
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _enabled ? _cycleLabel() : '提醒已关闭',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      FilledButton.icon(
+                        onPressed: _saving ? null : _save,
+                        icon: _saving
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.save),
+                        label: const Text('保存'),
+                      ),
+                    ],
                   ),
-                ],
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Text(
-                    _enabled ? _cycleLabel() : '提醒已关闭',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-                const SizedBox(height: 32),
-                FilledButton.icon(
-                  onPressed: _saving ? null : _save,
-                  icon: _saving
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save),
-                  label: const Text('保存'),
-                ),
-              ],
-            ),
+      ),
     );
   }
 }
