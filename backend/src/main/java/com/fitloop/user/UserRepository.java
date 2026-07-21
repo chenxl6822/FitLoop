@@ -14,6 +14,8 @@ public interface UserRepository extends JpaRepository<UserInfo, Long> {
 
     boolean existsByEmail(String email);
 
+    boolean existsByRole(UserRole role);
+
     List<UserInfo> findByNicknameContainingOrPhoneContaining(String nickname, String phone);
 
     long countByCreatedAtAfter(Instant after);

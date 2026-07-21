@@ -68,6 +68,9 @@ public class UserService {
         UserInfo user = users.findByPhoneOrEmail(account, account)
                 .orElseThrow(() -> new IllegalArgumentException("账号或密码错误"));
         boolean codeLogin = "code".equalsIgnoreCase(request.loginType());
+        if (user.getRole() == UserRole.ADMIN && codeLogin) {
+            throw new IllegalArgumentException("管理员账号必须使用密码登录");
+        }
         if (codeLogin) {
             String channel = verificationCodes.inferChannel(account);
             if (!verificationCodes.verifyCode(channel, account,
@@ -144,6 +147,6 @@ public class UserService {
 
     private LoginResponse response(AuthTokenService.TokenPair pair, UserInfo user) {
         return new LoginResponse(pair.accessToken(), pair.refreshToken(), "Bearer", pair.expiresIn(),
-                UserProfile.from(user));
+                UserProfile.from(user), user.getRole());
     }
 }

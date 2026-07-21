@@ -29,7 +29,7 @@ public final class UserDtos {
     }
 
     public record LoginResponse(String token, String refreshToken, String tokenType, long expiresIn,
-                                UserProfile userProfile) {
+                                UserProfile userProfile, UserRole role) {
     }
 
     public record RefreshRequest(@NotBlank String refreshToken) { }

@@ -8,6 +8,4 @@ $env:SPRING_DATA_REDIS_PORT = "6379"
 $env:SPRING_REDIS_HOST = "localhost"
 $env:SPRING_REDIS_PORT = "6379"
 $env:FITLOOP_JWT_SECRET = "local-dev-secret-local-dev-secret"
-$env:FITLOOP_ADMIN_KEY = "local-admin-key"
-
 mvn spring-boot:run

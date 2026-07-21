@@ -63,6 +63,9 @@ class UserServiceTest {
     private UserService userService;
 
     @Autowired
+    private UserRepository users;
+
+    @Autowired
     private SmsService smsService;
 
     @Autowired
@@ -125,6 +128,7 @@ class UserServiceTest {
         assertThat(result.refreshToken()).isNotBlank();
         assertThat(result.tokenType()).isEqualTo("Bearer");
         assertThat(result.userProfile().nickname()).isEqualTo("User4");
+        assertThat(result.role()).isEqualTo(UserRole.USER);
     }
 
     @Test
@@ -244,5 +248,22 @@ class UserServiceTest {
         var result = userService.login(new LoginRequest("student@example.com", null, loginCode, "code"));
 
         assertThat(result.userProfile().nickname()).isEqualTo("EmailUser");
+    }
+
+    @Test
+    void administratorMustUsePasswordAndReceivesAdminRole() {
+        var created = registerWithCode("13800000015", "admin-pass", "AdminUser");
+        UserInfo admin = users.findById(created.userId()).orElseThrow();
+        admin.setRole(UserRole.ADMIN);
+        users.saveAndFlush(admin);
+        String code = verificationCodes.sendCode("phone", "13800000015", "login", null).debugCode();
+
+        assertThatThrownBy(() -> userService.login(
+                new LoginRequest("13800000015", null, code, "code")))
+                .hasMessageContaining("密码登录");
+
+        var result = userService.login(
+                new LoginRequest("13800000015", "admin-pass", null, "password"));
+        assertThat(result.role()).isEqualTo(UserRole.ADMIN);
     }
 }

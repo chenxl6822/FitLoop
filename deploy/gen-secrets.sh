@@ -20,9 +20,12 @@ echo "MYSQL_PASSWORD=${DB_PASS}"
 echo "MYSQL_ROOT_PASSWORD=${DB_PASS}-root"
 echo ""
 
-# 生成管理密钥
-ADMIN_KEY=$(openssl rand -hex 16)
-echo "FITLOOP_ADMIN_KEY=${ADMIN_KEY}"
+# Java Backend 与 Agent Service 间使用两把独立密钥
+AGENT_SERVICE_KEY=$(openssl rand -base64 48)
+AGENT_DELEGATION_SECRET=$(openssl rand -base64 48)
+echo "FITLOOP_AGENT_SERVICE_KEY=${AGENT_SERVICE_KEY}"
+echo "FITLOOP_AGENT_DELEGATION_SECRET=${AGENT_DELEGATION_SECRET}"
+echo "FITLOOP_ADMIN_BOOTSTRAP_ACCOUNT="
 echo ""
 
 echo "========================================="
