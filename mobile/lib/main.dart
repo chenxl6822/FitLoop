@@ -1817,7 +1817,6 @@ class SportSessionPage extends StatefulWidget {
 
 class _SportSessionPageState extends State<SportSessionPage> {
   static const _maxAcceptedAccuracyMeters = 50.0;
-  static const int _statusAbnormal = 2;
 
   String? _sessionId;
   SportRecord? _lastRecord;
@@ -1838,13 +1837,36 @@ class _SportSessionPageState extends State<SportSessionPage> {
   bool _isPaused = false;
   Timer? _elapsedTimer;
   int _activeSeconds = 0;
-  Future<AppealListResponse>? _appealFuture;
+  Future<_SportAppealSnapshot>? _appealFuture;
 
   String _selectedSportType = 'running';
   String _selectedCheckinMode = 'gps';
   int _stepCount = 0;
   PedometerService? _pedometerService;
   StreamSubscription<int>? _stepSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _appealFuture = _loadAppealCenter();
+  }
+
+  Future<_SportAppealSnapshot> _loadAppealCenter() async {
+    final appealsFuture = widget.api.listAppeals(token: widget.session.token);
+    final recordsFuture =
+        widget.api.listSportRecords(token: widget.session.token);
+    return _SportAppealSnapshot(
+      appeals: await appealsFuture,
+      records: await recordsFuture,
+    );
+  }
+
+  void _refreshAppealCenter() {
+    setState(() {
+      _appealFuture = _loadAppealCenter();
+    });
+  }
+
   @override
   void dispose() {
     widget.onSportActiveChanged?.call(false);
@@ -2147,9 +2169,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _currentSpeedMs = null;
         _lastRecord = record;
         _status = statusMsg;
-        if (record.status == _statusAbnormal) {
-          _appealFuture = widget.api.listAppeals(token: widget.session.token);
-        }
+        _appealFuture = _loadAppealCenter();
       });
       widget.onSportActiveChanged?.call(false);
     } catch (error) {
@@ -2494,9 +2514,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       },
     );
     if (reason != null && mounted) {
-      setState(() {
-        _appealFuture = widget.api.listAppeals(token: widget.session.token);
-      });
+      _refreshAppealCenter();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('申诉已提交')),
@@ -2630,78 +2648,220 @@ class _SportSessionPageState extends State<SportSessionPage> {
                 '${(lastRecord.durationSeconds / 60).round()} 分钟 / ${lastRecord.calorie.toStringAsFixed(1)} kcal',
             icon: Icons.route_outlined,
           ),
-          if (lastRecord.status == _statusAbnormal)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: FilledButton.icon(
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.errorContainer,
-                  foregroundColor:
-                      Theme.of(context).colorScheme.onErrorContainer,
-                ),
-                icon: const Icon(Icons.report_problem_outlined),
-                label: const Text('对本次记录提起申诉'),
-                onPressed: () => _showAppealSheet(lastRecord.recordId),
-              ),
-            ),
-          FutureBuilder<AppealListResponse>(
-            future: _appealFuture,
-            builder: (context, snapshot) {
-              final appeals =
-                  snapshot.data?.appeals ?? const <AppealResponse>[];
-              if (appeals.isEmpty) return const SizedBox.shrink();
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.fact_check_outlined, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            '我的申诉 (${appeals.length})',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                    ...appeals.take(5).map((a) => ListTile(
-                          dense: true,
-                          leading: Icon(
-                            _appealStatusIcon(a.status),
-                            color: _appealStatusColor(context, a.status),
-                          ),
-                          title: Text(
-                            '记录 #${a.recordId}',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          subtitle: Text(
-                            a.reason,
-                            style: const TextStyle(fontSize: 12),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: Text(
-                            a.statusLabel,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _appealStatusColor(context, a.status),
-                            ),
-                          ),
-                        )),
-                  ],
+        ],
+        FutureBuilder<_SportAppealSnapshot>(
+          future: _appealFuture,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return _AppealCenterError(
+                message: friendlyErrorMsg(snapshot.error),
+                onRefresh: _refreshAppealCenter,
+              );
+            }
+            final data = snapshot.data;
+            if (data == null) {
+              return const Card(
+                margin: EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: CircularProgressIndicator()),
                 ),
               );
-            },
-          ),
-        ],
+            }
+            return _SportAppealCenter(
+              snapshot: data,
+              onAppeal: _showAppealSheet,
+              onRefresh: _refreshAppealCenter,
+            );
+          },
+        ),
       ],
     );
   }
 }
+
+class _SportAppealSnapshot {
+  const _SportAppealSnapshot({required this.appeals, required this.records});
+
+  final AppealListResponse appeals;
+  final List<SportRecord> records;
+}
+
+class _SportAppealCenter extends StatelessWidget {
+  const _SportAppealCenter({
+    required this.snapshot,
+    required this.onAppeal,
+    required this.onRefresh,
+  });
+
+  final _SportAppealSnapshot snapshot;
+  final ValueChanged<int> onAppeal;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final appeals = snapshot.appeals.appeals;
+    final appealedRecordIds = appeals.map((appeal) => appeal.recordId).toSet();
+    return Column(
+      children: [
+        Card(
+          key: const Key('sport-records-card'),
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.history, size: 18),
+                    const SizedBox(width: 8),
+                    Text('最近运动记录',
+                        style: Theme.of(context).textTheme.titleSmall),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: '刷新记录',
+                      onPressed: onRefresh,
+                      icon: const Icon(Icons.refresh, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+              if (snapshot.records.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: Text('暂无运动记录'),
+                )
+              else
+                ...snapshot.records.take(10).map((record) {
+                  final canAppeal = record.status == 2 &&
+                      !appealedRecordIds.contains(record.recordId);
+                  final reason = record.abnormalReason;
+                  return ListTile(
+                    key: Key('sport-record-${record.recordId}'),
+                    dense: true,
+                    leading: Icon(
+                      _sportRecordStatusIcon(record.status),
+                      color: _sportRecordStatusColor(context, record.status),
+                    ),
+                    title: Text(
+                      '记录 #${record.recordId} · ${_sportRecordStatusLabel(record.status)}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    subtitle: Text(
+                      '${(record.durationSeconds / 60).round()} 分钟 · '
+                      '${record.distanceKm.toStringAsFixed(2)} km'
+                      '${reason == null || reason.isEmpty ? '' : '\n$reason'}',
+                      style: const TextStyle(fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: canAppeal
+                        ? TextButton(
+                            key: Key('appeal-record-${record.recordId}'),
+                            onPressed: () => onAppeal(record.recordId),
+                            child: const Text('申诉'),
+                          )
+                        : null,
+                  );
+                }),
+            ],
+          ),
+        ),
+        if (appeals.isNotEmpty)
+          Card(
+            key: const Key('my-appeals-card'),
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.fact_check_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      Text('我的申诉 (${appeals.length})',
+                          style: Theme.of(context).textTheme.titleSmall),
+                    ],
+                  ),
+                ),
+                ...appeals.take(5).map((appeal) => ListTile(
+                      dense: true,
+                      leading: Icon(
+                        _appealStatusIcon(appeal.status),
+                        color: _appealStatusColor(context, appeal.status),
+                      ),
+                      title: Text('记录 #${appeal.recordId}',
+                          style: const TextStyle(fontSize: 13)),
+                      subtitle: Text(
+                        appeal.reason,
+                        style: const TextStyle(fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Text(
+                        appeal.statusLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _appealStatusColor(context, appeal.status),
+                        ),
+                      ),
+                    )),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _AppealCenterError extends StatelessWidget {
+  const _AppealCenterError({required this.message, required this.onRefresh});
+
+  final String message;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: const Icon(Icons.error_outline),
+        title: const Text('运动记录加载失败'),
+        subtitle: Text(message),
+        trailing: IconButton(
+          tooltip: '重试',
+          onPressed: onRefresh,
+          icon: const Icon(Icons.refresh),
+        ),
+      ),
+    );
+  }
+}
+
+String _sportRecordStatusLabel(int status) => switch (status) {
+      0 => '进行中',
+      1 => '有效',
+      2 => '异常',
+      3 => '申诉中',
+      _ => '未知',
+    };
+
+IconData _sportRecordStatusIcon(int status) => switch (status) {
+      1 => Icons.check_circle_outline,
+      2 => Icons.warning_amber_outlined,
+      3 => Icons.hourglass_empty,
+      _ => Icons.directions_run_outlined,
+    };
+
+Color _sportRecordStatusColor(BuildContext context, int status) =>
+    switch (status) {
+      1 => Colors.green,
+      2 => Theme.of(context).colorScheme.error,
+      3 => Colors.orange,
+      _ => Theme.of(context).colorScheme.onSurfaceVariant,
+    };
 
 IconData _appealStatusIcon(String status) {
   switch (status) {
@@ -2817,6 +2977,7 @@ class _AppealFormSheetState extends State<_AppealFormSheet> {
             ],
             const SizedBox(height: 16),
             FilledButton.icon(
+              key: const Key('submit-appeal'),
               onPressed: _busy ? null : _submit,
               icon: _busy
                   ? const SizedBox.square(

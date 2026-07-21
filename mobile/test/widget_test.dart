@@ -339,6 +339,41 @@ void main() {
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
+  testWidgets('submits an appeal from a historical abnormal workout',
+      (tester) async {
+    final api = _FakeApi(
+      sportRecords: const [
+        SportRecord(
+          recordId: 42,
+          status: 2,
+          durationSeconds: 1800,
+          distanceKm: 5.2,
+          calorie: 320,
+          sportType: 'running',
+          abnormalReason: 'GPS speed jump',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+
+    await _openSportPage(tester);
+    final appealButton = find.byKey(const Key('appeal-record-42'));
+    await tester.scrollUntilVisible(appealButton, 200);
+    expect(appealButton, findsOneWidget);
+
+    tester.widget<TextButton>(appealButton).onPressed!();
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'GPS signal drift');
+    await tester.tap(find.byKey(const Key('submit-appeal')));
+    await tester.pumpAndSettle();
+
+    expect(api.createdAppeals, 1);
+    expect(find.byKey(const Key('appeal-record-42')), findsNothing);
+    expect(find.byKey(const Key('my-appeals-card')), findsOneWidget);
+  });
+
   testWidgets('saves reminder and refreshes profile without reopening it',
       (tester) async {
     final api = _FakeApi(
@@ -685,10 +720,14 @@ class _FakeApi implements FitLoopApi {
   _FakeApi({
     List<SportTarget> targets = const <SportTarget>[],
     List<ReminderConfig> reminders = const <ReminderConfig>[],
+    List<SportRecord> sportRecords = const <SportRecord>[],
+    List<AppealResponse> appeals = const <AppealResponse>[],
     this.finishError,
     this.reminderUpsertError,
   })  : _targets = List.of(targets),
-        _reminders = List.of(reminders);
+        _reminders = List.of(reminders),
+        _sportRecords = List.of(sportRecords),
+        _appeals = List.of(appeals);
 
   factory _FakeApi.withTarget() {
     return _FakeApi(
@@ -710,6 +749,8 @@ class _FakeApi implements FitLoopApi {
 
   final List<SportTarget> _targets;
   final List<ReminderConfig> _reminders;
+  final List<SportRecord> _sportRecords;
+  final List<AppealResponse> _appeals;
   final Object? finishError;
   final Object? reminderUpsertError;
   int uploadedTrackPoints = 0;
@@ -718,6 +759,7 @@ class _FakeApi implements FitLoopApi {
   int createdTargets = 0;
   int createdHealthData = 0;
   int reminderUpsertCalls = 0;
+  int createdAppeals = 0;
   double? _lastWeight;
   String? lastLoginPassword;
   String? lastLoginCode;
@@ -885,6 +927,11 @@ class _FakeApi implements FitLoopApi {
   }
 
   @override
+  Future<List<SportRecord>> listSportRecords({required String token}) async {
+    return List.of(_sportRecords);
+  }
+
+  @override
   Future<void> uploadTrackPoint({
     required String token,
     required TrackPoint point,
@@ -947,14 +994,38 @@ class _FakeApi implements FitLoopApi {
 
   @override
   Future<AppealListResponse> listAppeals({required String token}) async {
-    return const AppealListResponse(appeals: []);
+    return AppealListResponse(appeals: List.of(_appeals));
   }
 
   @override
   Future<void> createAppeal(
       {required String token,
       required int recordId,
-      required String reason}) async {}
+      required String reason}) async {
+    createdAppeals += 1;
+    _appeals.add(AppealResponse(
+      appealId: createdAppeals,
+      recordId: recordId,
+      reason: reason,
+      status: 'pending',
+      createdAt: '2026-07-21T00:00:00Z',
+    ));
+    final index =
+        _sportRecords.indexWhere((record) => record.recordId == recordId);
+    if (index >= 0) {
+      final record = _sportRecords[index];
+      _sportRecords[index] = SportRecord(
+        recordId: record.recordId,
+        status: 3,
+        durationSeconds: record.durationSeconds,
+        distanceKm: record.distanceKm,
+        calorie: record.calorie,
+        sportType: record.sportType,
+        abnormalReason: record.abnormalReason,
+        startedAt: record.startedAt,
+      );
+    }
+  }
 
   @override
   Future<SportHistoryResponse> sportHistory({

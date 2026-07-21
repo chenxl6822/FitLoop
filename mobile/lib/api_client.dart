@@ -44,6 +44,8 @@ abstract class FitLoopApi {
 
   Future<SportStats> sportStats({required String token});
 
+  Future<List<SportRecord>> listSportRecords({required String token});
+
   Future<List<SportTarget>> currentTargets({required String token});
 
   Future<SportTarget> createTarget({
@@ -357,6 +359,16 @@ class HttpFitLoopApi implements FitLoopApi {
       distanceKm: (data['distanceKm'] as num).toDouble(),
       calorie: (data['calorie'] as num).toDouble(),
     );
+  }
+
+  @override
+  Future<List<SportRecord>> listSportRecords({required String token}) async {
+    final body = await _get('/api/sport/list', token: token);
+    final data = body['data'] as Map<String, dynamic>;
+    final records = data['records'] as List<dynamic>;
+    return records
+        .map((item) => SportRecord.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   @override
@@ -1558,13 +1570,34 @@ class SportRecord {
     required this.durationSeconds,
     required this.distanceKm,
     required this.calorie,
+    this.sportType,
+    this.abnormalReason,
+    this.startedAt,
   });
+
+  factory SportRecord.fromJson(Map<String, dynamic> json) {
+    return SportRecord(
+      recordId: json['recordId'] as int,
+      status: json['status'] as int,
+      durationSeconds: json['durationSeconds'] as int,
+      distanceKm: (json['distanceKm'] as num).toDouble(),
+      calorie: (json['calorie'] as num).toDouble(),
+      sportType: json['sportType'] as String?,
+      abnormalReason: json['abnormalReason'] as String?,
+      startedAt: json['startedAt'] == null
+          ? null
+          : DateTime.parse(json['startedAt'] as String),
+    );
+  }
 
   final int recordId;
   final int status;
   final int durationSeconds;
   final double distanceKm;
   final double calorie;
+  final String? sportType;
+  final String? abnormalReason;
+  final DateTime? startedAt;
 }
 
 class SportStats {
