@@ -58,6 +58,7 @@ logging:
 fitloop:
   admin:
     bootstrap-account: ${FITLOOP_ADMIN_BOOTSTRAP_ACCOUNT:}
+    bootstrap-nickname: ${FITLOOP_ADMIN_BOOTSTRAP_NICKNAME:}
   jwt:
     secret: ${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}
     ttl-seconds: ${FITLOOP_JWT_TTL_SECONDS:900}

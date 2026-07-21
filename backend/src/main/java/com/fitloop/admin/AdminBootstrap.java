@@ -19,22 +19,31 @@ public class AdminBootstrap implements ApplicationRunner {
 
     private final UserRepository users;
     private final String bootstrapAccount;
+    private final String bootstrapNickname;
 
     public AdminBootstrap(UserRepository users,
-                          @Value("${fitloop.admin.bootstrap-account:}") String bootstrapAccount) {
+                          @Value("${fitloop.admin.bootstrap-account:}") String bootstrapAccount,
+                          @Value("${fitloop.admin.bootstrap-nickname:}") String bootstrapNickname) {
         this.users = users;
         this.bootstrapAccount = bootstrapAccount;
+        this.bootstrapNickname = bootstrapNickname;
     }
 
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
-        if (!StringUtils.hasText(bootstrapAccount)) {
+        boolean hasAccount = StringUtils.hasText(bootstrapAccount);
+        boolean hasNickname = StringUtils.hasText(bootstrapNickname);
+        if (!hasAccount && !hasNickname) {
             return;
         }
         if (users.existsByRole(UserRole.ADMIN)) {
             log.info("Admin bootstrap ignored because an administrator already exists");
             return;
+        }
+        if (!hasAccount || !hasNickname) {
+            throw new IllegalStateException(
+                    "FITLOOP_ADMIN_BOOTSTRAP_ACCOUNT and FITLOOP_ADMIN_BOOTSTRAP_NICKNAME must be set together");
         }
 
         String account = bootstrapAccount.trim();
@@ -44,8 +53,12 @@ public class AdminBootstrap implements ApplicationRunner {
         UserInfo user = users.findByPhoneOrEmail(account, account)
                 .orElseThrow(() -> new IllegalStateException(
                         "FITLOOP_ADMIN_BOOTSTRAP_ACCOUNT must reference an existing user"));
+        if (!bootstrapNickname.trim().equals(user.getNickname())) {
+            throw new IllegalStateException(
+                    "FITLOOP_ADMIN_BOOTSTRAP_NICKNAME does not match the existing user");
+        }
         user.setRole(UserRole.ADMIN);
-        log.warn("Initial administrator promoted: userId={}. Remove FITLOOP_ADMIN_BOOTSTRAP_ACCOUNT after startup.",
+        log.warn("Initial administrator promoted: userId={}. Remove both admin bootstrap variables after startup.",
                 user.getUserId());
     }
 }

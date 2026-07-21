@@ -25,7 +25,7 @@ class AdminBootstrapTest {
 
     @Test
     void doesNothingWhenBootstrapAccountIsBlank() {
-        new AdminBootstrap(users, " ").run(new DefaultApplicationArguments());
+        new AdminBootstrap(users, " ", " ").run(new DefaultApplicationArguments());
 
         verify(users, never()).existsByRole(UserRole.ADMIN);
     }
@@ -34,7 +34,7 @@ class AdminBootstrapTest {
     void doesNothingWhenAnAdministratorAlreadyExists() {
         when(users.existsByRole(UserRole.ADMIN)).thenReturn(true);
 
-        new AdminBootstrap(users, "13800000000").run(new DefaultApplicationArguments());
+        new AdminBootstrap(users, "13800000000", "test").run(new DefaultApplicationArguments());
 
         verify(users, never()).findByPhoneOrEmail(anyString(), anyString());
     }
@@ -43,11 +43,13 @@ class AdminBootstrapTest {
     void promotesAnExistingUserAndNormalizesEmail() {
         UserInfo user = new UserInfo();
         user.setRole(UserRole.USER);
+        user.setNickname("test");
         when(users.existsByRole(UserRole.ADMIN)).thenReturn(false);
         when(users.findByPhoneOrEmail("admin@example.com", "admin@example.com"))
                 .thenReturn(Optional.of(user));
 
-        new AdminBootstrap(users, " Admin@Example.com ").run(new DefaultApplicationArguments());
+        new AdminBootstrap(users, " Admin@Example.com ", " test ")
+                .run(new DefaultApplicationArguments());
 
         assertThat(user.getRole()).isEqualTo(UserRole.ADMIN);
     }
@@ -58,10 +60,38 @@ class AdminBootstrapTest {
         when(users.findByPhoneOrEmail("13800000000", "13800000000"))
                 .thenReturn(Optional.empty());
 
-        AdminBootstrap bootstrap = new AdminBootstrap(users, "13800000000");
+        AdminBootstrap bootstrap = new AdminBootstrap(users, "13800000000", "test");
 
         assertThatThrownBy(() -> bootstrap.run(new DefaultApplicationArguments()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("existing user");
+    }
+
+    @Test
+    void rejectsIncompleteBootstrapIdentity() {
+        when(users.existsByRole(UserRole.ADMIN)).thenReturn(false);
+
+        AdminBootstrap bootstrap = new AdminBootstrap(users, "13800000000", " ");
+
+        assertThatThrownBy(() -> bootstrap.run(new DefaultApplicationArguments()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("must be set together");
+    }
+
+    @Test
+    void rejectsNicknameMismatch() {
+        UserInfo user = new UserInfo();
+        user.setRole(UserRole.USER);
+        user.setNickname("other");
+        when(users.existsByRole(UserRole.ADMIN)).thenReturn(false);
+        when(users.findByPhoneOrEmail("15096004710", "15096004710"))
+                .thenReturn(Optional.of(user));
+
+        AdminBootstrap bootstrap = new AdminBootstrap(users, "15096004710", "test");
+
+        assertThatThrownBy(() -> bootstrap.run(new DefaultApplicationArguments()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("does not match");
+        assertThat(user.getRole()).isEqualTo(UserRole.USER);
     }
 }
