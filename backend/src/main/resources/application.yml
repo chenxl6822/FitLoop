@@ -15,7 +15,8 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: true
-    baseline-version: 0
+    # The pre-Flyway production schema already matches V4. Empty databases still run V1 onward.
+    baseline-version: 4
     locations: classpath:db/migration
   data:
     redis:

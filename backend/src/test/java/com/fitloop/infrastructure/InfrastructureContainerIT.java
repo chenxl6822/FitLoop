@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.sql.DriverManager;
 import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -26,11 +27,12 @@ class InfrastructureContainerIT {
 
     @Test
     void productionMigrationsRunOnMySqlAndRedisAcceptsCommands() throws Exception {
-        var migration = Flyway.configure()
+        var flyway = Flyway.configure()
                 .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
                 .locations("classpath:db/migration")
-                .load()
-                .migrate();
+                .cleanDisabled(false)
+                .load();
+        var migration = flyway.migrate();
 
         assertThat(migration.success).isTrue();
         assertThat(migration.migrationsExecuted).isGreaterThanOrEqualTo(5);
@@ -41,6 +43,38 @@ class InfrastructureContainerIT {
                      "select version from flyway_schema_history where success = 1 order by installed_rank desc limit 1")) {
             assertThat(rows.next()).isTrue();
             assertThat(rows.getString(1)).isEqualTo("5");
+        }
+
+        flyway.clean();
+        Flyway.configure()
+                .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+                .locations("classpath:db/migration")
+                .target(MigrationVersion.fromVersion("4"))
+                .load()
+                .migrate();
+        try (var connection = DriverManager.getConnection(
+                MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+             var statement = connection.createStatement()) {
+            statement.execute("drop table flyway_schema_history");
+        }
+
+        var takeover = Flyway.configure()
+                .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
+                .locations("classpath:db/migration")
+                .baselineOnMigrate(true)
+                .baselineVersion(MigrationVersion.fromVersion("4"))
+                .load()
+                .migrate();
+        assertThat(takeover.success).isTrue();
+        assertThat(takeover.migrationsExecuted).isEqualTo(1);
+        try (var connection = DriverManager.getConnection(
+                MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+             var statement = connection.createStatement();
+             var rows = statement.executeQuery(
+                     "select count(*) from information_schema.tables "
+                             + "where table_schema = database() and table_name = 'admin_audit_log'")) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getInt(1)).isEqualTo(1);
         }
 
         var ping = REDIS.execInContainer("redis-cli", "PING");
