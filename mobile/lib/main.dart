@@ -31,11 +31,11 @@ String? _resolveMediaUrl(String? url) {
 const _kOnboardingDoneKey = 'onboarding_done';
 const _appVersion = String.fromEnvironment(
   'FITLOOP_APP_VERSION',
-  defaultValue: '0.1.4',
+  defaultValue: '0.1.5',
 );
 const _appBuildNumber = String.fromEnvironment(
   'FITLOOP_BUILD_NUMBER',
-  defaultValue: '5',
+  defaultValue: '6',
 );
 
 const _sportTypes = {

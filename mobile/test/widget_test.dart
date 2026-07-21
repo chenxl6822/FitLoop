@@ -564,8 +564,8 @@ void _adminDashboardTests() {
         api: api,
       ),
     ));
-    expect(find.text('0.1.4'), findsOneWidget);
-    expect(find.text('5'), findsOneWidget);
+    expect(find.text('0.1.5'), findsOneWidget);
+    expect(find.text('6'), findsOneWidget);
     expect(find.text('管理后台'), findsNothing);
 
     await tester.pumpWidget(MaterialApp(
