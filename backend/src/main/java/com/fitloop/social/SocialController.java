@@ -28,11 +28,11 @@ public class SocialController {
     }
 
     @GetMapping("/api/social/ranking")
-    public ApiResponse<RankingResponse> ranking(@RequestParam(defaultValue = "personal") String scope,
+    public ApiResponse<RankingResponse> ranking(@RequestParam(defaultValue = "friends") String scope,
                                                 @RequestParam(defaultValue = "week") String period,
                                                 @RequestParam(defaultValue = "1") int page,
                                                 @RequestParam(defaultValue = "20") int size) {
-        return ApiResponse.ok(social.ranking(scope, period, page, size));
+        return ApiResponse.ok(social.ranking(AuthSupport.currentUserId(), scope, period, page, size));
     }
 
     @PostMapping("/api/social/friend")

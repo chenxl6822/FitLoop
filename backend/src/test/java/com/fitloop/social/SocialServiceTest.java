@@ -132,6 +132,28 @@ class SocialServiceTest {
     }
 
     @Test
+    void rankingScopesSeparatePersonalFriendsAndGlobalUsers() {
+        var alice = createUser("13800000001", "Alice");
+        var bob = createUser("13800000002", "Bob");
+        var charlie = createUser("13800000003", "Charlie");
+        socialService.addFriend(alice.getUserId(), new FriendRequest(bob.getUserId()));
+        saveWorkout(alice, "alice-ranking", 3.0);
+        saveWorkout(bob, "bob-ranking", 5.0);
+        saveWorkout(charlie, "charlie-ranking", 8.0);
+
+        var personal = socialService.ranking(alice.getUserId(), "personal", "week", 1, 20);
+        var friendRanking = socialService.ranking(alice.getUserId(), "friends", "week", 1, 20);
+        var global = socialService.ranking(alice.getUserId(), "global", "week", 1, 20);
+
+        assertThat(personal.rankingList()).extracting(row -> row.userId())
+                .containsExactly(alice.getUserId());
+        assertThat(friendRanking.rankingList()).extracting(row -> row.userId())
+                .containsExactly(bob.getUserId(), alice.getUserId());
+        assertThat(global.rankingList()).extracting(row -> row.userId())
+                .containsExactly(charlie.getUserId(), bob.getUserId(), alice.getUserId());
+    }
+
+    @Test
     void weeklyRankingFallsBackToMysqlWhenRedisIsDown() {
         var user = createUser("13800000009", "Runner");
         SportRecord record = new SportRecord();
@@ -147,10 +169,23 @@ class SocialServiceTest {
         org.mockito.Mockito.when(redis.opsForZSet())
                 .thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("redis down"));
 
-        var result = socialService.ranking("personal", "week", 1, 20);
+        var result = socialService.ranking(user.getUserId(), "global", "week", 1, 20);
 
         assertThat(result.rankingList()).hasSize(1);
         assertThat(result.rankingList().getFirst().userId()).isEqualTo(user.getUserId());
         assertThat(result.rankingList().getFirst().distanceKm()).isEqualTo(5.2);
+    }
+
+    private void saveWorkout(UserInfo user, String sessionId, double distanceKm) {
+        SportRecord record = new SportRecord();
+        record.setUserId(user.getUserId());
+        record.setSessionId(sessionId);
+        record.setSportType("running");
+        record.setCheckinMode("manual");
+        record.setDistanceKm(distanceKm);
+        record.setCalorie(distanceKm * 50);
+        record.setStatus(SportRecord.STATUS_VALID);
+        record.setStartedAt(Instant.now());
+        sportRecordRepository.saveAndFlush(record);
     }
 }

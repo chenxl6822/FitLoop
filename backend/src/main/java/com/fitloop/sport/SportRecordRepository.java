@@ -1,6 +1,7 @@
 package com.fitloop.sport;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,6 +22,11 @@ public interface SportRecordRepository extends JpaRepository<SportRecord, Long> 
     List<SportRecord> findByStatus(int status);
 
     List<SportRecord> findByStatusAndStartedAtBetween(int status, Instant start, Instant end);
+
+    List<SportRecord> findByUserIdInAndStatusAndStartedAtBetween(
+            Collection<Long> userIds, int status, Instant start, Instant end);
+
+    List<SportRecord> findByUserIdInAndStatus(Collection<Long> userIds, int status);
 
     @Query("select r from SportRecord r where r.userId = :userId and "
             + "(:cursor is null or r.recordId < :cursor) order by r.recordId desc")

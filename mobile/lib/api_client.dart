@@ -72,7 +72,7 @@ abstract class FitLoopApi {
 
   Future<RankingResult> ranking({
     required String token,
-    String scope = 'personal',
+    String scope = 'friends',
     String period = 'week',
     int page = 1,
     int size = 20,
@@ -440,7 +440,7 @@ class HttpFitLoopApi implements FitLoopApi {
   @override
   Future<RankingResult> ranking({
     required String token,
-    String scope = 'personal',
+    String scope = 'friends',
     String period = 'week',
     int page = 1,
     int size = 20,

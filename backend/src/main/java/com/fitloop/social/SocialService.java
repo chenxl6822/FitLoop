@@ -83,8 +83,8 @@ public class SocialService {
     }
 
     @Transactional(readOnly = true)
-    public RankingResponse ranking(String scope, String period, int page, int size) {
-        return leaderboard.ranking(scope, period, page, size);
+    public RankingResponse ranking(Long userId, String scope, String period, int page, int size) {
+        return leaderboard.ranking(userId, scope, period, page, size);
     }
 
     @Transactional

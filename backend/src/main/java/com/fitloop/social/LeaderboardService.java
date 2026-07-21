@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.WeekFields;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -40,13 +41,16 @@ public class LeaderboardService {
 
     private final SportRecordRepository records;
     private final UserRepository users;
+    private final UserFriendRepository friends;
     private final CalorieCalculator calculator;
     private final StringRedisTemplate redis;
 
     public LeaderboardService(SportRecordRepository records, UserRepository users,
+                              UserFriendRepository friends,
                               CalorieCalculator calculator, StringRedisTemplate redis) {
         this.records = records;
         this.users = users;
+        this.friends = friends;
         this.calculator = calculator;
         this.redis = redis;
     }
@@ -59,19 +63,25 @@ public class LeaderboardService {
     }
 
     @Transactional(readOnly = true)
-    public RankingResponse ranking(String scope, String period, int page, int size) {
+    public RankingResponse ranking(Long viewerUserId, String scope, String period, int page, int size) {
         int safePage = Math.max(page, 1);
         int safeSize = Math.max(1, Math.min(size, 100));
+        String safeScope = normalizeScope(scope);
+        Set<Long> visibleUserIds = visibleUserIds(viewerUserId, safeScope);
         if ("week".equalsIgnoreCase(period)) {
-            List<RankingRow> cached = fromRedis(safePage, safeSize);
-            if (!cached.isEmpty()) return new RankingResponse(scope, period, cached);
-            List<SportRecord> week = currentWeekRecords();
+            if (visibleUserIds == null) {
+                List<RankingRow> cached = fromRedis(safePage, safeSize);
+                if (!cached.isEmpty()) return new RankingResponse(safeScope, period, cached);
+            }
+            List<SportRecord> week = currentWeekRecords(visibleUserIds);
             List<RankingRow> fallback = aggregate(week, safePage, safeSize);
-            rebuild(week);
-            return new RankingResponse(scope, period, fallback);
+            if (visibleUserIds == null) rebuild(week);
+            return new RankingResponse(safeScope, period, fallback);
         }
-        return new RankingResponse(scope, period,
-                aggregate(records.findByStatus(SportRecord.STATUS_VALID), safePage, safeSize));
+        List<SportRecord> source = visibleUserIds == null
+                ? records.findByStatus(SportRecord.STATUS_VALID)
+                : records.findByUserIdInAndStatus(visibleUserIds, SportRecord.STATUS_VALID);
+        return new RankingResponse(safeScope, period, aggregate(source, safePage, safeSize));
     }
 
     private List<RankingRow> fromRedis(int page, int size) {
@@ -95,12 +105,37 @@ public class LeaderboardService {
         }
     }
 
-    private List<SportRecord> currentWeekRecords() {
+    private List<SportRecord> currentWeekRecords(Collection<Long> visibleUserIds) {
         LocalDate monday = LocalDate.now(BUSINESS_ZONE).with(DayOfWeek.MONDAY);
         Instant start = monday.atStartOfDay(BUSINESS_ZONE).toInstant();
         Instant end = monday.plusDays(7).atStartOfDay(BUSINESS_ZONE).toInstant();
-        List<SportRecord> result = records.findByStatusAndStartedAtBetween(SportRecord.STATUS_VALID, start, end);
+        List<SportRecord> result = visibleUserIds == null
+                ? records.findByStatusAndStartedAtBetween(SportRecord.STATUS_VALID, start, end)
+                : records.findByUserIdInAndStatusAndStartedAtBetween(
+                        visibleUserIds, SportRecord.STATUS_VALID, start, end);
         return result == null ? List.of() : result;
+    }
+
+    private String normalizeScope(String scope) {
+        String normalized = scope == null ? "friends" : scope.trim().toLowerCase();
+        if (!Set.of("personal", "friends", "global").contains(normalized)) {
+            throw new IllegalArgumentException("Ranking scope must be personal, friends, or global");
+        }
+        return normalized;
+    }
+
+    private Set<Long> visibleUserIds(Long viewerUserId, String scope) {
+        if ("global".equals(scope)) return null;
+        if (viewerUserId == null) throw new IllegalArgumentException("Ranking viewer is required");
+        Set<Long> result = new java.util.HashSet<>();
+        result.add(viewerUserId);
+        if ("friends".equals(scope)) {
+            friends.findByUserId(viewerUserId).stream()
+                    .filter(friend -> "active".equalsIgnoreCase(friend.getStatus()))
+                    .map(UserFriend::getFriendUserId)
+                    .forEach(result::add);
+        }
+        return result;
     }
 
     private List<RankingRow> aggregate(List<SportRecord> source, int page, int size) {

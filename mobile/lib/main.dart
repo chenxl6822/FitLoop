@@ -858,6 +858,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _index = 0;
   bool _isSportActive = false;
+  final _socialPageKey = GlobalKey<_SocialPageState>();
   late final List<Widget> _pages;
 
   @override
@@ -878,7 +879,11 @@ class _AppShellState extends State<AppShell> {
         },
       ),
       StatsPage(api: widget.api, session: widget.session),
-      SocialPage(api: widget.api, session: widget.session),
+      SocialPage(
+        key: _socialPageKey,
+        api: widget.api,
+        session: widget.session,
+      ),
       ProfilePage(
         api: widget.api,
         reminderScheduler: widget.reminderScheduler,
@@ -893,6 +898,13 @@ class _AppShellState extends State<AppShell> {
     widget.onLogout?.call();
   }
 
+  void _selectTab(int value) {
+    setState(() => _index = value);
+    if (value == 3) {
+      _socialPageKey.currentState?.refresh();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -901,7 +913,7 @@ class _AppShellState extends State<AppShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
-        onDestinationSelected: (value) => setState(() => _index = value),
+        onDestinationSelected: _selectTab,
         destinations: [
           const NavigationDestination(
               icon: Icon(Icons.home_outlined),
@@ -3316,6 +3328,7 @@ class _SocialPageState extends State<SocialPage> {
   final _searchController = TextEditingController();
   List<UserSearchItem> _searchResults = [];
   bool _searching = false;
+  String _rankingScope = 'friends';
 
   @override
   void initState() {
@@ -3332,7 +3345,10 @@ class _SocialPageState extends State<SocialPage> {
 
   Future<_SocialSnapshot> _loadSocial() async {
     final medal = await widget.api.medalSummary(token: widget.session.token);
-    final ranking = await widget.api.ranking(token: widget.session.token);
+    final ranking = await widget.api.ranking(
+      token: widget.session.token,
+      scope: _rankingScope,
+    );
     return _SocialSnapshot(medal: medal, ranking: ranking);
   }
 
@@ -3340,11 +3356,19 @@ class _SocialPageState extends State<SocialPage> {
     return widget.api.listFriends(token: widget.session.token);
   }
 
-  void _refresh() {
+  void refresh() {
     setState(() {
       _future = _loadSocial();
       _friendFuture = _loadFriends();
       _searchResults = [];
+    });
+  }
+
+  void _selectRankingScope(String scope) {
+    if (_rankingScope == scope) return;
+    setState(() {
+      _rankingScope = scope;
+      _future = _loadSocial();
     });
   }
 
@@ -3378,7 +3402,7 @@ class _SocialPageState extends State<SocialPage> {
         token: widget.session.token,
         friendUserId: userId,
       );
-      _refresh();
+      refresh();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3481,7 +3505,7 @@ class _SocialPageState extends State<SocialPage> {
                         const Spacer(),
                         IconButton(
                           icon: const Icon(Icons.refresh, size: 18),
-                          onPressed: _refresh,
+                          onPressed: refresh,
                         ),
                       ],
                     ),
@@ -3497,9 +3521,40 @@ class _SocialPageState extends State<SocialPage> {
           },
         ),
 
+        Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  key: const Key('ranking-scope-personal'),
+                  label: const Text('个人'),
+                  selected: _rankingScope == 'personal',
+                  onSelected: (_) => _selectRankingScope('personal'),
+                ),
+                ChoiceChip(
+                  key: const Key('ranking-scope-friends'),
+                  label: const Text('好友'),
+                  selected: _rankingScope == 'friends',
+                  onSelected: (_) => _selectRankingScope('friends'),
+                ),
+                ChoiceChip(
+                  key: const Key('ranking-scope-global'),
+                  label: const Text('全站'),
+                  selected: _rankingScope == 'global',
+                  onSelected: (_) => _selectRankingScope('global'),
+                ),
+              ],
+            ),
+          ),
+        ),
+
         // 激励数据
         FilledButton.icon(
-          onPressed: _refresh,
+          onPressed: refresh,
           icon: const Icon(Icons.refresh),
           label: const Text('刷新激励数据'),
         ),

@@ -54,6 +54,28 @@ void main() {
     expect(find.textContaining('已上传 1 个轨迹点'), findsOneWidget);
   });
 
+  testWidgets('refreshes ranking on tab entry and switches scope',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+    final initialCalls = api.rankingCalls;
+
+    await tester.tap(find.text('社交'));
+    await tester.pumpAndSettle();
+
+    expect(api.rankingCalls, initialCalls + 1);
+    expect(api.lastRankingScope, 'friends');
+
+    final globalScope = find.byKey(const Key('ranking-scope-global'));
+    tester.widget<ChoiceChip>(globalScope).onSelected!(true);
+    await tester.pumpAndSettle();
+
+    expect(api.lastRankingScope, 'global');
+  });
+
   testWidgets('registers with email verification code', (tester) async {
     final api = _FakeApi();
     await tester.pumpWidget(
@@ -760,6 +782,8 @@ class _FakeApi implements FitLoopApi {
   int createdHealthData = 0;
   int reminderUpsertCalls = 0;
   int createdAppeals = 0;
+  int rankingCalls = 0;
+  String? lastRankingScope;
   double? _lastWeight;
   String? lastLoginPassword;
   String? lastLoginCode;
@@ -843,15 +867,17 @@ class _FakeApi implements FitLoopApi {
   @override
   Future<RankingResult> ranking({
     required String token,
-    String scope = 'personal',
+    String scope = 'friends',
     String period = 'week',
     int page = 1,
     int size = 20,
   }) async {
-    return const RankingResult(
-      scope: 'personal',
+    rankingCalls += 1;
+    lastRankingScope = scope;
+    return RankingResult(
+      scope: scope,
       period: 'week',
-      rows: [
+      rows: const [
         RankingRow(
           rank: 1,
           userId: 1,
