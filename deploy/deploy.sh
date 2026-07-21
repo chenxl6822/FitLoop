@@ -104,7 +104,7 @@ done
 if ! curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
     echo ""
     log_warn "⚠️  后端未在 60 秒内就绪，请检查日志："
-    log_info "  $COMPOSE_CMD $COMPOSE_ARGS logs -f backend"
+    log_info "  $COMPOSE_CMD $COMPOSE_ARGS --env-file $ENV_FILE logs -f backend"
 fi
 
 # --- 清理旧镜像 ---
@@ -114,10 +114,10 @@ docker image prune -f 2>/dev/null || true
 # --- 输出状态 ---
 echo ""
 log_info "📊 服务状态:"
-$COMPOSE_CMD $COMPOSE_ARGS ps
+$COMPOSE_CMD $COMPOSE_ARGS --env-file "$ENV_FILE" ps
 
 echo ""
-log_info "📝 查看日志: $COMPOSE_CMD $COMPOSE_ARGS logs -f"
+log_info "📝 查看日志: $COMPOSE_CMD $COMPOSE_ARGS --env-file $ENV_FILE logs -f"
 log_info "🌐 API 地址: http://localhost:8080/api/"
 log_info "🏥 健康检查: http://localhost:8080/actuator/health"
 log_info "✅ 部署完成！"
