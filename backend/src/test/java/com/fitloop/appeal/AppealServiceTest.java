@@ -2,21 +2,30 @@ package com.fitloop.appeal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 
 import com.fitloop.audit.AdminAuditService;
 import com.fitloop.audit.AdminAuditLogRepository;
+import com.fitloop.common.DomainEventOutbox;
 import com.fitloop.appeal.AppealDtos.CreateAppealRequest;
 import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
 import com.fitloop.sport.SportRecord;
 import com.fitloop.sport.SportRecordRepository;
+import com.fitloop.sport.WorkoutCompletedEvent;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
 
 @DataJpaTest
 @Import({AppealService.class, AdminAuditService.class})
+@RecordApplicationEvents
 class AppealServiceTest {
     @Autowired
     private AppealService appealService;
@@ -26,6 +35,12 @@ class AppealServiceTest {
 
     @Autowired
     private AdminAuditLogRepository auditLogs;
+
+    @MockitoBean
+    private DomainEventOutbox outbox;
+
+    @Autowired
+    private ApplicationEvents applicationEvents;
 
     @Test
     void createsAppealForAbnormalSportRecord() {
@@ -63,6 +78,10 @@ class AppealServiceTest {
         assertThat(reviewed.status()).isEqualTo("approved");
         assertThat(records.findById(record.getRecordId()).orElseThrow().getStatus())
                 .isEqualTo(SportRecord.STATUS_VALID);
+        assertThat(applicationEvents.stream(WorkoutCompletedEvent.class)).singleElement()
+                .satisfies(event -> assertThat(event.recordId()).isEqualTo(record.getRecordId()));
+        verify(outbox).append(eq("WORKOUT_COMPLETED"), eq(record.getRecordId().toString()),
+                any(WorkoutCompletedEvent.class));
     }
 
     @Test
@@ -93,5 +112,6 @@ class AppealServiceTest {
                     assertThat(log.getActorUserId()).isEqualTo(99L);
                     assertThat(log.getAction()).isEqualTo("APPEAL_REVIEWED");
                 });
+        assertThat(applicationEvents.stream(WorkoutCompletedEvent.class)).isEmpty();
     }
 }

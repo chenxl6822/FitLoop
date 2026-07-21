@@ -6,9 +6,13 @@ import com.fitloop.appeal.AppealDtos.AdminAppealResponse;
 import com.fitloop.appeal.AppealDtos.CreateAppealRequest;
 import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
 import com.fitloop.audit.AdminAuditService;
+import com.fitloop.common.DomainEventOutbox;
 import com.fitloop.sport.SportRecord;
 import com.fitloop.sport.SportRecordRepository;
+import com.fitloop.sport.WorkoutCompletedEvent;
+import java.time.Instant;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -20,12 +24,17 @@ public class AppealService {
     private final AppealRepository appeals;
     private final SportRecordRepository records;
     private final AdminAuditService audits;
+    private final DomainEventOutbox outbox;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AppealService(AppealRepository appeals, SportRecordRepository records,
-                         AdminAuditService audits) {
+                         AdminAuditService audits, DomainEventOutbox outbox,
+                         ApplicationEventPublisher eventPublisher) {
         this.appeals = appeals;
         this.records = records;
         this.audits = audits;
+        this.outbox = outbox;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -77,6 +86,7 @@ public class AppealService {
         if ("approved".equalsIgnoreCase(request.status())) {
             appeal.setStatus("approved");
             record.setStatus(SportRecord.STATUS_VALID);
+            publishWorkoutCompleted(record);
         } else if ("rejected".equalsIgnoreCase(request.status())) {
             appeal.setStatus("rejected");
             record.setStatus(SportRecord.STATUS_ABNORMAL);
@@ -89,6 +99,15 @@ public class AppealService {
                     "{\"status\":\"" + appeal.getStatus() + "\",\"source\":\"" + source + "\"}");
         }
         return AppealResponse.from(appeal);
+    }
+
+    private void publishWorkoutCompleted(SportRecord record) {
+        Instant occurredAt = record.getStartedAt() == null ? Instant.now() : record.getStartedAt();
+        WorkoutCompletedEvent event = new WorkoutCompletedEvent(
+                record.getRecordId(), record.getUserId(), record.getDurationSeconds(),
+                record.getDistanceKm(), record.getCalorie(), occurredAt);
+        eventPublisher.publishEvent(event);
+        outbox.append("WORKOUT_COMPLETED", record.getRecordId().toString(), event);
     }
 
     @Transactional(readOnly = true)
