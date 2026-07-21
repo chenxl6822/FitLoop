@@ -10,13 +10,21 @@ $apkSource = Join-Path $mobileDir "build\app\outputs\flutter-apk\app-release.apk
 $apkDir = Join-Path $PSScriptRoot "apk"
 $apkTarget = Join-Path $apkDir "app-release.apk"
 $versionTarget = Join-Path $apkDir "version.json"
+$pubspecVersion = Select-String -Path (Join-Path $mobileDir "pubspec.yaml") -Pattern "^version:\s*(.+)$" |
+    Select-Object -First 1 |
+    ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
+$versionName = ($pubspecVersion -split "\+")[0]
+$versionCode = if ($pubspecVersion -match "\+(\d+)$") { [int]$Matches[1] } else { 1 }
 
 Push-Location $mobileDir
 try {
     flutter pub get
     flutter analyze
     flutter test
-    flutter build apk --release --dart-define="FITLOOP_API_BASE_URL=$ApiBaseUrl"
+    flutter build apk --release `
+        --dart-define="FITLOOP_API_BASE_URL=$ApiBaseUrl" `
+        --dart-define="FITLOOP_APP_VERSION=$versionName" `
+        --dart-define="FITLOOP_BUILD_NUMBER=$versionCode"
 } finally {
     Pop-Location
 }
@@ -24,12 +32,6 @@ try {
 New-Item -ItemType Directory -Force -Path $apkDir | Out-Null
 Copy-Item -Force $apkSource $apkTarget
 
-$pubspecVersion = Select-String -Path (Join-Path $mobileDir "pubspec.yaml") -Pattern "^version:\s*(.+)$" |
-    Select-Object -First 1 |
-    ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
-
-$versionName = ($pubspecVersion -split "\+")[0]
-$versionCode = if ($pubspecVersion -match "\+(\d+)$") { [int]$Matches[1] } else { 1 }
 $sizeMb = [Math]::Round((Get-Item $apkTarget).Length / 1MB, 1)
 
 @{

@@ -29,6 +29,14 @@ String? _resolveMediaUrl(String? url) {
 }
 
 const _kOnboardingDoneKey = 'onboarding_done';
+const _appVersion = String.fromEnvironment(
+  'FITLOOP_APP_VERSION',
+  defaultValue: '0.1.4',
+);
+const _appBuildNumber = String.fromEnvironment(
+  'FITLOOP_BUILD_NUMBER',
+  defaultValue: '5',
+);
 
 const _sportTypes = {
   'running': '跑步',
@@ -3781,8 +3789,8 @@ class SettingsPage extends StatelessWidget {
                           ?.copyWith(fontWeight: FontWeight.w700)),
                 ),
                 const _InfoRow(label: '应用名称', value: 'FitLoop'),
-                const _InfoRow(label: '版本', value: '0.1.0'),
-                const _InfoRow(label: '构建号', value: '1'),
+                const _InfoRow(label: '版本', value: _appVersion),
+                const _InfoRow(label: '构建号', value: _appBuildNumber),
               ],
             ),
           ),

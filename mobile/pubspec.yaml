@@ -1,7 +1,7 @@
 ﻿name: fitloop
 description: Campus sports check-in and health management mobile app.
 publish_to: "none"
-version: 0.1.3+4
+version: 0.1.4+5
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
