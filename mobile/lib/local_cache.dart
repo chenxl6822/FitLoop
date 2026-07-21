@@ -30,53 +30,8 @@ class _CacheEntry {
 class LocalCache {
   LocalCache._();
 
-  static const _kToken = 'token';
-  static const _kUid = 'uid';
-  static const _kName = 'nickname';
-
   /// 缓存前缀，避免 key 冲突。
   static const _prefix = 'cache_';
-
-  /// ── Token 持久化（兼容旧 TokenStorage 接口） ──
-
-  static Future<void> saveToken(
-      String token, int userId, String nickname) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_kToken, token);
-    await p.setInt(_kUid, userId);
-    await p.setString(_kName, nickname);
-  }
-
-  static Future<Map<String, Object>?> loadToken() async {
-    final p = await SharedPreferences.getInstance();
-    final t = p.getString(_kToken);
-    if (t == null || t.isEmpty) return null;
-    return {
-      'token': t,
-      'userId': p.getInt(_kUid) ?? 0,
-      'nickname': p.getString(_kName) ?? 'FitLoop 用户',
-    };
-  }
-
-  static Future<void> clearToken() async {
-    final p = await SharedPreferences.getInstance();
-    await p.remove(_kToken);
-    await p.remove(_kUid);
-    await p.remove(_kName);
-    // 清除头像缓存
-    for (final key in p.getKeys()) {
-      if (key.startsWith('avatarUrl_')) {
-        await p.remove(key);
-      }
-    }
-  }
-
-  static Future<void> save(String token, int userId, String nickname) =>
-      saveToken(token, userId, nickname);
-
-  static Future<Map<String, Object>?> load() => loadToken();
-
-  static Future<void> clear() => clearToken();
 
   /// ── 通用数据缓存（JSON 序列化） ──
 
@@ -116,10 +71,9 @@ class LocalCache {
     await p.remove('$_prefix$key');
   }
 
-  /// 清空所有缓存（保留 token）。
+  /// 清空所有非敏感业务缓存。认证令牌由安全存储独立管理。
   static Future<void> clearAll() async {
     final p = await SharedPreferences.getInstance();
-    // 保留 token 键
     for (final key in p.getKeys()) {
       if (key.startsWith(_prefix)) {
         await p.remove(key);
@@ -127,9 +81,3 @@ class LocalCache {
     }
   }
 }
-
-// ═══════════════════════════════════════════════════════════
-//  兼容层 — 旧代码仍用 TokenStorage 的地方直接重定向
-// ═══════════════════════════════════════════════════════════
-
-typedef TokenStorage = LocalCache;

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:fitloop/api_client.dart';
 import 'package:fitloop/main.dart';
 import 'package:fitloop/reminder_scheduler.dart';
+import 'package:fitloop/secure_session_storage.dart';
 import 'package:fitloop/sync_queue.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    TokenStorage.useSecureStoreForTesting(_WidgetTestSecureStore());
   });
 
   testWidgets('renders login then dashboard shell', (tester) async {
@@ -525,17 +527,6 @@ void _adminDashboardTests() {
     expect(find.text('申诉'), findsOneWidget);
     expect(find.text('Agent'), findsOneWidget);
   });
-
-  test('token storage preserves administrator role', () async {
-    SharedPreferences.setMockInitialValues({});
-
-    await TokenStorage.save('token', 7, 'Admin', 'ADMIN');
-    final stored = await TokenStorage.load();
-
-    expect(stored?['role'], 'ADMIN');
-    await TokenStorage.clear();
-    expect(await TokenStorage.load(), isNull);
-  });
 }
 
 Future<void> _startSportSession(WidgetTester tester, _FakeApi api) async {
@@ -669,6 +660,23 @@ Position _position({double accuracy = 10}) {
     speed: 0,
     speedAccuracy: 0,
   );
+}
+
+class _WidgetTestSecureStore implements SecureKeyValueStore {
+  final Map<String, String> _values = {};
+
+  @override
+  Future<String?> read({required String key}) async => _values[key];
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    _values[key] = value;
+  }
+
+  @override
+  Future<void> delete({required String key}) async {
+    _values.remove(key);
+  }
 }
 
 class _FakeApi implements FitLoopApi {

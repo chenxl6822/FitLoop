@@ -12,6 +12,7 @@ import 'api_client.dart';
 import 'fitloop_assets.dart';
 import 'onboarding_screen.dart';
 import 'reminder_scheduler.dart';
+import 'secure_session_storage.dart';
 import 'splash_screen.dart';
 import 'stats_charts.dart';
 import 'sync_queue.dart';
@@ -88,6 +89,7 @@ String friendlyErrorMsg(dynamic error) {
 }
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(FitLoopApp());
 }
 
@@ -291,17 +293,21 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> _tryAutoLogin() async {
-    final data = await TokenStorage.load();
-    if (data != null && mounted) {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = data['userId'] as int;
-      final avatarUrl = prefs.getString('avatarUrl_$userId');
-      setState(() => _session = UserSession(
-          token: data['token'] as String,
-          userId: userId,
-          nickname: data['nickname'] as String,
-          avatarUrl: avatarUrl,
-          role: data['role'] as String));
+    try {
+      final data = await TokenStorage.load();
+      if (data != null && mounted) {
+        final prefs = await SharedPreferences.getInstance();
+        final userId = data['userId'] as int;
+        final avatarUrl = prefs.getString('avatarUrl_$userId');
+        setState(() => _session = UserSession(
+            token: data['token'] as String,
+            userId: userId,
+            nickname: data['nickname'] as String,
+            avatarUrl: avatarUrl,
+            role: data['role'] as String));
+      }
+    } catch (error) {
+      debugPrint('Secure session restore failed: $error');
     }
   }
 
@@ -5169,41 +5175,5 @@ class _MetricCard extends StatelessWidget {
         subtitle: Text(value),
       ),
     );
-  }
-}
-
-class TokenStorage {
-  static const _kToken = 'token';
-  static const _kUid = 'uid';
-  static const _kName = 'nickname';
-  static const _kRole = 'role';
-
-  static Future<void> save(
-      String token, int userId, String nickname, String role) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_kToken, token);
-    await p.setInt(_kUid, userId);
-    await p.setString(_kName, nickname);
-    await p.setString(_kRole, role);
-  }
-
-  static Future<Map<String, Object>?> load() async {
-    final p = await SharedPreferences.getInstance();
-    final t = p.getString(_kToken);
-    if (t == null || t.isEmpty) return null;
-    return {
-      'token': t,
-      'userId': p.getInt(_kUid) ?? 0,
-      'role': p.getString(_kRole) ?? 'USER',
-      'nickname': p.getString(_kName) ?? 'FitLoop �û�',
-    };
-  }
-
-  static Future<void> clear() async {
-    final p = await SharedPreferences.getInstance();
-    await p.remove(_kToken);
-    await p.remove(_kUid);
-    await p.remove(_kName);
-    await p.remove(_kRole);
   }
 }
