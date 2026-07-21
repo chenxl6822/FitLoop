@@ -49,7 +49,7 @@ class InfrastructureContainerIT {
         Flyway.configure()
                 .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
                 .locations("classpath:db/migration")
-                .target(MigrationVersion.fromVersion("4"))
+                .target(MigrationVersion.fromVersion("1"))
                 .load()
                 .migrate();
         try (var connection = DriverManager.getConnection(
@@ -62,11 +62,11 @@ class InfrastructureContainerIT {
                 .dataSource(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword())
                 .locations("classpath:db/migration")
                 .baselineOnMigrate(true)
-                .baselineVersion(MigrationVersion.fromVersion("4"))
+                .baselineVersion(MigrationVersion.fromVersion("1"))
                 .load()
                 .migrate();
         assertThat(takeover.success).isTrue();
-        assertThat(takeover.migrationsExecuted).isEqualTo(1);
+        assertThat(takeover.migrationsExecuted).isEqualTo(4);
         try (var connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement();
