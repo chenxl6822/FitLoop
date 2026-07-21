@@ -117,6 +117,14 @@ public class AgentRun {
         completedAt = Instant.now();
     }
 
+    public void rejectApproval() {
+        if (status != AgentRunStatus.WAITING_APPROVAL) {
+            throw new IllegalStateException("Agent run is not waiting for approval");
+        }
+        status = AgentRunStatus.SUCCEEDED;
+        completedAt = Instant.now();
+    }
+
     private void requireRunning() {
         if (status != AgentRunStatus.RUNNING) throw new IllegalStateException("Agent run is not RUNNING");
     }

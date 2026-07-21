@@ -14,6 +14,7 @@ import com.fitloop.agent.AgentDtos.ToolAuditRequest;
 import com.fitloop.appeal.Appeal;
 import com.fitloop.appeal.AppealRepository;
 import com.fitloop.appeal.AppealService;
+import com.fitloop.audit.AdminAuditService;
 import com.fitloop.user.UserRepository;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,7 @@ class AgentGatewayServiceTest {
     @Mock AppealRepository appeals;
     @Mock AppealService appealService;
     @Mock UserRepository users;
+    @Mock AdminAuditService audits;
     @Mock ApplicationEventPublisher events;
 
     private AgentGatewayService gateway;
@@ -44,7 +46,7 @@ class AgentGatewayServiceTest {
     @BeforeEach
     void setUp() {
         gateway = new AgentGatewayService(runs, messages, toolAudits, proposals, trainingPlans,
-                appeals, appealService, users, events, new ObjectMapper());
+                appeals, appealService, users, audits, events, new ObjectMapper());
     }
 
     @Test

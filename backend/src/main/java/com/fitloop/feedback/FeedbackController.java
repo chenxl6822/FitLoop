@@ -41,6 +41,6 @@ public class FeedbackController {
     @PutMapping("/api/admin/feedback/{feedbackId}")
     public ApiResponse<FeedbackResponse> updateStatus(@PathVariable Long feedbackId,
                                                       @Valid @RequestBody UpdateFeedbackRequest request) {
-        return ApiResponse.ok(feedbacks.updateStatus(feedbackId, request));
+        return ApiResponse.ok(feedbacks.updateStatus(feedbackId, request, AuthSupport.currentUserId()));
     }
 }

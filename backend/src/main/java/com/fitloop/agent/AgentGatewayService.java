@@ -12,10 +12,13 @@ import com.fitloop.appeal.Appeal;
 import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
 import com.fitloop.appeal.AppealRepository;
 import com.fitloop.appeal.AppealService;
+import com.fitloop.audit.AdminAuditService;
 import com.fitloop.user.UserRepository;
 import java.util.List;
 import java.util.Map;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
@@ -31,6 +34,7 @@ public class AgentGatewayService {
     private final AppealRepository appeals;
     private final AppealService appealService;
     private final UserRepository users;
+    private final AdminAuditService audits;
     private final ApplicationEventPublisher events;
     private final ObjectMapper objectMapper;
 
@@ -38,7 +42,8 @@ public class AgentGatewayService {
                                AgentToolAuditRepository toolAudits, AgentActionProposalRepository proposals,
                                TrainingPlanRepository trainingPlans, AppealRepository appeals,
                                AppealService appealService, UserRepository users,
-                               ApplicationEventPublisher events, ObjectMapper objectMapper) {
+                               AdminAuditService audits, ApplicationEventPublisher events,
+                               ObjectMapper objectMapper) {
         this.runs = runs;
         this.messages = messages;
         this.toolAudits = toolAudits;
@@ -47,6 +52,7 @@ public class AgentGatewayService {
         this.appeals = appeals;
         this.appealService = appealService;
         this.users = users;
+        this.audits = audits;
         this.events = events;
         this.objectMapper = objectMapper;
     }
@@ -66,7 +72,11 @@ public class AgentGatewayService {
             throw new IllegalArgumentException("Only pending appeals can be reviewed");
         }
         String input = write(Map.of("appealId", appealId));
-        return queue(AgentRun.queued(AgentRunType.APPEAL_REVIEW, adminId, appeal.getUserId(), appealId, input));
+        AgentRun run = queue(AgentRun.queued(
+                AgentRunType.APPEAL_REVIEW, adminId, appeal.getUserId(), appealId, input));
+        audits.record(adminId, "AGENT_REVIEW_REQUESTED", "APPEAL", appealId,
+                "{\"runId\":\"" + run.getRunId() + "\"}");
+        return run;
     }
 
     private AgentRun queue(AgentRun run) {
@@ -191,6 +201,7 @@ public class AgentGatewayService {
     public ConfirmResponse confirm(Long proposalId, Long actorId, boolean admin) {
         AgentActionProposal proposal = proposals.findForUpdate(proposalId)
                 .orElseThrow(() -> new IllegalArgumentException("Proposal does not exist"));
+        proposal.assertActionable();
         if (proposal.isRequiresAdmin()) {
             if (!admin) throw new org.springframework.security.access.AccessDeniedException("Admin approval required");
         } else if (!proposal.getSubjectUserId().equals(actorId)) {
@@ -201,14 +212,33 @@ public class AgentGatewayService {
         if ("CREATE_TRAINING_PLAN".equals(proposal.getActionType())) {
             resourceId = createTrainingPlan(proposal);
         } else if ("REVIEW_APPEAL".equals(proposal.getActionType())) {
-            resourceId = reviewAppeal(proposal);
+            resourceId = reviewAppeal(proposal, actorId);
         } else {
             throw new IllegalArgumentException("Unsupported proposal action");
         }
         proposal.confirm(actorId);
         AgentRun run = lockedRun(proposal.getRunId());
         run.approve();
+        audits.record(actorId, "AGENT_PROPOSAL_CONFIRMED", "AGENT_PROPOSAL", proposalId,
+                "{\"actionType\":\"" + proposal.getActionType() + "\"}");
         return new ConfirmResponse(proposalId, proposal.getStatus(), resourceId);
+    }
+
+    @Transactional
+    public ConfirmResponse reject(Long proposalId, Long actorId, boolean admin, String reason) {
+        AgentActionProposal proposal = proposals.findForUpdate(proposalId)
+                .orElseThrow(() -> new IllegalArgumentException("Proposal does not exist"));
+        if (proposal.isRequiresAdmin()) {
+            if (!admin) throw new org.springframework.security.access.AccessDeniedException("Admin approval required");
+        } else if (!proposal.getSubjectUserId().equals(actorId)) {
+            throw new org.springframework.security.access.AccessDeniedException("Proposal does not belong to user");
+        }
+        proposal.reject(actorId, reason);
+        AgentRun run = lockedRun(proposal.getRunId());
+        run.rejectApproval();
+        audits.record(actorId, "AGENT_PROPOSAL_REJECTED", "AGENT_PROPOSAL", proposalId,
+                "{\"actionType\":\"" + proposal.getActionType() + "\"}");
+        return new ConfirmResponse(proposalId, proposal.getStatus(), null);
     }
 
     private Long createTrainingPlan(AgentActionProposal proposal) {
@@ -226,7 +256,7 @@ public class AgentGatewayService {
         return trainingPlans.save(plan).getPlanId();
     }
 
-    private Long reviewAppeal(AgentActionProposal proposal) {
+    private Long reviewAppeal(AgentActionProposal proposal, Long actorId) {
         AgentRun run = runs.findById(proposal.getRunId()).orElseThrow();
         if (run.getSubjectResourceId() == null) throw new IllegalArgumentException("Appeal run has no appeal id");
         Map<String, Object> payload = readMap(proposal.getPayloadJson());
@@ -237,7 +267,8 @@ public class AgentGatewayService {
             default -> throw new IllegalArgumentException("Only APPROVE or REJECT can be confirmed");
         };
         appealService.review(run.getSubjectResourceId(),
-                new ReviewAppealRequest(status, String.valueOf(payload.getOrDefault("reason", "Agent-assisted review"))));
+                new ReviewAppealRequest(status, String.valueOf(payload.getOrDefault("reason", "Agent-assisted review"))),
+                actorId, "AGENT_PROPOSAL");
         return run.getSubjectResourceId();
     }
 
@@ -288,7 +319,43 @@ public class AgentGatewayService {
 
     private ProposalResponse proposalResponse(AgentActionProposal proposal) {
         return new ProposalResponse(proposal.getProposalId(), proposal.getActionType(), proposal.getPayloadJson(),
-                proposal.getStatus(), proposal.isRequiresAdmin(), proposal.getExpiresAt(), proposal.getConfirmedAt());
+                proposal.getStatus(), proposal.isRequiresAdmin(), proposal.getExpiresAt(),
+                proposal.getConfirmedByUserId(), proposal.getConfirmedAt(), proposal.getDecisionNote());
+    }
+
+    @Transactional(readOnly = true)
+    public AgentDtos.AdminRunPageResponse adminRuns(AgentRunType type, AgentRunStatus status,
+                                                    int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.clamp(size, 1, 100);
+        PageRequest pageable = PageRequest.of(safePage, safeSize);
+        Page<AgentRun> result;
+        if (type != null && status != null) {
+            result = runs.findByRunTypeAndStatusOrderByCreatedAtDesc(type, status, pageable);
+        } else if (type != null) {
+            result = runs.findByRunTypeOrderByCreatedAtDesc(type, pageable);
+        } else if (status != null) {
+            result = runs.findByStatusOrderByCreatedAtDesc(status, pageable);
+        } else {
+            result = runs.findAllByOrderByCreatedAtDesc(pageable);
+        }
+        return new AgentDtos.AdminRunPageResponse(
+                result.stream().map(AgentDtos.AdminRunSummary::from).toList(),
+                safePage, safeSize, result.getTotalElements(), result.getTotalPages());
+    }
+
+    @Transactional(readOnly = true)
+    public AgentDtos.RunAuditResponse runAudit(String runId) {
+        AgentRun run = runs.findById(runId)
+                .orElseThrow(() -> new IllegalArgumentException("Agent run does not exist"));
+        List<AgentDtos.MessageResponse> runMessages = messages.findByRunIdOrderByMessageIdAsc(runId).stream()
+                .map(message -> new AgentDtos.MessageResponse(message.getMessageId(), message.getRole(),
+                        message.getContent(), message.getCreatedAt()))
+                .toList();
+        List<AgentDtos.ToolAuditResponse> calls = toolAudits.findByRunIdOrderByAuditIdAsc(runId).stream()
+                .map(AgentDtos.ToolAuditResponse::from)
+                .toList();
+        return new AgentDtos.RunAuditResponse(response(run), runMessages, calls);
     }
 
     private String write(Object value) {

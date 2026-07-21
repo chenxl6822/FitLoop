@@ -28,6 +28,8 @@ public class AgentActionProposal {
     private Instant expiresAt;
     private Long confirmedByUserId;
     private Instant confirmedAt;
+    @Column(length = 500)
+    private String decisionNote;
     private Instant createdAt;
 
     @PrePersist
@@ -37,11 +39,23 @@ public class AgentActionProposal {
     }
 
     public void confirm(Long actorUserId) {
-        if (!"PENDING".equals(status)) throw new IllegalStateException("Proposal has already been handled");
-        if (Instant.now().isAfter(expiresAt)) throw new IllegalStateException("Proposal has expired");
+        assertActionable();
         status = "CONFIRMED";
         confirmedByUserId = actorUserId;
         confirmedAt = Instant.now();
+    }
+
+    public void reject(Long actorUserId, String note) {
+        assertActionable();
+        status = "REJECTED";
+        confirmedByUserId = actorUserId;
+        confirmedAt = Instant.now();
+        decisionNote = note == null ? null : note.trim();
+    }
+
+    public void assertActionable() {
+        if (!"PENDING".equals(status)) throw new IllegalStateException("Proposal has already been handled");
+        if (Instant.now().isAfter(expiresAt)) throw new IllegalStateException("Proposal has expired");
     }
 
     public Long getProposalId() { return proposalId; }
@@ -54,6 +68,7 @@ public class AgentActionProposal {
     public Instant getExpiresAt() { return expiresAt; }
     public Long getConfirmedByUserId() { return confirmedByUserId; }
     public Instant getConfirmedAt() { return confirmedAt; }
+    public String getDecisionNote() { return decisionNote; }
     public Instant getCreatedAt() { return createdAt; }
     public void setRunId(String runId) { this.runId = runId; }
     public void setSubjectUserId(Long subjectUserId) { this.subjectUserId = subjectUserId; }

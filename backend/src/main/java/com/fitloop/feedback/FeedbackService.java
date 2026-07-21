@@ -1,5 +1,6 @@
 package com.fitloop.feedback;
 
+import com.fitloop.audit.AdminAuditService;
 import com.fitloop.feedback.FeedbackDtos.CreateFeedbackRequest;
 import com.fitloop.feedback.FeedbackDtos.FeedbackResponse;
 import com.fitloop.feedback.FeedbackDtos.UpdateFeedbackRequest;
@@ -10,9 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class FeedbackService {
     private final FeedbackRepository feedbacks;
+    private final AdminAuditService audits;
 
-    public FeedbackService(FeedbackRepository feedbacks) {
+    public FeedbackService(FeedbackRepository feedbacks, AdminAuditService audits) {
         this.feedbacks = feedbacks;
+        this.audits = audits;
     }
 
     @Transactional
@@ -42,6 +45,11 @@ public class FeedbackService {
 
     @Transactional
     public FeedbackResponse updateStatus(Long feedbackId, UpdateFeedbackRequest request) {
+        return updateStatus(feedbackId, request, null);
+    }
+
+    @Transactional
+    public FeedbackResponse updateStatus(Long feedbackId, UpdateFeedbackRequest request, Long actorUserId) {
         Feedback f = feedbacks.findById(feedbackId)
                 .orElseThrow(() -> new IllegalArgumentException("反馈不存在"));
         if (request.status() != null && !request.status().isBlank()) {
@@ -49,6 +57,10 @@ public class FeedbackService {
         }
         if (request.adminNote() != null) {
             f.setAdminNote(request.adminNote());
+        }
+        if (actorUserId != null) {
+            audits.record(actorUserId, "FEEDBACK_UPDATED", "FEEDBACK", feedbackId,
+                    "{\"status\":\"" + f.getStatus() + "\"}");
         }
         return FeedbackResponse.from(feedbacks.save(f));
     }

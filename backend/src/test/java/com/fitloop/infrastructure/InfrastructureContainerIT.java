@@ -33,14 +33,14 @@ class InfrastructureContainerIT {
                 .migrate();
 
         assertThat(migration.success).isTrue();
-        assertThat(migration.migrationsExecuted).isGreaterThanOrEqualTo(4);
+        assertThat(migration.migrationsExecuted).isGreaterThanOrEqualTo(5);
         try (var connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement();
              var rows = statement.executeQuery(
                      "select version from flyway_schema_history where success = 1 order by installed_rank desc limit 1")) {
             assertThat(rows.next()).isTrue();
-            assertThat(rows.getString(1)).isEqualTo("4");
+            assertThat(rows.getString(1)).isEqualTo("5");
         }
 
         var ping = REDIS.execInContainer("redis-cli", "PING");

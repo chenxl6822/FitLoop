@@ -35,6 +35,6 @@ public class AppealController {
     @PutMapping("/api/admin/appeals/{id}")
     public ApiResponse<AppealResponse> review(@PathVariable Long id,
                                               @Valid @RequestBody ReviewAppealRequest request) {
-        return ApiResponse.ok(appeals.review(id, request));
+        return ApiResponse.ok(appeals.review(id, request, AuthSupport.currentUserId(), "HUMAN"));
     }
 }

@@ -1,22 +1,31 @@
 package com.fitloop.appeal;
 
 import com.fitloop.appeal.AppealDtos.AppealResponse;
+import com.fitloop.appeal.AppealDtos.AdminAppealPageResponse;
+import com.fitloop.appeal.AppealDtos.AdminAppealResponse;
 import com.fitloop.appeal.AppealDtos.CreateAppealRequest;
 import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
+import com.fitloop.audit.AdminAuditService;
 import com.fitloop.sport.SportRecord;
 import com.fitloop.sport.SportRecordRepository;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 @Service
 public class AppealService {
     private final AppealRepository appeals;
     private final SportRecordRepository records;
+    private final AdminAuditService audits;
 
-    public AppealService(AppealRepository appeals, SportRecordRepository records) {
+    public AppealService(AppealRepository appeals, SportRecordRepository records,
+                         AdminAuditService audits) {
         this.appeals = appeals;
         this.records = records;
+        this.audits = audits;
     }
 
     @Transactional
@@ -52,7 +61,13 @@ public class AppealService {
 
     @Transactional
     public AppealResponse review(Long appealId, ReviewAppealRequest request) {
-        Appeal appeal = appeals.findById(appealId)
+        return review(appealId, request, null, "SYSTEM");
+    }
+
+    @Transactional
+    public AppealResponse review(Long appealId, ReviewAppealRequest request,
+                                 Long actorUserId, String source) {
+        Appeal appeal = appeals.findForReview(appealId)
                 .orElseThrow(() -> new IllegalArgumentException("申诉不存在"));
         if (!"pending".equals(appeal.getStatus())) {
             throw new IllegalArgumentException("申诉已审核，不能重复处理");
@@ -69,6 +84,22 @@ public class AppealService {
             throw new IllegalArgumentException("审核状态只能为 approved 或 rejected");
         }
         appeal.setReviewNote(request.reviewNote());
+        if (actorUserId != null) {
+            audits.record(actorUserId, "APPEAL_REVIEWED", "APPEAL", appealId,
+                    "{\"status\":\"" + appeal.getStatus() + "\",\"source\":\"" + source + "\"}");
+        }
         return AppealResponse.from(appeal);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminAppealPageResponse adminList(String status, int page, int size) {
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.clamp(size, 1, 100);
+        PageRequest pageable = PageRequest.of(safePage, safeSize);
+        Page<Appeal> result = StringUtils.hasText(status)
+                ? appeals.findByStatusIgnoreCaseOrderByCreatedAtDesc(status.trim(), pageable)
+                : appeals.findAllByOrderByCreatedAtDesc(pageable);
+        return new AdminAppealPageResponse(result.stream().map(AdminAppealResponse::from).toList(),
+                safePage, safeSize, result.getTotalElements(), result.getTotalPages());
     }
 }

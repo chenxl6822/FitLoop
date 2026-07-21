@@ -85,6 +85,25 @@ class AgentStateMachineTest {
         assertThatThrownBy(() -> expired.confirm(9L)).hasMessageContaining("expired");
     }
 
+    @Test
+    void rejectingProposalCompletesHumanDecisionWithoutExecutingAction() {
+        AgentRun run = queued();
+        run.claim();
+        run.waitingApproval("{}", "model", "v1", 0, 0, 0, 0);
+        AgentActionProposal proposal = proposal();
+        proposal.prePersist();
+
+        proposal.reject(9L, "Not suitable now");
+        run.rejectApproval();
+
+        assertThat(proposal.getStatus()).isEqualTo("REJECTED");
+        assertThat(proposal.getConfirmedByUserId()).isEqualTo(9L);
+        assertThat(proposal.getDecisionNote()).isEqualTo("Not suitable now");
+        assertThat(run.getStatus()).isEqualTo(AgentRunStatus.SUCCEEDED);
+        assertThatThrownBy(() -> proposal.reject(9L, "again"))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
     private AgentRun queued() {
         return AgentRun.queued(AgentRunType.COACH, 1L, 1L, null, "{}");
     }

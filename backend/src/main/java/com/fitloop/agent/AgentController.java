@@ -5,6 +5,7 @@ import com.fitloop.agent.AgentDtos.ConfirmResponse;
 import com.fitloop.agent.AgentDtos.MessageResponse;
 import com.fitloop.agent.AgentDtos.RunCreatedResponse;
 import com.fitloop.agent.AgentDtos.RunResponse;
+import com.fitloop.agent.AgentDtos.RejectProposalRequest;
 import com.fitloop.common.ApiResponse;
 import com.fitloop.security.AuthSupport;
 import jakarta.validation.Valid;
@@ -47,6 +48,13 @@ public class AgentController {
     @PostMapping("/actions/{proposalId}/confirm")
     public ApiResponse<ConfirmResponse> confirm(@PathVariable Long proposalId) {
         return ApiResponse.ok(gateway.confirm(proposalId, AuthSupport.currentUserId(), isAdmin()));
+    }
+
+    @PostMapping("/actions/{proposalId}/reject")
+    public ApiResponse<ConfirmResponse> reject(@PathVariable Long proposalId,
+                                               @Valid @RequestBody RejectProposalRequest request) {
+        return ApiResponse.ok(gateway.reject(
+                proposalId, AuthSupport.currentUserId(), isAdmin(), request.reason()));
     }
 
     private boolean isAdmin() {

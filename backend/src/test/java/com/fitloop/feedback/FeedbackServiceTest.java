@@ -3,6 +3,8 @@ package com.fitloop.feedback;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fitloop.audit.AdminAuditService;
+import com.fitloop.audit.AdminAuditLogRepository;
 import com.fitloop.feedback.FeedbackDtos.CreateFeedbackRequest;
 import com.fitloop.feedback.FeedbackDtos.FeedbackResponse;
 import com.fitloop.feedback.FeedbackDtos.UpdateFeedbackRequest;
@@ -12,13 +14,16 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
 @DataJpaTest
-@Import(FeedbackService.class)
+@Import({FeedbackService.class, AdminAuditService.class})
 class FeedbackServiceTest {
     @Autowired
     private FeedbackService feedbackService;
 
     @Autowired
     private FeedbackRepository feedbacks;
+
+    @Autowired
+    private AdminAuditLogRepository auditLogs;
 
     @Test
     void createsFeedback() {
@@ -71,5 +76,20 @@ class FeedbackServiceTest {
                 new UpdateFeedbackRequest("reviewed", null)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("反馈不存在");
+    }
+
+    @Test
+    void adminFeedbackUpdateIsAudited() {
+        var created = feedbackService.create(7L,
+                new CreateFeedbackRequest("bug", "Cannot save settings", null));
+
+        feedbackService.updateStatus(created.feedbackId(),
+                new UpdateFeedbackRequest("reviewed", "Investigating"), 99L);
+
+        assertThat(auditLogs.findAll()).singleElement()
+                .satisfies(log -> {
+                    assertThat(log.getActorUserId()).isEqualTo(99L);
+                    assertThat(log.getAction()).isEqualTo("FEEDBACK_UPDATED");
+                });
     }
 }

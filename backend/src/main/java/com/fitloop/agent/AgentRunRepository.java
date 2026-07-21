@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface AgentRunRepository extends JpaRepository<AgentRun, String> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -15,4 +17,13 @@ public interface AgentRunRepository extends JpaRepository<AgentRun, String> {
     Optional<AgentRun> findForUpdate(@Param("runId") String runId);
 
     List<AgentRun> findTop100ByStatusAndUpdatedAtBeforeOrderByCreatedAtAsc(AgentRunStatus status, Instant before);
+
+    Page<AgentRun> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    Page<AgentRun> findByRunTypeOrderByCreatedAtDesc(AgentRunType type, Pageable pageable);
+
+    Page<AgentRun> findByStatusOrderByCreatedAtDesc(AgentRunStatus status, Pageable pageable);
+
+    Page<AgentRun> findByRunTypeAndStatusOrderByCreatedAtDesc(
+            AgentRunType type, AgentRunStatus status, Pageable pageable);
 }

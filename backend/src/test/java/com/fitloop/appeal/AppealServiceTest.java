@@ -1,7 +1,10 @@
 package com.fitloop.appeal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fitloop.audit.AdminAuditService;
+import com.fitloop.audit.AdminAuditLogRepository;
 import com.fitloop.appeal.AppealDtos.CreateAppealRequest;
 import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
 import com.fitloop.sport.SportRecord;
@@ -13,13 +16,16 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
 @DataJpaTest
-@Import(AppealService.class)
+@Import({AppealService.class, AdminAuditService.class})
 class AppealServiceTest {
     @Autowired
     private AppealService appealService;
 
     @Autowired
     private SportRecordRepository records;
+
+    @Autowired
+    private AdminAuditLogRepository auditLogs;
 
     @Test
     void createsAppealForAbnormalSportRecord() {
@@ -57,5 +63,35 @@ class AppealServiceTest {
         assertThat(reviewed.status()).isEqualTo("approved");
         assertThat(records.findById(record.getRecordId()).orElseThrow().getStatus())
                 .isEqualTo(SportRecord.STATUS_VALID);
+    }
+
+    @Test
+    void adminListSupportsStatusFilterAndHumanDecisionIsAudited() {
+        SportRecord record = new SportRecord();
+        record.setUserId(5L);
+        record.setSessionId("session-appeal-admin");
+        record.setSportType("running");
+        record.setCheckinMode("gps");
+        record.setStartedAt(Instant.now());
+        record.setStatus(SportRecord.STATUS_ABNORMAL);
+        records.save(record);
+        var appeal = appealService.create(5L,
+                new CreateAppealRequest(record.getRecordId(), "GPS drift", null));
+
+        appealService.review(appeal.appealId(),
+                new ReviewAppealRequest("rejected", "Evidence is insufficient"), 99L, "HUMAN");
+
+        assertThatThrownBy(() -> appealService.review(appeal.appealId(),
+                new ReviewAppealRequest("approved", "Second decision"), 100L, "HUMAN"))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        var page = appealService.adminList("rejected", 0, 20);
+        assertThat(page.items()).singleElement()
+                .satisfies(item -> assertThat(item.userId()).isEqualTo(5L));
+        assertThat(auditLogs.findAll()).singleElement()
+                .satisfies(log -> {
+                    assertThat(log.getActorUserId()).isEqualTo(99L);
+                    assertThat(log.getAction()).isEqualTo("APPEAL_REVIEWED");
+                });
     }
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fitloop.agent.AgentDtos.ProposalRequest;
 import com.fitloop.agent.AgentDtos.RunResultRequest;
+import com.fitloop.audit.AdminAuditLogRepository;
 import com.fitloop.user.UserInfo;
 import com.fitloop.user.UserRepository;
 import java.util.Map;
@@ -25,6 +26,7 @@ class AgentGatewayIntegrationTest {
     @Autowired TrainingPlanRepository plans;
     @Autowired UserRepository users;
     @Autowired AgentDelegationTokenService delegationTokens;
+    @Autowired AdminAuditLogRepository auditLogs;
     @MockitoBean StringRedisTemplate redis;
     @MockitoBean JavaMailSender mailSender;
 
@@ -70,6 +72,33 @@ class AgentGatewayIntegrationTest {
         assertThatThrownBy(() -> gateway.executeTool(context, "ninth_tool", Map.of(), () -> "blocked"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("limit");
+        assertThat(gateway.adminRuns(AgentRunType.COACH, AgentRunStatus.RUNNING, 0, 20).items())
+                .extracting(AgentDtos.AdminRunSummary::runId)
+                .contains(run.getRunId());
+        assertThat(gateway.runAudit(run.getRunId()).toolCalls()).hasSize(8);
+    }
+
+    @Test
+    void ownerCanRejectProposalWithoutExecutingBusinessWrite() {
+        Long owner = user("13910000005", "RejectOwner");
+        AgentRun run = gateway.createCoachRun(owner, "plan later");
+        gateway.claim(run.getRunId());
+        var proposal = gateway.propose(run.getRunId(), new ProposalRequest(
+                "CREATE_TRAINING_PLAN", "{\"title\":\"Deferred plan\"}", false));
+        gateway.complete(run.getRunId(), new RunResultRequest(AgentRunStatus.WAITING_APPROVAL,
+                "{\"summary\":\"plan ready\"}", "deepseek-v4-flash", "coach-v1",
+                10, 5, 2, 100, null, false));
+
+        var rejected = gateway.reject(proposal.proposalId(), owner, false, "Not this week");
+
+        assertThat(rejected.status()).isEqualTo("REJECTED");
+        assertThat(plans.existsBySourceProposalId(proposal.proposalId())).isFalse();
+        assertThat(runs.findById(run.getRunId()).orElseThrow().getStatus())
+                .isEqualTo(AgentRunStatus.SUCCEEDED);
+        assertThat(auditLogs.findAll()).anySatisfy(log -> {
+            assertThat(log.getAction()).isEqualTo("AGENT_PROPOSAL_REJECTED");
+            assertThat(log.getActorUserId()).isEqualTo(owner);
+        });
     }
 
     @Test

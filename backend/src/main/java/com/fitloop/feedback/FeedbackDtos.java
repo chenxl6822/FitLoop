@@ -1,6 +1,7 @@
 package com.fitloop.feedback;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
 
@@ -30,5 +31,6 @@ public final class FeedbackDtos {
 
     public record FeedbackListResponse(List<FeedbackResponse> feedbacks) {}
 
-    public record UpdateFeedbackRequest(String status, String adminNote) {}
+    public record UpdateFeedbackRequest(@Size(max = 20) String status,
+                                        @Size(max = 1000) String adminNote) {}
 }
