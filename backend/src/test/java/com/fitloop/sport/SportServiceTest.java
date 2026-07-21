@@ -18,12 +18,15 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.TestPropertySource;
 import tools.jackson.databind.ObjectMapper;
 
 @DataJpaTest
 @Import({SportService.class, CalorieCalculator.class, TargetService.class, DomainEventOutbox.class,
         SportServiceTest.TestConfig.class})
+@TestPropertySource(properties = "fitloop.upload.photo-dir=${java.io.tmpdir}/fitloop-sport-test-photos")
 class SportServiceTest {
     private static final long USER_ID = 1L;
 
@@ -96,5 +99,49 @@ class SportServiceTest {
         assertThatThrownBy(() -> sportService.finish(USER_ID,
                 new FinishSessionRequest(start.sessionId(), 1900L, null, null, 60.0, null, null),
                 "finish-key-001")).hasMessageContaining("不同请求");
+    }
+    @Test
+    void photoUploadValidatesInputAndMapsSupportedExtensions() {
+        assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "empty.png", "image/png", new byte[0])))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "unknown", null, new byte[]{1})))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "note.txt", "text/plain", new byte[]{1})))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "huge.png", "image/png", new byte[10 * 1024 * 1024 + 1])))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(upload("image/jpeg")).endsWith(".jpg");
+        assertThat(upload("image/jpg")).endsWith(".jpg");
+        assertThat(upload("image/png")).endsWith(".png");
+        assertThat(upload("image/gif")).endsWith(".gif");
+        assertThat(upload("image/webp")).endsWith(".webp");
+        assertThat(upload("image/bmp")).endsWith(".img");
+    }
+
+    @Test
+    void cursorPaginationClampsSizeAndReturnsStableCursor() {
+        for (int i = 0; i < 3; i++) {
+            sportService.start(USER_ID, new StartSessionRequest("running", "timer"));
+        }
+
+        var first = sportService.list(USER_ID, null, 1);
+        assertThat(first.records()).hasSize(1);
+        assertThat(first.hasMore()).isTrue();
+        assertThat(first.nextCursor()).isNotNull();
+
+        var remainder = sportService.list(USER_ID, first.nextCursor(), 1000);
+        assertThat(remainder.records()).hasSizeGreaterThanOrEqualTo(1);
+        assertThat(sportService.list(USER_ID, null, 0).records()).hasSize(1);
+        assertThat(sportService.list(USER_ID)).hasSizeGreaterThanOrEqualTo(3);
+    }
+
+    private String upload(String contentType) {
+        return sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "photo", contentType, new byte[]{1, 2, 3}));
     }
 }
