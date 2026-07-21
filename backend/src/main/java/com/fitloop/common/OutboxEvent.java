@@ -5,9 +5,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import java.time.Instant;
+import org.hibernate.Length;
 
 @Entity
 public class OutboxEvent {
@@ -18,8 +18,7 @@ public class OutboxEvent {
     private String eventType;
     @Column(nullable = false, length = 64)
     private String aggregateId;
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, length = Length.LONG32)
     private String payload;
     @Column(nullable = false)
     private Instant createdAt;

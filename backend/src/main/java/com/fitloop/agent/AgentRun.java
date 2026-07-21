@@ -5,12 +5,12 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.Length;
 
 @Entity
 public class AgentRun {
@@ -30,10 +30,9 @@ public class AgentRun {
     private Long subjectResourceId;
     @Column(nullable = false, unique = true, length = 36)
     private String traceId;
-    @Lob
-    @Column(nullable = false)
+    @Column(nullable = false, length = Length.LONG32)
     private String inputJson;
-    @Lob
+    @Column(length = Length.LONG32)
     private String resultJson;
     @Column(length = 64)
     private String model;

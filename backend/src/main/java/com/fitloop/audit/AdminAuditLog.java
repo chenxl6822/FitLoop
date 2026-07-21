@@ -5,10 +5,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import org.hibernate.Length;
 
 @Entity
 @Table(name = "admin_audit_log")
@@ -24,7 +24,7 @@ public class AdminAuditLog {
     private String resourceType;
     @Column(nullable = false, length = 64)
     private String resourceId;
-    @Lob
+    @Column(length = Length.LONG32)
     private String detailsJson;
     @Column(nullable = false)
     private Instant createdAt;

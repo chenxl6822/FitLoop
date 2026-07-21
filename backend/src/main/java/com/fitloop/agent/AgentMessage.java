@@ -5,9 +5,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import java.time.Instant;
+import org.hibernate.Length;
 
 @Entity
 public class AgentMessage {
@@ -17,7 +17,7 @@ public class AgentMessage {
     private String runId;
     @Column(nullable = false, length = 16)
     private String role;
-    @Lob @Column(nullable = false)
+    @Column(nullable = false, length = Length.LONG32)
     private String content;
     private Instant createdAt;
 

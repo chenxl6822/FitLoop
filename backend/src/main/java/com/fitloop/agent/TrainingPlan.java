@@ -5,9 +5,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import java.time.Instant;
+import org.hibernate.Length;
 
 @Entity
 public class TrainingPlan {
@@ -19,7 +19,7 @@ public class TrainingPlan {
     private Long sourceProposalId;
     @Column(nullable = false, length = 120)
     private String title;
-    @Lob @Column(nullable = false)
+    @Column(nullable = false, length = Length.LONG32)
     private String planJson;
     @Column(nullable = false, length = 24)
     private String status = "ACTIVE";

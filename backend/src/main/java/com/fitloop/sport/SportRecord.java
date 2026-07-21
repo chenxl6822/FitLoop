@@ -5,11 +5,11 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Version;
 import java.time.Instant;
+import org.hibernate.Length;
 
 @Entity
 public class SportRecord {
@@ -38,7 +38,7 @@ public class SportRecord {
     private double distanceKm;
     private double calorie;
 
-    @Lob
+    @Column(length = Length.LONG32)
     private String trackJson = "[]";
 
     @Column(length = 500)
