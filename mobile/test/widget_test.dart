@@ -313,7 +313,8 @@ void main() {
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
-  testWidgets('queues finish request when session finish fails', (tester) async {
+  testWidgets('queues finish request when session finish fails',
+      (tester) async {
     final api = _FakeApi(finishError: const SocketException('offline'));
     await tester.pumpWidget(
       FitLoopApp(
@@ -442,6 +443,8 @@ void main() {
     expect(find.textContaining('server save failed'), findsOneWidget);
     expect(find.text('运动 提醒'), findsOneWidget);
   });
+
+  _adminDashboardTests();
 }
 
 Future<void> _openAuthPage(WidgetTester tester) async {
@@ -460,8 +463,7 @@ Future<void> _enterApp(WidgetTester tester) async {
   // 密码字段：password 登录模式下第二个输入框
   final textFields = find.byType(TextField).evaluate().toList();
   if (textFields.length >= 2) {
-    await tester.enterText(
-        find.byWidget(textFields[1].widget), 'pass1234');
+    await tester.enterText(find.byWidget(textFields[1].widget), 'pass1234');
   }
   await tester.tap(find.text('登录'));
   await tester.pumpAndSettle();
@@ -487,6 +489,53 @@ Future<void> _openSportReminderSettings(WidgetTester tester) async {
 Future<void> _selectGpsCheckinMode(WidgetTester tester) async {
   await tester.tap(find.text('GPS 定位打卡'));
   await tester.pumpAndSettle();
+}
+
+void _adminDashboardTests() {
+  testWidgets('admin dashboard is visible only to admin sessions',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(MaterialApp(
+      home: SettingsPage(
+        session: const UserSession(
+          token: 'user-token',
+          userId: 1,
+          nickname: 'User',
+        ),
+        api: api,
+      ),
+    ));
+    expect(find.text('管理后台'), findsNothing);
+
+    await tester.pumpWidget(MaterialApp(
+      home: SettingsPage(
+        session: const UserSession(
+          token: 'admin-token',
+          userId: 2,
+          nickname: 'Admin',
+          role: 'ADMIN',
+        ),
+        api: api,
+      ),
+    ));
+    expect(find.text('管理后台'), findsOneWidget);
+
+    await tester.tap(find.text('管理后台'));
+    await tester.pumpAndSettle();
+    expect(find.text('申诉'), findsOneWidget);
+    expect(find.text('Agent'), findsOneWidget);
+  });
+
+  test('token storage preserves administrator role', () async {
+    SharedPreferences.setMockInitialValues({});
+
+    await TokenStorage.save('token', 7, 'Admin', 'ADMIN');
+    final stored = await TokenStorage.load();
+
+    expect(stored?['role'], 'ADMIN');
+    await TokenStorage.clear();
+    expect(await TokenStorage.load(), isNull);
+  });
 }
 
 Future<void> _startSportSession(WidgetTester tester, _FakeApi api) async {
@@ -883,7 +932,8 @@ class _FakeApi implements FitLoopApi {
   }
 
   @override
-  Future<void> addFriend({required String token, required int friendUserId}) async {}
+  Future<void> addFriend(
+      {required String token, required int friendUserId}) async {}
 
   @override
   Future<AppealListResponse> listAppeals({required String token}) async {
@@ -907,19 +957,47 @@ class _FakeApi implements FitLoopApi {
       metric: 'all',
       points: [
         SportHistoryPoint(
-            date: '2026-05-25', count: 1, durationSeconds: 0, distanceKm: 0, calorie: 0),
+            date: '2026-05-25',
+            count: 1,
+            durationSeconds: 0,
+            distanceKm: 0,
+            calorie: 0),
         SportHistoryPoint(
-            date: '2026-05-26', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+            date: '2026-05-26',
+            count: 0,
+            durationSeconds: 0,
+            distanceKm: 0,
+            calorie: 0),
         SportHistoryPoint(
-            date: '2026-05-27', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+            date: '2026-05-27',
+            count: 0,
+            durationSeconds: 0,
+            distanceKm: 0,
+            calorie: 0),
         SportHistoryPoint(
-            date: '2026-05-28', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+            date: '2026-05-28',
+            count: 0,
+            durationSeconds: 0,
+            distanceKm: 0,
+            calorie: 0),
         SportHistoryPoint(
-            date: '2026-05-29', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+            date: '2026-05-29',
+            count: 0,
+            durationSeconds: 0,
+            distanceKm: 0,
+            calorie: 0),
         SportHistoryPoint(
-            date: '2026-05-30', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+            date: '2026-05-30',
+            count: 0,
+            durationSeconds: 0,
+            distanceKm: 0,
+            calorie: 0),
         SportHistoryPoint(
-            date: '2026-05-31', count: 0, durationSeconds: 0, distanceKm: 0, calorie: 0),
+            date: '2026-05-31',
+            count: 0,
+            durationSeconds: 0,
+            distanceKm: 0,
+            calorie: 0),
       ],
     );
   }
@@ -1019,40 +1097,127 @@ class _FakeApi implements FitLoopApi {
   }
 
   @override
-  Future<AdminStats> adminGetStats({required String adminKey}) async {
+  Future<AdminStats> adminGetStats({required String token}) async {
     return const AdminStats(
-      totalUsers: 0, todayNewUsers: 0, totalSportRecords: 0,
-      todayCheckins: 0, pendingFeedbackCount: 0,
+      totalUsers: 0,
+      todayNewUsers: 0,
+      totalSportRecords: 0,
+      todayCheckins: 0,
+      pendingFeedbackCount: 0,
     );
   }
 
   @override
   Future<AdminUserListResponse> adminListUsers({
-    required String adminKey, int page = 0, int size = 20,
+    required String token,
+    int page = 0,
+    int size = 20,
   }) async {
     return const AdminUserListResponse(users: [], total: 0);
   }
 
   @override
   Future<AdminUserDetail> adminGetUserDetail({
-    required String adminKey, required int userId,
+    required String token,
+    required int userId,
   }) async {
     return AdminUserDetail(
-      userId: userId, nickname: 'test', sportRecordCount: 0,
-      targetCount: 0, totalDurationSeconds: 0, totalDistanceKm: 0,
+      userId: userId,
+      nickname: 'test',
+      sportRecordCount: 0,
+      targetCount: 0,
+      totalDurationSeconds: 0,
+      totalDistanceKm: 0,
     );
   }
 
   @override
-  Future<FeedbackListResponse> adminListFeedback({required String adminKey}) async {
+  Future<FeedbackListResponse> adminListFeedback(
+      {required String token}) async {
     return const FeedbackListResponse(feedbacks: []);
   }
 
   @override
   Future<void> adminUpdateFeedback({
-    required String adminKey, required int feedbackId,
-    required String status, String? adminNote,
+    required String token,
+    required int feedbackId,
+    required String status,
+    String? adminNote,
   }) async {}
+
+  @override
+  Future<AdminAppealPage> adminListAppeals({
+    required String token,
+    String? status,
+    int page = 0,
+    int size = 20,
+  }) async {
+    return const AdminAppealPage(items: [], totalElements: 0);
+  }
+
+  @override
+  Future<void> adminReviewAppeal({
+    required String token,
+    required int appealId,
+    required String status,
+    String? reviewNote,
+  }) async {}
+
+  @override
+  Future<String> adminStartAppealAgentReview({
+    required String token,
+    required int appealId,
+  }) async {
+    return 'run-1';
+  }
+
+  @override
+  Future<AdminAgentRunPage> adminListAgentRuns({
+    required String token,
+    String? type,
+    String? status,
+    int page = 0,
+    int size = 20,
+  }) async {
+    return const AdminAgentRunPage(items: [], totalElements: 0);
+  }
+
+  @override
+  Future<AgentRunAudit> adminGetAgentRunAudit({
+    required String token,
+    required String runId,
+  }) async {
+    return AgentRunAudit(
+      runId: runId,
+      status: 'SUCCEEDED',
+      proposals: const [],
+      toolCalls: const [],
+    );
+  }
+
+  @override
+  Future<void> adminConfirmAgentProposal({
+    required String token,
+    required int proposalId,
+  }) async {}
+
+  @override
+  Future<void> adminRejectAgentProposal({
+    required String token,
+    required int proposalId,
+    String? reason,
+  }) async {}
+
+  @override
+  Future<AdminAuditPage> adminListAuditLogs({
+    required String token,
+    String? resourceType,
+    String? resourceId,
+    int page = 0,
+    int size = 20,
+  }) async {
+    return const AdminAuditPage(items: [], totalElements: 0);
+  }
 
   @override
   Future<SportTarget> editTarget({
@@ -1063,9 +1228,15 @@ class _FakeApi implements FitLoopApi {
     required double targetValue,
   }) async {
     return SportTarget(
-      targetId: targetId, periodType: periodType, metric: metric,
-      targetValue: targetValue, completedValue: 0, progress: 0,
-      startDate: '2026-06-01', endDate: '2026-06-07', status: 'active',
+      targetId: targetId,
+      periodType: periodType,
+      metric: metric,
+      targetValue: targetValue,
+      completedValue: 0,
+      progress: 0,
+      startDate: '2026-06-01',
+      endDate: '2026-06-07',
+      status: 'active',
     );
   }
 }

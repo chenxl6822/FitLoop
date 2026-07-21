@@ -162,26 +162,77 @@ abstract class FitLoopApi {
 
   Future<FeedbackListResponse> listFeedback({required String token});
 
-  Future<AdminStats> adminGetStats({required String adminKey});
+  Future<AdminStats> adminGetStats({required String token});
 
   Future<AdminUserListResponse> adminListUsers({
-    required String adminKey,
+    required String token,
     int page = 0,
     int size = 20,
   });
 
   Future<AdminUserDetail> adminGetUserDetail({
-    required String adminKey,
+    required String token,
     required int userId,
   });
 
-  Future<FeedbackListResponse> adminListFeedback({required String adminKey});
+  Future<FeedbackListResponse> adminListFeedback({required String token});
 
   Future<void> adminUpdateFeedback({
-    required String adminKey,
+    required String token,
     required int feedbackId,
     required String status,
     String? adminNote,
+  });
+
+  Future<AdminAppealPage> adminListAppeals({
+    required String token,
+    String? status,
+    int page = 0,
+    int size = 20,
+  });
+
+  Future<void> adminReviewAppeal({
+    required String token,
+    required int appealId,
+    required String status,
+    String? reviewNote,
+  });
+
+  Future<String> adminStartAppealAgentReview({
+    required String token,
+    required int appealId,
+  });
+
+  Future<AdminAgentRunPage> adminListAgentRuns({
+    required String token,
+    String? type,
+    String? status,
+    int page = 0,
+    int size = 20,
+  });
+
+  Future<AgentRunAudit> adminGetAgentRunAudit({
+    required String token,
+    required String runId,
+  });
+
+  Future<void> adminConfirmAgentProposal({
+    required String token,
+    required int proposalId,
+  });
+
+  Future<void> adminRejectAgentProposal({
+    required String token,
+    required int proposalId,
+    String? reason,
+  });
+
+  Future<AdminAuditPage> adminListAuditLogs({
+    required String token,
+    String? resourceType,
+    String? resourceId,
+    int page = 0,
+    int size = 20,
   });
 }
 
@@ -212,6 +263,7 @@ class HttpFitLoopApi implements FitLoopApi {
       userId: profile['userId'] as int,
       nickname: profile['nickname'] as String? ?? 'FitLoop 用户',
       avatarUrl: _absoluteUrl(profile['avatarUrl'] as String?),
+      role: data['role'] as String? ?? 'USER',
     );
   }
 
@@ -804,6 +856,11 @@ class HttpFitLoopApi implements FitLoopApi {
         (body['message'] as String).isNotEmpty) {
       return body['message'] as String;
     }
+    if (body.containsKey('detail') &&
+        body['detail'] is String &&
+        (body['detail'] as String).isNotEmpty) {
+      return body['detail'] as String;
+    }
     // 后端 code != 0 但没有 message
     if (statusCode >= 500) return '服务器开小差了，请稍后重试';
     if (statusCode == 401 || statusCode == 403) return '登录状态已过期，请重新登录';
@@ -811,39 +868,38 @@ class HttpFitLoopApi implements FitLoopApi {
   }
 
   @override
-  Future<AdminStats> adminGetStats({required String adminKey}) async {
-    final body = await _adminGet('/api/admin/stats', adminKey: adminKey);
+  Future<AdminStats> adminGetStats({required String token}) async {
+    final body = await _get('/api/admin/stats', token: token);
     final data = body['data'] as Map<String, dynamic>;
     return AdminStats.fromJson(data);
   }
 
   @override
   Future<AdminUserListResponse> adminListUsers({
-    required String adminKey,
+    required String token,
     int page = 0,
     int size = 20,
   }) async {
     final path = '/api/admin/users?page=$page&size=$size';
-    final body = await _adminGet(path, adminKey: adminKey);
+    final body = await _get(path, token: token);
     final data = body['data'] as Map<String, dynamic>;
     return AdminUserListResponse.fromJson(data);
   }
 
   @override
   Future<AdminUserDetail> adminGetUserDetail({
-    required String adminKey,
+    required String token,
     required int userId,
   }) async {
-    final body =
-        await _adminGet('/api/admin/users/$userId', adminKey: adminKey);
+    final body = await _get('/api/admin/users/$userId', token: token);
     final data = body['data'] as Map<String, dynamic>;
     return AdminUserDetail.fromJson(data);
   }
 
   @override
   Future<FeedbackListResponse> adminListFeedback(
-      {required String adminKey}) async {
-    final body = await _adminGet('/api/admin/feedback', adminKey: adminKey);
+      {required String token}) async {
+    final body = await _get('/api/admin/feedback', token: token);
     final data = body['data'] as Map<String, dynamic>;
     final list = data['feedbacks'] as List<dynamic>;
     return FeedbackListResponse(
@@ -855,14 +911,14 @@ class HttpFitLoopApi implements FitLoopApi {
 
   @override
   Future<void> adminUpdateFeedback({
-    required String adminKey,
+    required String token,
     required int feedbackId,
     required String status,
     String? adminNote,
   }) async {
-    await _adminPut(
+    await _put(
       '/api/admin/feedback/$feedbackId',
-      adminKey: adminKey,
+      token: token,
       body: {
         'status': status,
         if (adminNote != null) 'adminNote': adminNote,
@@ -870,25 +926,117 @@ class HttpFitLoopApi implements FitLoopApi {
     );
   }
 
-  Future<Map<String, dynamic>> _adminGet(String path,
-      {required String adminKey}) async {
-    final request = await _client.getUrl(Uri.parse('$baseUrl$path'));
-    _setAdminHeaders(request, adminKey);
-    return _send(request);
+  @override
+  Future<AdminAppealPage> adminListAppeals({
+    required String token,
+    String? status,
+    int page = 0,
+    int size = 20,
+  }) async {
+    final query = <String, String>{
+      'page': '$page',
+      'size': '$size',
+      if (status != null && status.isNotEmpty) 'status': status,
+    };
+    final uri = Uri(path: '/api/v1/admin/appeals', queryParameters: query);
+    final body = await _get(uri.toString(), token: token);
+    return AdminAppealPage.fromJson(body['data'] as Map<String, dynamic>);
   }
 
-  Future<Map<String, dynamic>> _adminPut(String path,
-      {required String adminKey, Map<String, dynamic>? body}) async {
-    final request = await _client.putUrl(Uri.parse('$baseUrl$path'));
-    _setAdminHeaders(request, adminKey);
-    request.write(jsonEncode(body ?? <String, dynamic>{}));
-    return _send(request);
+  @override
+  Future<void> adminReviewAppeal({
+    required String token,
+    required int appealId,
+    required String status,
+    String? reviewNote,
+  }) async {
+    await _put('/api/v1/admin/appeals/$appealId', token: token, body: {
+      'status': status,
+      if (reviewNote != null) 'reviewNote': reviewNote,
+    });
   }
 
-  void _setAdminHeaders(HttpClientRequest request, String adminKey) {
-    request.headers.contentType = ContentType.json;
-    request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
-    request.headers.set('X-Admin-Key', adminKey);
+  @override
+  Future<String> adminStartAppealAgentReview({
+    required String token,
+    required int appealId,
+  }) async {
+    final body = await _post(
+        '/api/v1/admin/appeals/$appealId/agent-review', const {},
+        token: token);
+    return (body['data'] as Map<String, dynamic>)['runId'] as String;
+  }
+
+  @override
+  Future<AdminAgentRunPage> adminListAgentRuns({
+    required String token,
+    String? type,
+    String? status,
+    int page = 0,
+    int size = 20,
+  }) async {
+    final query = <String, String>{
+      'page': '$page',
+      'size': '$size',
+      if (type != null && type.isNotEmpty) 'type': type,
+      if (status != null && status.isNotEmpty) 'status': status,
+    };
+    final uri = Uri(path: '/api/v1/admin/agent/runs', queryParameters: query);
+    final body = await _get(uri.toString(), token: token);
+    return AdminAgentRunPage.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<AgentRunAudit> adminGetAgentRunAudit({
+    required String token,
+    required String runId,
+  }) async {
+    final body =
+        await _get('/api/v1/admin/agent/runs/$runId/audit', token: token);
+    return AgentRunAudit.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> adminConfirmAgentProposal({
+    required String token,
+    required int proposalId,
+  }) async {
+    await _post('/api/v1/agent/actions/$proposalId/confirm', const {},
+        token: token);
+  }
+
+  @override
+  Future<void> adminRejectAgentProposal({
+    required String token,
+    required int proposalId,
+    String? reason,
+  }) async {
+    await _post(
+        '/api/v1/agent/actions/$proposalId/reject',
+        {
+          if (reason != null && reason.isNotEmpty) 'reason': reason,
+        },
+        token: token);
+  }
+
+  @override
+  Future<AdminAuditPage> adminListAuditLogs({
+    required String token,
+    String? resourceType,
+    String? resourceId,
+    int page = 0,
+    int size = 20,
+  }) async {
+    final query = <String, String>{
+      'page': '$page',
+      'size': '$size',
+      if (resourceType != null && resourceType.isNotEmpty)
+        'resourceType': resourceType,
+      if (resourceId != null && resourceId.isNotEmpty) 'resourceId': resourceId,
+    };
+    final uri = Uri(path: '/api/v1/admin/audit-logs', queryParameters: query);
+    final body = await _get(uri.toString(), token: token);
+    return AdminAuditPage.fromJson(body['data'] as Map<String, dynamic>);
   }
 
   String? _absoluteUrl(String? url) {
@@ -1089,6 +1237,260 @@ class AdminUserDetail {
   final double totalDistanceKm;
 }
 
+class AdminAppealItem {
+  const AdminAppealItem({
+    required this.appealId,
+    required this.userId,
+    required this.recordId,
+    required this.reason,
+    this.evidenceUrl,
+    required this.status,
+    this.reviewNote,
+    required this.createdAt,
+  });
+
+  factory AdminAppealItem.fromJson(Map<String, dynamic> json) {
+    return AdminAppealItem(
+      appealId: json['appealId'] as int,
+      userId: json['userId'] as int,
+      recordId: json['recordId'] as int,
+      reason: json['reason'] as String,
+      evidenceUrl: json['evidenceUrl'] as String?,
+      status: json['status'] as String,
+      reviewNote: json['reviewNote'] as String?,
+      createdAt: json['createdAt'] as String,
+    );
+  }
+
+  final int appealId;
+  final int userId;
+  final int recordId;
+  final String reason;
+  final String? evidenceUrl;
+  final String status;
+  final String? reviewNote;
+  final String createdAt;
+}
+
+class AdminAppealPage {
+  const AdminAppealPage({required this.items, required this.totalElements});
+
+  factory AdminAppealPage.fromJson(Map<String, dynamic> json) {
+    return AdminAppealPage(
+      items: (json['items'] as List<dynamic>)
+          .map((item) => AdminAppealItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      totalElements: json['totalElements'] as int,
+    );
+  }
+
+  final List<AdminAppealItem> items;
+  final int totalElements;
+}
+
+class AdminAgentRunItem {
+  const AdminAgentRunItem({
+    required this.runId,
+    required this.type,
+    required this.status,
+    required this.subjectUserId,
+    this.subjectResourceId,
+    required this.traceId,
+    this.model,
+    this.promptVersion,
+    this.latencyMs,
+    this.errorMessage,
+    required this.createdAt,
+  });
+
+  factory AdminAgentRunItem.fromJson(Map<String, dynamic> json) {
+    return AdminAgentRunItem(
+      runId: json['runId'] as String,
+      type: json['type'] as String,
+      status: json['status'] as String,
+      subjectUserId: json['subjectUserId'] as int,
+      subjectResourceId: json['subjectResourceId'] as int?,
+      traceId: json['traceId'] as String,
+      model: json['model'] as String?,
+      promptVersion: json['promptVersion'] as String?,
+      latencyMs: json['latencyMs'] as int?,
+      errorMessage: json['errorMessage'] as String?,
+      createdAt: json['createdAt'] as String,
+    );
+  }
+
+  final String runId;
+  final String type;
+  final String status;
+  final int subjectUserId;
+  final int? subjectResourceId;
+  final String traceId;
+  final String? model;
+  final String? promptVersion;
+  final int? latencyMs;
+  final String? errorMessage;
+  final String createdAt;
+}
+
+class AdminAgentRunPage {
+  const AdminAgentRunPage({required this.items, required this.totalElements});
+
+  factory AdminAgentRunPage.fromJson(Map<String, dynamic> json) {
+    return AdminAgentRunPage(
+      items: (json['items'] as List<dynamic>)
+          .map((item) =>
+              AdminAgentRunItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      totalElements: json['totalElements'] as int,
+    );
+  }
+
+  final List<AdminAgentRunItem> items;
+  final int totalElements;
+}
+
+class AgentProposalItem {
+  const AgentProposalItem({
+    required this.proposalId,
+    required this.actionType,
+    required this.payloadJson,
+    required this.status,
+    required this.requiresAdmin,
+    this.decidedByUserId,
+    this.decidedAt,
+    this.decisionNote,
+  });
+
+  factory AgentProposalItem.fromJson(Map<String, dynamic> json) {
+    return AgentProposalItem(
+      proposalId: json['proposalId'] as int,
+      actionType: json['actionType'] as String,
+      payloadJson: json['payloadJson'] as String,
+      status: json['status'] as String,
+      requiresAdmin: json['requiresAdmin'] as bool,
+      decidedByUserId: json['decidedByUserId'] as int?,
+      decidedAt: json['decidedAt'] as String?,
+      decisionNote: json['decisionNote'] as String?,
+    );
+  }
+
+  final int proposalId;
+  final String actionType;
+  final String payloadJson;
+  final String status;
+  final bool requiresAdmin;
+  final int? decidedByUserId;
+  final String? decidedAt;
+  final String? decisionNote;
+}
+
+class AgentToolAuditItem {
+  const AgentToolAuditItem({
+    required this.toolName,
+    required this.succeeded,
+    this.durationMs,
+    this.errorMessage,
+  });
+
+  factory AgentToolAuditItem.fromJson(Map<String, dynamic> json) {
+    return AgentToolAuditItem(
+      toolName: json['toolName'] as String,
+      succeeded: json['succeeded'] as bool,
+      durationMs: json['durationMs'] as int?,
+      errorMessage: json['errorMessage'] as String?,
+    );
+  }
+
+  final String toolName;
+  final bool succeeded;
+  final int? durationMs;
+  final String? errorMessage;
+}
+
+class AgentRunAudit {
+  const AgentRunAudit({
+    required this.runId,
+    required this.status,
+    this.resultJson,
+    this.model,
+    this.promptVersion,
+    required this.proposals,
+    required this.toolCalls,
+  });
+
+  factory AgentRunAudit.fromJson(Map<String, dynamic> json) {
+    final run = json['run'] as Map<String, dynamic>;
+    return AgentRunAudit(
+      runId: run['runId'] as String,
+      status: run['status'] as String,
+      resultJson: run['resultJson'] as String?,
+      model: run['model'] as String?,
+      promptVersion: run['promptVersion'] as String?,
+      proposals: (run['proposals'] as List<dynamic>)
+          .map((item) =>
+              AgentProposalItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      toolCalls: (json['toolCalls'] as List<dynamic>)
+          .map((item) =>
+              AgentToolAuditItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final String runId;
+  final String status;
+  final String? resultJson;
+  final String? model;
+  final String? promptVersion;
+  final List<AgentProposalItem> proposals;
+  final List<AgentToolAuditItem> toolCalls;
+}
+
+class AdminAuditEntry {
+  const AdminAuditEntry({
+    required this.actorUserId,
+    required this.action,
+    required this.resourceType,
+    required this.resourceId,
+    this.detailsJson,
+    required this.createdAt,
+  });
+
+  factory AdminAuditEntry.fromJson(Map<String, dynamic> json) {
+    return AdminAuditEntry(
+      actorUserId: json['actorUserId'] as int,
+      action: json['action'] as String,
+      resourceType: json['resourceType'] as String,
+      resourceId: json['resourceId'] as String,
+      detailsJson: json['detailsJson'] as String?,
+      createdAt: json['createdAt'] as String,
+    );
+  }
+
+  final int actorUserId;
+  final String action;
+  final String resourceType;
+  final String resourceId;
+  final String? detailsJson;
+  final String createdAt;
+}
+
+class AdminAuditPage {
+  const AdminAuditPage({required this.items, required this.totalElements});
+
+  factory AdminAuditPage.fromJson(Map<String, dynamic> json) {
+    return AdminAuditPage(
+      items: (json['items'] as List<dynamic>)
+          .map((item) => AdminAuditEntry.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      totalElements: json['totalElements'] as int,
+    );
+  }
+
+  final List<AdminAuditEntry> items;
+  final int totalElements;
+}
+
 class ApiException implements Exception {
   ApiException(this.message);
 
@@ -1104,12 +1506,16 @@ class UserSession {
     required this.userId,
     required this.nickname,
     this.avatarUrl,
+    this.role = 'USER',
   });
 
   final String token;
   final int userId;
   final String nickname;
   final String? avatarUrl;
+  final String role;
+
+  bool get isAdmin => role == 'ADMIN';
 }
 
 class SportStart {

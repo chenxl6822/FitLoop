@@ -300,7 +300,8 @@ class _AuthGateState extends State<AuthGate> {
           token: data['token'] as String,
           userId: userId,
           nickname: data['nickname'] as String,
-          avatarUrl: avatarUrl));
+          avatarUrl: avatarUrl,
+          role: data['role'] as String));
     }
   }
 
@@ -590,7 +591,8 @@ class _AuthPageState extends State<AuthPage> {
         code: loginType == 'code' ? _code.text.trim() : null,
         loginType: loginType,
       );
-      await TokenStorage.save(session.token, session.userId, session.nickname);
+      await TokenStorage.save(
+          session.token, session.userId, session.nickname, session.role);
       final prefs = await SharedPreferences.getInstance();
       if (_rememberMe) {
         await prefs.setString('saved_account', account);
@@ -3778,12 +3780,14 @@ class SettingsPage extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () => _showAdminLogin(context),
-            icon: const Icon(Icons.admin_panel_settings_outlined),
-            label: const Text('管理后台'),
-          ),
+          if (session.isAdmin) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _openAdminDashboard(context),
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: const Text('管理后台'),
+            ),
+          ],
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () {
@@ -3801,61 +3805,19 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  void _showAdminLogin(BuildContext context) {
-    final keyController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('管理后台'),
-        content: TextField(
-          controller: keyController,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: '管理员密钥',
-            hintText: '请输入 Admin Key',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final key = keyController.text.trim();
-              if (key.isEmpty) return;
-              Navigator.pop(ctx);
-              // 验证 admin key
-              try {
-                await api.adminGetStats(adminKey: key);
-                if (!context.mounted) return;
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => _AdminDashboardPage(
-                      api: api,
-                      adminKey: key,
-                    ),
-                  ),
-                );
-              } catch (e) {
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('管理后台访问失败: ${friendlyErrorMsg(e)}')),
-                );
-              }
-            },
-            child: const Text('进入'),
-          ),
-        ],
+  void _openAdminDashboard(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _AdminDashboardPage(api: api, token: session.token),
       ),
     );
   }
 }
 
 class _AdminDashboardPage extends StatefulWidget {
-  const _AdminDashboardPage({required this.api, required this.adminKey});
+  const _AdminDashboardPage({required this.api, required this.token});
   final FitLoopApi api;
-  final String adminKey;
+  final String token;
 
   @override
   State<_AdminDashboardPage> createState() => _AdminDashboardPageState();
@@ -3867,13 +3829,31 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('管理后台')),
+      appBar: AppBar(
+        title: const Text('管理后台'),
+        actions: [
+          IconButton(
+            tooltip: '审计记录',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => _AdminAuditPage(
+                  api: widget.api,
+                  token: widget.token,
+                ),
+              ),
+            ),
+            icon: const Icon(Icons.history),
+          ),
+        ],
+      ),
       body: IndexedStack(
         index: _tabIndex,
         children: [
-          _AdminStatsTab(api: widget.api, adminKey: widget.adminKey),
-          _AdminUsersTab(api: widget.api, adminKey: widget.adminKey),
-          _AdminFeedbackTab(api: widget.api, adminKey: widget.adminKey),
+          _AdminStatsTab(api: widget.api, token: widget.token),
+          _AdminAppealsTab(api: widget.api, token: widget.token),
+          _AdminAgentRunsTab(api: widget.api, token: widget.token),
+          _AdminUsersTab(api: widget.api, token: widget.token),
+          _AdminFeedbackTab(api: widget.api, token: widget.token),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -3881,6 +3861,8 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
         onDestinationSelected: (i) => setState(() => _tabIndex = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.dashboard), label: '概览'),
+          NavigationDestination(icon: Icon(Icons.gavel), label: '申诉'),
+          NavigationDestination(icon: Icon(Icons.smart_toy), label: 'Agent'),
           NavigationDestination(icon: Icon(Icons.people), label: '用户'),
           NavigationDestination(icon: Icon(Icons.feedback), label: '反馈'),
         ],
@@ -3890,14 +3872,14 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
 }
 
 class _AdminStatsTab extends StatelessWidget {
-  const _AdminStatsTab({required this.api, required this.adminKey});
+  const _AdminStatsTab({required this.api, required this.token});
   final FitLoopApi api;
-  final String adminKey;
+  final String token;
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<AdminStats>(
-      future: api.adminGetStats(adminKey: adminKey),
+      future: api.adminGetStats(token: token),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -3943,15 +3925,321 @@ class _AdminStatCard extends StatelessWidget {
   }
 }
 
-class _AdminUsersTab extends StatelessWidget {
-  const _AdminUsersTab({required this.api, required this.adminKey});
+class _AdminAppealsTab extends StatefulWidget {
+  const _AdminAppealsTab({required this.api, required this.token});
+
   final FitLoopApi api;
-  final String adminKey;
+  final String token;
+
+  @override
+  State<_AdminAppealsTab> createState() => _AdminAppealsTabState();
+}
+
+class _AdminAppealsTabState extends State<_AdminAppealsTab> {
+  late Future<AdminAppealPage> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    _future = widget.api.adminListAppeals(token: widget.token);
+  }
+
+  Future<void> _review(AdminAppealItem appeal, String status) async {
+    final note = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(status == 'approved' ? '批准申诉' : '拒绝申诉'),
+        content: TextField(
+          controller: note,
+          maxLength: 255,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: '审核说明（可选）'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await widget.api.adminReviewAppeal(
+        token: widget.token,
+        appealId: appeal.appealId,
+        status: status,
+        reviewNote: note.text.trim(),
+      );
+      if (!mounted) return;
+      setState(_refresh);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(friendlyErrorMsg(error))));
+    }
+  }
+
+  Future<void> _startAgentReview(AdminAppealItem appeal) async {
+    try {
+      final runId = await widget.api.adminStartAppealAgentReview(
+        token: widget.token,
+        appealId: appeal.appealId,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Agent 审核已排队：${runId.substring(0, 8)}')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(friendlyErrorMsg(error))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AdminAppealPage>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text(friendlyErrorMsg(snapshot.error)));
+        }
+        final appeals = snapshot.data!.items;
+        if (appeals.isEmpty) return const Center(child: Text('暂无申诉'));
+        return RefreshIndicator(
+          onRefresh: () async => setState(_refresh),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: appeals.length,
+            itemBuilder: (context, index) {
+              final appeal = appeals[index];
+              final pending = appeal.status == 'pending';
+              return Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('申诉 #${appeal.appealId} · 记录 #${appeal.recordId}',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 6),
+                      Text(appeal.reason),
+                      const SizedBox(height: 6),
+                      Text('状态：${appeal.status} · 用户：${appeal.userId}'),
+                      if (pending) ...[
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => _startAgentReview(appeal),
+                              icon: const Icon(Icons.smart_toy_outlined),
+                              label: const Text('Agent 建议'),
+                            ),
+                            FilledButton(
+                              onPressed: () => _review(appeal, 'approved'),
+                              child: const Text('批准'),
+                            ),
+                            TextButton(
+                              onPressed: () => _review(appeal, 'rejected'),
+                              child: const Text('拒绝'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AdminAgentRunsTab extends StatefulWidget {
+  const _AdminAgentRunsTab({required this.api, required this.token});
+
+  final FitLoopApi api;
+  final String token;
+
+  @override
+  State<_AdminAgentRunsTab> createState() => _AdminAgentRunsTabState();
+}
+
+class _AdminAgentRunsTabState extends State<_AdminAgentRunsTab> {
+  late Future<AdminAgentRunPage> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    _future = widget.api.adminListAgentRuns(
+      token: widget.token,
+      type: 'APPEAL_REVIEW',
+    );
+  }
+
+  Future<void> _decideProposal(
+    BuildContext dialogContext,
+    AgentProposalItem proposal, {
+    required bool confirm,
+  }) async {
+    try {
+      if (confirm) {
+        await widget.api.adminConfirmAgentProposal(
+          token: widget.token,
+          proposalId: proposal.proposalId,
+        );
+      } else {
+        await widget.api.adminRejectAgentProposal(
+          token: widget.token,
+          proposalId: proposal.proposalId,
+          reason: '管理员拒绝 Agent 建议',
+        );
+      }
+      if (dialogContext.mounted) Navigator.pop(dialogContext);
+      if (!mounted) return;
+      setState(_refresh);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(confirm ? '已确认 Agent 建议' : '已拒绝 Agent 建议')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(friendlyErrorMsg(error))));
+    }
+  }
+
+  Future<void> _showAudit(AdminAgentRunItem item) async {
+    try {
+      final audit = await widget.api.adminGetAgentRunAudit(
+        token: widget.token,
+        runId: item.runId,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Agent 建议 · ${audit.status}'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('模型：${audit.model ?? "-"}'),
+                  Text('Prompt：${audit.promptVersion ?? "-"}'),
+                  Text('工具调用：${audit.toolCalls.length} 次'),
+                  const Divider(),
+                  SelectableText(audit.resultJson ?? '尚未生成建议'),
+                  for (final proposal in audit.proposals) ...[
+                    const Divider(),
+                    Text('操作提案：${proposal.actionType}'),
+                    SelectableText(proposal.payloadJson),
+                    Text('状态：${proposal.status}'),
+                    if (proposal.status == 'PENDING')
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          FilledButton(
+                            onPressed: () => _decideProposal(
+                              ctx,
+                              proposal,
+                              confirm: true,
+                            ),
+                            child: const Text('人工确认执行'),
+                          ),
+                          TextButton(
+                            onPressed: () => _decideProposal(
+                              ctx,
+                              proposal,
+                              confirm: false,
+                            ),
+                            child: const Text('拒绝建议'),
+                          ),
+                        ],
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(friendlyErrorMsg(error))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AdminAgentRunPage>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(child: Text(friendlyErrorMsg(snapshot.error)));
+        }
+        final runs = snapshot.data!.items;
+        if (runs.isEmpty) return const Center(child: Text('暂无 Agent 审核任务'));
+        return RefreshIndicator(
+          onRefresh: () async => setState(_refresh),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: runs.length,
+            itemBuilder: (context, index) {
+              final run = runs[index];
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.smart_toy_outlined),
+                  title: Text('申诉 #${run.subjectResourceId ?? "-"}'),
+                  subtitle: Text('${run.status} · ${run.model ?? "等待模型"}'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showAudit(run),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AdminUsersTab extends StatelessWidget {
+  const _AdminUsersTab({required this.api, required this.token});
+  final FitLoopApi api;
+  final String token;
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<AdminUserListResponse>(
-      future: api.adminListUsers(adminKey: adminKey),
+      future: api.adminListUsers(token: token),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -3974,7 +4262,7 @@ class _AdminUsersTab extends StatelessWidget {
                 onTap: () async {
                   try {
                     final detail = await api.adminGetUserDetail(
-                        adminKey: adminKey, userId: u.userId);
+                        token: token, userId: u.userId);
                     if (!context.mounted) return;
                     showDialog(
                       context: context,
@@ -4016,9 +4304,9 @@ class _AdminUsersTab extends StatelessWidget {
 }
 
 class _AdminFeedbackTab extends StatefulWidget {
-  const _AdminFeedbackTab({required this.api, required this.adminKey});
+  const _AdminFeedbackTab({required this.api, required this.token});
   final FitLoopApi api;
-  final String adminKey;
+  final String token;
 
   @override
   State<_AdminFeedbackTab> createState() => _AdminFeedbackTabState();
@@ -4030,12 +4318,12 @@ class _AdminFeedbackTabState extends State<_AdminFeedbackTab> {
   @override
   void initState() {
     super.initState();
-    _future = widget.api.adminListFeedback(adminKey: widget.adminKey);
+    _future = widget.api.adminListFeedback(token: widget.token);
   }
 
   void _refresh() {
     setState(() {
-      _future = widget.api.adminListFeedback(adminKey: widget.adminKey);
+      _future = widget.api.adminListFeedback(token: widget.token);
     });
   }
 
@@ -4083,7 +4371,7 @@ class _AdminFeedbackTabState extends State<_AdminFeedbackTab> {
                         onPressed: () async {
                           try {
                             await widget.api.adminUpdateFeedback(
-                              adminKey: widget.adminKey,
+                              token: widget.token,
                               feedbackId: f.feedbackId,
                               status: 'reviewed',
                               adminNote: '已查看',
@@ -4104,6 +4392,63 @@ class _AdminFeedbackTabState extends State<_AdminFeedbackTab> {
           },
         );
       },
+    );
+  }
+}
+
+class _AdminAuditPage extends StatefulWidget {
+  const _AdminAuditPage({required this.api, required this.token});
+
+  final FitLoopApi api;
+  final String token;
+
+  @override
+  State<_AdminAuditPage> createState() => _AdminAuditPageState();
+}
+
+class _AdminAuditPageState extends State<_AdminAuditPage> {
+  late Future<AdminAuditPage> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.api.adminListAuditLogs(token: widget.token);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('管理审计记录')),
+      body: FutureBuilder<AdminAuditPage>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text(friendlyErrorMsg(snapshot.error)));
+          }
+          final entries = snapshot.data!.items;
+          if (entries.isEmpty) return const Center(child: Text('暂无审计记录'));
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: entries.length,
+            itemBuilder: (context, index) {
+              final entry = entries[index];
+              return Card(
+                child: ListTile(
+                  title: Text(entry.action),
+                  subtitle: Text(
+                    '${entry.resourceType} #${entry.resourceId}\n'
+                    '操作者：${entry.actorUserId} · ${entry.createdAt}',
+                  ),
+                  isThreeLine: true,
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
@@ -4831,12 +5176,15 @@ class TokenStorage {
   static const _kToken = 'token';
   static const _kUid = 'uid';
   static const _kName = 'nickname';
+  static const _kRole = 'role';
 
-  static Future<void> save(String token, int userId, String nickname) async {
+  static Future<void> save(
+      String token, int userId, String nickname, String role) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_kToken, token);
     await p.setInt(_kUid, userId);
     await p.setString(_kName, nickname);
+    await p.setString(_kRole, role);
   }
 
   static Future<Map<String, Object>?> load() async {
@@ -4846,6 +5194,7 @@ class TokenStorage {
     return {
       'token': t,
       'userId': p.getInt(_kUid) ?? 0,
+      'role': p.getString(_kRole) ?? 'USER',
       'nickname': p.getString(_kName) ?? 'FitLoop �û�',
     };
   }
@@ -4855,5 +5204,6 @@ class TokenStorage {
     await p.remove(_kToken);
     await p.remove(_kUid);
     await p.remove(_kName);
+    await p.remove(_kRole);
   }
 }
