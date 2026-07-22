@@ -1,3 +1,4 @@
+import 'package:fitloop/auth_session.dart';
 import 'package:fitloop/secure_session_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,16 +21,16 @@ void main() {
       'role': 'USER',
     });
 
-    await TokenStorage.save('signed-admin-jwt', 7, 'Admin', 'ADMIN');
+    await TokenStorage.save(_session());
     final session = await TokenStorage.load();
     final preferences = await SharedPreferences.getInstance();
 
-    expect(session, {
-      'token': 'signed-admin-jwt',
-      'userId': 7,
-      'nickname': 'Admin',
-      'role': 'ADMIN',
-    });
+    expect(session?.token, 'signed-admin-jwt');
+    expect(session?.refreshToken, 'rotating-refresh-token');
+    expect(session?.expiresAt, DateTime.utc(2030));
+    expect(session?.userId, 7);
+    expect(session?.nickname, 'Admin');
+    expect(session?.role, 'ADMIN');
     expect(secureStore.values, hasLength(1));
     expect(preferences.getString('token'), isNull);
     expect(preferences.getInt('uid'), isNull);
@@ -37,7 +38,7 @@ void main() {
     expect(preferences.getString('role'), isNull);
   });
 
-  test('migrates a legacy plaintext session once and removes it', () async {
+  test('rejects a legacy access-token-only session and removes it', () async {
     SharedPreferences.setMockInitialValues({
       'token': 'legacy-admin-jwt',
       'uid': 9,
@@ -48,10 +49,18 @@ void main() {
     final session = await TokenStorage.load();
     final preferences = await SharedPreferences.getInstance();
 
-    expect(session?['token'], 'legacy-admin-jwt');
-    expect(session?['role'], 'ADMIN');
-    expect(secureStore.values, hasLength(1));
+    expect(session, isNull);
+    expect(secureStore.values, isEmpty);
     expect(preferences.getString('token'), isNull);
+  });
+
+  test('rejects the obsolete secure v1 session', () async {
+    secureStore.values['fitloop.session.v1'] =
+        '{"token":"old-token","userId":9,"nickname":"Old"}';
+
+    expect(await TokenStorage.load(), isNull);
+    expect(secureStore.values, isEmpty);
+    expect(secureStore.deletedKeys, contains('fitloop.session.v1'));
   });
 
   test('fails closed when the secure session is damaged', () async {
@@ -68,7 +77,7 @@ void main() {
   });
 
   test('clear removes secure and legacy session data', () async {
-    await TokenStorage.save('jwt', 11, 'User', 'USER');
+    await TokenStorage.save(_session());
 
     await TokenStorage.clear();
 
@@ -79,12 +88,27 @@ void main() {
 
   test('rejects an invalid authenticated session', () async {
     await expectLater(
-      TokenStorage.save(' ', 0, 'User', 'USER'),
+      TokenStorage.save(UserSession(
+        token: ' ',
+        refreshToken: '',
+        expiresAt: DateTime.utc(2030),
+        userId: 0,
+        nickname: 'User',
+      )),
       throwsArgumentError,
     );
     expect(secureStore.values, isEmpty);
   });
 }
+
+UserSession _session() => UserSession(
+      token: 'signed-admin-jwt',
+      refreshToken: 'rotating-refresh-token',
+      expiresAt: DateTime.utc(2030),
+      userId: 7,
+      nickname: 'Admin',
+      role: 'ADMIN',
+    );
 
 class _MemorySecureStore implements SecureKeyValueStore {
   final Map<String, String> values = {};

@@ -293,30 +293,55 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   UserSession? _session;
+  StreamSubscription<UserSession?>? _sessionSubscription;
 
   @override
   void initState() {
     super.initState();
+    final api = widget.api;
+    if (api is SessionAwareApi) {
+      final sessionApi = api as SessionAwareApi;
+      _sessionSubscription =
+          sessionApi.sessionChanges.listen(_onSessionChanged);
+    }
     _tryAutoLogin();
+  }
+
+  @override
+  void dispose() {
+    _sessionSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _tryAutoLogin() async {
     try {
-      final data = await TokenStorage.load();
-      if (data != null && mounted) {
+      final api = widget.api;
+      final restored = api is SessionAwareApi
+          ? await (api as SessionAwareApi).restoreSession()
+          : await TokenStorage.load();
+      if (restored != null && mounted) {
         final prefs = await SharedPreferences.getInstance();
-        final userId = data['userId'] as int;
-        final avatarUrl = prefs.getString('avatarUrl_$userId');
-        setState(() => _session = UserSession(
-            token: data['token'] as String,
-            userId: userId,
-            nickname: data['nickname'] as String,
-            avatarUrl: avatarUrl,
-            role: data['role'] as String));
+        final avatarUrl = prefs.getString('avatarUrl_${restored.userId}') ??
+            restored.avatarUrl;
+        setState(() => _session = restored.copyWith(avatarUrl: avatarUrl));
       }
     } catch (error) {
       debugPrint('Secure session restore failed: $error');
     }
+  }
+
+  void _onSessionChanged(UserSession? session) {
+    if (mounted) setState(() => _session = session);
+  }
+
+  Future<void> _logout() async {
+    final api = widget.api;
+    if (api is SessionAwareApi) {
+      await (api as SessionAwareApi).logoutSession();
+    } else {
+      await TokenStorage.clear();
+    }
+    if (mounted) setState(() => _session = null);
   }
 
   @override
@@ -328,7 +353,7 @@ class _AuthGateState extends State<AuthGate> {
         locationService: widget.locationService,
         reminderScheduler: widget.reminderScheduler,
         session: session,
-        onLogout: () => setState(() => _session = null),
+        onLogout: _logout,
       );
     }
     return AuthPage(
@@ -605,8 +630,6 @@ class _AuthPageState extends State<AuthPage> {
         code: loginType == 'code' ? _code.text.trim() : null,
         loginType: loginType,
       );
-      await TokenStorage.save(
-          session.token, session.userId, session.nickname, session.role);
       final prefs = await SharedPreferences.getInstance();
       if (_rememberMe) {
         await prefs.setString('saved_account', account);
@@ -894,7 +917,6 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _handleLogout() async {
-    await TokenStorage.clear();
     widget.onLogout?.call();
   }
 

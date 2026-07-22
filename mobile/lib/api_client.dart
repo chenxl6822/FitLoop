@@ -1,9 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'auth_session.dart';
+import 'secure_session_storage.dart';
+
+export 'auth_session.dart';
 
 abstract class FitLoopApi {
   Future<UserSession> login({
@@ -238,12 +243,56 @@ abstract class FitLoopApi {
   });
 }
 
-class HttpFitLoopApi implements FitLoopApi {
-  HttpFitLoopApi({String? baseUrl}) : baseUrl = baseUrl ?? ApiConfig.baseUrl;
+class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
+  HttpFitLoopApi({
+    String? baseUrl,
+    SessionStore? sessionStore,
+    DateTime Function()? now,
+  })  : baseUrl = baseUrl ?? ApiConfig.baseUrl,
+        _sessionStore = sessionStore ?? const SecureSessionStore(),
+        _now = now ?? DateTime.now;
 
   final String baseUrl;
+  final SessionStore _sessionStore;
+  final DateTime Function() _now;
   final HttpClient _client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 10);
+  final StreamController<UserSession?> _sessionController =
+      StreamController<UserSession?>.broadcast();
+
+  static const _refreshWindow = Duration(seconds: 30);
+
+  UserSession? _session;
+  Future<UserSession>? _refreshInFlight;
+
+  @override
+  Stream<UserSession?> get sessionChanges => _sessionController.stream;
+
+  @override
+  Future<UserSession?> restoreSession() async {
+    final restored = await _sessionStore.load();
+    _session = restored;
+    return restored;
+  }
+
+  @override
+  Future<void> logoutSession() async {
+    final refreshToken = _session?.refreshToken;
+    try {
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await _executeJson(
+          'POST',
+          '/api/v1/auth/logout',
+          payload: {'refreshToken': refreshToken},
+        );
+      }
+    } catch (_) {
+      // Local logout must always succeed. A rotating refresh token expires on
+      // the server even when the revocation request cannot reach it.
+    } finally {
+      await _invalidateSession();
+    }
+  }
 
   @override
   Future<UserSession> login({
@@ -253,20 +302,18 @@ class HttpFitLoopApi implements FitLoopApi {
     String loginType = 'password',
   }) async {
     final isCodeLogin = loginType.toLowerCase() == 'code';
-    final body = await _post('/api/auth/login', {
+    final response = await _executeJson(
+      'POST',
+      '/api/v1/auth/login',
+      payload: {
       'account': account,
       'loginType': loginType,
       if (isCodeLogin) 'code': code else 'password': password,
-    });
-    final data = body['data'] as Map<String, dynamic>;
-    final profile = data['userProfile'] as Map<String, dynamic>;
-    return UserSession(
-      token: data['token'] as String,
-      userId: profile['userId'] as int,
-      nickname: profile['nickname'] as String? ?? 'FitLoop 用户',
-      avatarUrl: _absoluteUrl(profile['avatarUrl'] as String?),
-      role: data['role'] as String? ?? 'USER',
+      },
     );
+    final session = _sessionFromAuthPayload(_expectDirect(response));
+    await _acceptSession(session);
+    return session;
   }
 
   @override
@@ -639,29 +686,13 @@ class HttpFitLoopApi implements FitLoopApi {
     required String imagePath,
   }) async {
     final safePath = await _safeFilePath(imagePath);
-    try {
-      final uri = Uri.parse('$baseUrl/api/user/avatar');
-      final client = http.Client();
-      try {
-        final multipart = http.MultipartRequest('POST', uri);
-        multipart.headers['Authorization'] = 'Bearer $token';
-        multipart.files
-            .add(await http.MultipartFile.fromPath('file', safePath));
-        final streamed =
-            await client.send(multipart).timeout(const Duration(seconds: 30));
-        final response = await http.Response.fromStream(streamed);
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        if (body['code'] != 0) {
-          throw ApiException(body['message'] as String? ?? '上传失败');
-        }
-        return _absoluteUrl(body['data'] as String?) ?? '';
-      } finally {
-        client.close();
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('头像上传失败，请检查网络后重试');
-    }
+    final result = await _uploadMultipart(
+      path: '/api/user/avatar',
+      token: token,
+      imagePath: safePath,
+      failureMessage: '头像上传失败，请检查网络后重试',
+    );
+    return _absoluteUrl(result) ?? '';
   }
 
   @override
@@ -725,29 +756,13 @@ class HttpFitLoopApi implements FitLoopApi {
     required String imagePath,
   }) async {
     final safePath = await _safeFilePath(imagePath);
-    try {
-      final uri = Uri.parse('$baseUrl/api/sport/photo');
-      final client = http.Client();
-      try {
-        final multipart = http.MultipartRequest('POST', uri);
-        multipart.headers['Authorization'] = 'Bearer $token';
-        multipart.files
-            .add(await http.MultipartFile.fromPath('file', safePath));
-        final streamed =
-            await client.send(multipart).timeout(const Duration(seconds: 30));
-        final response = await http.Response.fromStream(streamed);
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        if (body['code'] != 0) {
-          throw ApiException(body['message'] as String? ?? '上传照片失败');
-        }
-        return _absoluteUrl(body['data'] as String?) ?? '';
-      } finally {
-        client.close();
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('照片上传失败，请检查网络后重试');
-    }
+    final result = await _uploadMultipart(
+      path: '/api/sport/photo',
+      token: token,
+      imagePath: safePath,
+      failureMessage: '照片上传失败，请检查网络后重试',
+    );
+    return _absoluteUrl(result) ?? '';
   }
 
   @override
@@ -822,23 +837,17 @@ class HttpFitLoopApi implements FitLoopApi {
   }
 
   Future<Map<String, dynamic>> _delete(String path, {String? token}) async {
-    final request = await _client.deleteUrl(Uri.parse('$baseUrl$path'));
-    _setHeaders(request, token);
-    return _send(request);
+    return _request('DELETE', path, token: token);
   }
 
   Future<Map<String, dynamic>> _put(String path,
       {Map<String, dynamic>? body, String? token}) async {
-    final request = await _client.putUrl(Uri.parse('$baseUrl$path'));
-    _setHeaders(request, token);
-    request.write(jsonEncode(body ?? <String, dynamic>{}));
-    return _send(request);
+    return _request('PUT', path,
+        payload: body ?? <String, dynamic>{}, token: token);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
-    final request = await _client.getUrl(Uri.parse('$baseUrl$path'));
-    _setHeaders(request, token);
-    return _send(request);
+    return _request('GET', path, token: token);
   }
 
   Future<Map<String, dynamic>> _post(
@@ -846,17 +855,202 @@ class HttpFitLoopApi implements FitLoopApi {
     Map<String, dynamic> payload, {
     String? token,
   }) async {
-    final request = await _client.postUrl(Uri.parse('$baseUrl$path'));
-    _setHeaders(request, token);
-    request.write(jsonEncode(payload));
-    return _send(request);
+    return _request('POST', path, payload: payload, token: token);
   }
 
-  void _setHeaders(HttpClientRequest request, String? token) {
+  Future<Map<String, dynamic>> _request(
+    String method,
+    String path, {
+    Map<String, dynamic>? payload,
+    String? token,
+  }) async {
+    var accessToken = await _accessTokenForRequest(token);
+    var response = await _executeJson(
+      method,
+      path,
+      payload: payload,
+      token: accessToken,
+    );
+    if (response.statusCode == HttpStatus.unauthorized &&
+        token != null &&
+        _session != null) {
+      final refreshed = await _refreshSession(rejectedToken: accessToken);
+      accessToken = refreshed.token;
+      response = await _executeJson(
+        method,
+        path,
+        payload: payload,
+        token: accessToken,
+      );
+    }
+    return _expectEnvelope(response);
+  }
+
+  Future<String?> _accessTokenForRequest(String? fallbackToken) async {
+    if (fallbackToken == null) return null;
+    final current = _session;
+    if (current == null) return fallbackToken;
+    if (current.expiresWithin(_refreshWindow, _now())) {
+      return (await _refreshSession()).token;
+    }
+    return current.token;
+  }
+
+  Future<UserSession> _refreshSession({String? rejectedToken}) async {
+    final current = _session;
+    if (current == null) {
+      throw ApiException('登录状态已过期，请重新登录');
+    }
+    if (rejectedToken != null && current.token != rejectedToken) {
+      return current;
+  }
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+
+    final pending = _performRefresh(current);
+    _refreshInFlight = pending;
+    try {
+      return await pending;
+    } finally {
+      if (identical(_refreshInFlight, pending)) {
+        _refreshInFlight = null;
+      }
+    }
+  }
+
+  Future<UserSession> _performRefresh(UserSession current) async {
+    final response = await _executeJson(
+      'POST',
+      '/api/v1/auth/refresh',
+      payload: {'refreshToken': current.refreshToken},
+    );
+    if (response.statusCode == HttpStatus.unauthorized ||
+        response.statusCode == HttpStatus.forbidden) {
+      await _invalidateSession();
+      throw ApiException('登录状态已过期，请重新登录');
+    }
+    final refreshed = _sessionFromAuthPayload(_expectDirect(response));
+    await _acceptSession(refreshed);
+    return refreshed;
+  }
+
+  UserSession _sessionFromAuthPayload(Map<String, dynamic> data) {
+    final profile = data['userProfile'];
+    final token = data['token'];
+    final refreshToken = data['refreshToken'];
+    final expiresIn = data['expiresIn'];
+    if (profile is! Map<String, dynamic> ||
+        token is! String ||
+        token.isEmpty ||
+        refreshToken is! String ||
+        refreshToken.isEmpty ||
+        expiresIn is! num) {
+      throw const FormatException('Invalid authentication response');
+    }
+    return UserSession(
+      token: token,
+      refreshToken: refreshToken,
+      expiresAt: _now().toUtc().add(Duration(seconds: expiresIn.toInt())),
+      userId: profile['userId'] as int,
+      nickname: profile['nickname'] as String? ?? 'FitLoop 用户',
+      avatarUrl: _absoluteUrl(profile['avatarUrl'] as String?),
+      role: data['role'] as String? ?? 'USER',
+    );
+  }
+
+  Future<void> _acceptSession(UserSession value) async {
+    await _sessionStore.save(value);
+    _session = value;
+    _sessionController.add(value);
+  }
+
+  Future<void> _invalidateSession() async {
+    _session = null;
+    await _sessionStore.clear();
+    _sessionController.add(null);
+  }
+
+  Future<_JsonHttpResponse> _executeJson(
+    String method,
+    String path, {
+    Map<String, dynamic>? payload,
+    String? token,
+  }) async {
+    try {
+      final request = await _client.openUrl(method, Uri.parse('$baseUrl$path'));
     request.headers.contentType = ContentType.json;
     request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
     if (token != null) {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    }
+      if (payload != null) request.write(jsonEncode(payload));
+      return _send(request);
+    } on SocketException {
+      throw ApiException('无法连接服务器，请检查网络或稍后重试');
+    } on HttpException {
+      throw ApiException('无法连接服务器，请检查网络或稍后重试');
+    }
+  }
+
+  Map<String, dynamic> _expectEnvelope(_JsonHttpResponse response) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+          _extractErrorMessage(response.body, response.statusCode));
+    }
+    if (response.body['code'] != 0 && response.body['code'] != 200) {
+      throw ApiException(
+          _extractErrorMessage(response.body, response.statusCode));
+    }
+    return response.body;
+  }
+
+  Map<String, dynamic> _expectDirect(_JsonHttpResponse response) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+          _extractErrorMessage(response.body, response.statusCode));
+    }
+    return response.body;
+  }
+
+  Future<String> _uploadMultipart({
+    required String path,
+    required String token,
+    required String imagePath,
+    required String failureMessage,
+  }) async {
+    try {
+      var accessToken = await _accessTokenForRequest(token);
+      var response = await _sendMultipart(path, imagePath, accessToken!);
+      if (response.statusCode == HttpStatus.unauthorized && _session != null) {
+        final refreshed = await _refreshSession(rejectedToken: accessToken);
+        accessToken = refreshed.token;
+        response = await _sendMultipart(path, imagePath, accessToken);
+      }
+      final body = _expectEnvelope(response);
+      return body['data'] as String? ?? '';
+    } catch (error) {
+      if (error is ApiException) rethrow;
+      throw ApiException(failureMessage);
+    }
+  }
+
+  Future<_JsonHttpResponse> _sendMultipart(
+      String path, String imagePath, String token) async {
+    final client = http.Client();
+    try {
+      final multipart =
+          http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
+      multipart.headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+      multipart.files.add(await http.MultipartFile.fromPath('file', imagePath));
+      final streamed =
+          await client.send(multipart).timeout(const Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamed);
+      final body = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+      return _JsonHttpResponse(response.statusCode, body);
+    } finally {
+      client.close();
     }
   }
 
@@ -1062,20 +1256,14 @@ class HttpFitLoopApi implements FitLoopApi {
     return '$base$url';
   }
 
-  Future<Map<String, dynamic>> _send(HttpClientRequest request) async {
+  Future<_JsonHttpResponse> _send(HttpClientRequest request) async {
     try {
       final response = await request.close();
       final text = await response.transform(utf8.decoder).join();
       final body = text.isEmpty
           ? <String, dynamic>{}
           : jsonDecode(text) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw ApiException(_extractErrorMessage(body, response.statusCode));
-      }
-      if (body['code'] != 0 && body['code'] != 200) {
-        throw ApiException(_extractErrorMessage(body, response.statusCode));
-      }
-      return body;
+      return _JsonHttpResponse(response.statusCode, body);
     } on SocketException {
       throw ApiException('无法连接服务器，请检查网络或稍后重试');
     } on HttpException {
@@ -1084,6 +1272,13 @@ class HttpFitLoopApi implements FitLoopApi {
       throw ApiException('服务器响应异常，请稍后重试');
     }
   }
+}
+
+class _JsonHttpResponse {
+  const _JsonHttpResponse(this.statusCode, this.body);
+
+  final int statusCode;
+  final Map<String, dynamic> body;
 }
 
 class FeatureFlags {
@@ -1510,24 +1705,6 @@ class ApiException implements Exception {
 
   @override
   String toString() => message;
-}
-
-class UserSession {
-  const UserSession({
-    required this.token,
-    required this.userId,
-    required this.nickname,
-    this.avatarUrl,
-    this.role = 'USER',
-  });
-
-  final String token;
-  final int userId;
-  final String nickname;
-  final String? avatarUrl;
-  final String role;
-
-  bool get isAdmin => role == 'ADMIN';
 }
 
 class SportStart {
