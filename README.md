@@ -112,7 +112,7 @@ CI 执行以下门禁：
 - Shell 语法与基础/TLS Compose 配置校验。
 - Pull Request 高危依赖审查。
 
-当前基线：后端 152 项测试通过、JaCoCo 行覆盖率 82.9%；Agent 12 项测试通过；Flutter 31 项测试和静态分析通过。教练与申诉审批已使用真实 DeepSeek V4 模型完成本地演示；Docker/Testcontainers 完整集成测试以 CI 结果为准。
+当前基线：后端 153 项测试通过、JaCoCo 覆盖率门禁通过；Agent 14 项测试通过；Flutter 31 项测试和静态分析通过。教练与申诉审批已使用真实 DeepSeek V4 模型完成本地演示；Docker/Testcontainers 完整集成测试以 CI 结果为准。
 
 ## 可选部署能力
 

@@ -78,6 +78,33 @@ get_anomaly_rules
 
 结果还会输出模型名、输入/输出 token 数和通过 Pydantic 校验后的业务 JSON，但不会输出 API Key。
 
+## 一键验证 Java + Spring + Agent
+
+以下命令不会启动 Docker，不连接现有 MySQL，也不会修改本地业务数据。它会运行 Spring Agent 状态机、Redis Stream 消息契约、委托令牌/人工确认边界、Python Worker、供应商适配层和护栏测试：
+
+```powershell
+cd D:\AIWorkspace\projects\FitLoop
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-agent-stack.ps1
+```
+
+加入真实 DeepSeek 教练与审批演示：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-agent-stack.ps1 `
+  -Live `
+  -EnvFile .\.env
+```
+
+脚本自动查找仓库现有 Python 3.12 虚拟环境和常见安装位置中的 JDK 21。找不到时可显式指定：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-agent-stack.ps1 `
+  -JavaHome "C:\Program Files\Java\jdk-21.0.11" `
+  -PythonExecutable .\.tmp-agent-venv\Scripts\python.exe
+```
+
+最终成功标志为 `agent-stack-verification=SUCCESS`。其中 Redis Stream 使用 mock 锁定 Java 发布给 Python Worker 的 `runId`、`type`、`traceId` 字段契约；该命令是无数据库副作用的跨模块验证，不冒充容器级 E2E。
+
 ## 完整应用中的真实链路
 
 ```text
