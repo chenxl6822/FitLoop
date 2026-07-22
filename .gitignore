@@ -45,6 +45,11 @@ mobile/.flutter-plugins-dependencies
 mobile/build/
 mobile/.packages
 
+# Release artifacts are published outside Git. Keep only small metadata files.
+deploy/apk/*.apk
+deploy/apk/*.apk.sha256
+deploy/apk/*.previous
+
 # IDE / OS
 .idea/
 .vscode/*
