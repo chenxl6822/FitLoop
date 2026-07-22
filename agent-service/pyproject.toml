@@ -20,6 +20,9 @@ dependencies = [
   "opentelemetry-instrumentation-httpx==0.65b0",
 ]
 
+[project.scripts]
+fitloop-agent-demo = "fitloop_agent.demo:main"
+
 [project.optional-dependencies]
 test = [
   "pytest==8.4.2",
