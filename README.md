@@ -1,10 +1,10 @@
 # FitLoop
 
-> 面向高校学生的运动打卡与健康管理应用。仓库包含 Flutter 移动端、Spring Boot 后端、受控 Agent 服务、自动化测试与 Docker Compose 部署配置。
+> 面向高校学生的运动打卡与健康管理应用，也是一个用于求职展示的 Java + Spring + Agent 工程实践项目。仓库包含 Flutter 移动端、Spring Boot 后端、受控 Agent 服务、自动化测试与 Docker Compose 配置。
 
 ![FitLoop 产品展示图](mobile/assets/ai_generated/readme_hero_mockup.png)
 
-当前开发目标是生产稳定过渡版 `0.1.6+7`。代码已具备账号、运动、目标、统计、提醒、社交、申诉、后台审核和 Agent 审核闭环；该版本尚未执行公网发布或生产部署。
+当前定位是“可本地运行、可自动验证、可现场演示”的作品集版本 `0.1.6+7`，重点展示 Java 业务建模、安全鉴权、异步 Agent 编排、工具权限、Human-in-the-loop 和工程化交付。公网域名、备案、正式证书与应用商店发布不是完成本项目演示的前置条件。
 
 ## 技术栈
 
@@ -23,6 +23,7 @@
 - GPS、计步、拍照和手动运动打卡，离线结束队列与异常记录申诉。
 - 周/月目标、健康数据、统计趋势、本地提醒、好友与排行榜。
 - 管理员用户、反馈、申诉、审计和 Agent 审核链路。
+- DeepSeek 教练与申诉审批双 Agent：强制读取结构化证据、Pydantic 本地校验、风险护栏和人工确认。
 - Agent 独立 readiness 与可降级部署；Agent 故障不阻塞核心 API 和 APK 下载。
 
 ## 项目结构
@@ -59,6 +60,17 @@ python -m compileall -q src tests
 python -m pytest
 ```
 
+真实 DeepSeek 演示（会消耗少量 API 额度，不会输出密钥）：
+
+```powershell
+cd ..
+$env:PYTHONUTF8="1"
+$env:PYTHONPATH=(Resolve-Path .\agent-service\src).Path
+python -m fitloop_agent.demo --env-file .env --mode all --confirm-live-api
+```
+
+该命令分别执行教练和申诉审批工作流，并校验模型确实调用了必要证据工具。完整说明见 [Agent 可重复演示](docs/AGENT_DEMO.md)。
+
 移动端：
 
 ```powershell
@@ -69,7 +81,7 @@ flutter test
 flutter run --dart-define=FITLOOP_API_BASE_URL=http://10.0.2.2:8080
 ```
 
-生产 APK 必须注入 HTTPS 地址。兼容签名只用于本周期延续现有安装链，不能当作正式生产签名：
+如需演示 Android Release 构建，可使用以下命令。公网发布时 API 必须使用 HTTPS；本地求职演示不要求注册域名：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File deploy/build-apk.ps1 `
@@ -100,24 +112,27 @@ CI 执行以下门禁：
 - Shell 语法与基础/TLS Compose 配置校验。
 - Pull Request 高危依赖审查。
 
-当前本地基线：后端 152 项测试通过、JaCoCo 行覆盖率 82.9%；Agent 7 项测试通过；Flutter 31 项测试和静态分析通过。Docker/Testcontainers 仍以 CI 结果为准。
+当前基线：后端 152 项测试通过、JaCoCo 行覆盖率 82.9%；Agent 12 项测试通过；Flutter 31 项测试和静态分析通过。教练与申诉审批已使用真实 DeepSeek V4 模型完成本地演示；Docker/Testcontainers 完整集成测试以 CI 结果为准。
 
-## 部署与发布
+## 可选部署能力
 
-详见 [部署与运维指南](docs/DEPLOYMENT.md)。发布顺序固定为：TLS 与兼容后端 → 验证核心服务和 Agent 降级 → 构建并校验 APK → 安装外部产物 → 真机冒烟 → 观察指标。
+作品集演示可以全部在本地完成，不需要域名。若以后决定公网展示，再按 [部署与运维指南](docs/DEPLOYMENT.md) 配置域名、TLS、监控与发布流程。
 
 APK 二进制不再进入 Git。发布产物必须附带 SHA-256，服务器通过 `deploy/install-apk.sh` 校验并原子替换，并保留上一版本用于回滚。本周期不改写 Git 历史。
 
 ## 当前状态与边界
 
-- `0.1.6+7` 为待发布候选版本；线上仍是 `0.1.5+6`，未执行 push、TLS 切换、部署或 APK 发布。
-- TLS、证书到期监控和 Agent 降级配置已准备好；实际域名、证书和自动续期需要在生产主机配置后验证。
+- `0.1.6+7` 作为作品集候选版本继续开发；本次开发没有执行 push、部署或 APK 发布。
+- Agent 真实模型演示使用固定脱敏证据，验证模型、工具调用、结构化输出和护栏；Spring/Redis 完整链路由应用代码和集成测试覆盖。
+- TLS、证书到期监控和 Agent 降级配置保留为工程能力展示；只有公网部署时才需要实际域名和证书。
 - 正式 keystore 的创建、离线备份和签名切换尚未完成，不能宣称正式生产签名完成。
-- 本周期不包含普通用户 AI 教练 UI、iOS 正式构建、数据库重构、验证码重做或 Git 历史重写。
+- 当前不包含普通用户 AI 教练 UI、iOS 正式构建、数据库重构、验证码重做或 Git 历史重写。
 
 ## 文档
 
 - [部署与运维指南](docs/DEPLOYMENT.md)
+- [Agent 可重复演示](docs/AGENT_DEMO.md)
+- [面试讲解指南](docs/INTERVIEW_GUIDE.md)
 - [0.1.6+7 人工发布执行手册](docs/MANUAL_RELEASE_RUNBOOK.md)
 - [Android 真机冒烟清单](docs/SMOKE_TEST_CHECKLIST.md)
 - [协作与提交规范](CONTRIBUTING.md)
