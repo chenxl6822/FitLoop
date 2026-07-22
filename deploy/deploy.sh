@@ -124,12 +124,6 @@ else
     log_warn "Agent worker 已禁用；核心 API 和下载站仍会正常启动"
 fi
 
-# --- 拉取最新代码（如果有 git） ---
-if [ -d ".git" ]; then
-    log_info "拉取最新代码..."
-    git pull --rebase 2>/dev/null || log_warn "git pull 失败，跳过（可能无网络或无远程）"
-fi
-
 # --- 构建并启动 ---
 log_info "正在构建和启动服务..."
 $COMPOSE_CMD $COMPOSE_ARGS --env-file .env up -d --build
