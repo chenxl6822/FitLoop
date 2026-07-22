@@ -1,6 +1,6 @@
 # FitLoop Agent 可重复演示
 
-本文用于在本地或面试现场验证 FitLoop 的两个真实 DeepSeek Agent：训练教练与申诉审批。演示不需要域名、SMTP、MySQL、Redis 或正在运行的 Spring Boot；它使用固定脱敏证据隔离外部依赖，真实执行模型调用、工具编排、结构化输出校验和安全护栏。
+本文用于在本地或面试现场验证 FitLoop 的训练教练与申诉审批 Agent。仓库提供三个互补层次：无外部副作用的跨模块测试、使用固定脱敏证据的真实 DeepSeek 模型演示，以及隔离 MySQL/Redis 的完整容器 E2E。三者分别验证代码契约、模型行为和系统集成，不能相互冒充。
 
 ## 演示验证了什么
 
@@ -105,6 +105,50 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-agent-stack.ps1 `
 
 最终成功标志为 `agent-stack-verification=SUCCESS`。其中 Redis Stream 使用 mock 锁定 Java 发布给 Python Worker 的 `runId`、`type`、`traceId` 字段契约；该命令是无数据库副作用的跨模块验证，不冒充容器级 E2E。
 
+## 完整容器 E2E（推荐的面试主演示）
+
+前置条件只有 Docker Desktop 正常运行。命令不读取仓库 `.env`，不需要 DeepSeek Key、SMTP 或域名，也不会连接现有 MySQL/Redis。Compose 使用独立项目名、`127.0.0.1:18080/18090` 端口和专用数据卷：
+
+```powershell
+cd D:\AIWorkspace\projects\FitLoop
+docker version
+powershell -ExecutionPolicy Bypass -File .\scripts\run-agent-e2e.ps1
+```
+
+脚本执行以下真实链路：
+
+1. 从空 MySQL 库执行 Flyway，并通过 `agent-e2e` Profile 写入隔离测试用户、运动、健康、目标和待审申诉。
+2. 用户登录后创建教练 run；Spring 发布 Redis Stream，Python Worker 交换短期委托令牌并通过 Agents SDK 强制读取五类 Spring 证据。
+3. 检查工具审计后，确认 run 停在 `WAITING_APPROVAL`；只有所属用户确认后才创建训练计划。
+4. 管理员创建申诉审核 run；Worker 读取申诉证据和确定性异常规则；只有管理员确认后才更新申诉状态。
+5. 输出不含令牌的摘要，并自动删除该 Compose 项目的容器、网络和数据卷。
+
+成功输出包含：
+
+```text
+"status": "SUCCESS"
+"coachToolCalls": 5
+"appealToolCalls": 2
+agent-container-e2e=SUCCESS
+```
+
+如需在成功后检查容器和 API，可保留隔离栈：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-agent-e2e.ps1 -KeepRunning
+docker compose --project-name fitloop-agent-e2e --file .\deploy\docker-compose.agent-e2e.yml ps
+```
+
+检查结束后必须清理同一个隔离项目：
+
+```powershell
+docker compose --project-name fitloop-agent-e2e `
+  --file .\deploy\docker-compose.agent-e2e.yml `
+  down --volumes --remove-orphans
+```
+
+E2E 使用确定性的 OpenAI Chat Completions 兼容模型桩，因此不会产生模型费用；但 Agent、Runner、function tools、Redis 消费、Spring 权限和业务写入都走生产代码。需要验证 DeepSeek 供应商兼容性时，再单独运行前文带 `--confirm-live-api` 的真实模型演示。
+
 ## 完整应用中的真实链路
 
 ```text
@@ -124,7 +168,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-agent-stack.ps1 `
 - Agent 存活：`GET http://127.0.0.1:8090/health`
 - Agent 就绪：`GET http://127.0.0.1:8090/ready`
 
-演示命令是模型层的可重复验证，不伪装成完整 E2E。完整链路还需要 MySQL、Redis、Spring Boot、Agent Worker、测试用户和申诉数据，适合在隔离测试环境中运行。
+真实 DeepSeek 演示是模型层的可重复验证；`run-agent-e2e.ps1` 才是包含 MySQL、Redis、Spring Boot、Agent Worker、测试用户和申诉数据的完整隔离链路。两者在 CI 和面试讲解中应分别陈述。
 
 ## 本次兼容性修复的面试讲法
 
