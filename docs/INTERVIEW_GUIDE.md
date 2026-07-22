@@ -29,6 +29,12 @@
 5. 工程上使用 Spring Security、标准 JWT、refresh token 轮换、验证码限流、文件校验、Docker Compose、健康检查和自动化测试。
 6. 当前不足是生产域名与证书尚未切换、正式 keystore 尚未启用、轨迹仍存 JSON、Redis 缓存能力有限。
 
+### Agent 专项 60 秒版本
+
+> Agent 不是直接接数据库的聊天机器人。Spring Boot 负责身份、状态机、审计和最终写操作，Redis Stream 负责异步任务；Python Worker 只能用短期委托令牌调用白名单只读工具。教练首轮被代码强制读取目标、近期训练和训练负荷，申诉审批首轮强制读取证据与确定性规则。DeepSeek 只生成结构化建议，Pydantic 再做本地边界校验；训练方案要用户确认，申诉建议要管理员确认。这样把 LLM 放在“建议生成”位置，权限和最终决定仍由确定性系统控制。
+
+真实联调时发现 Agents SDK 默认发送的 `json_schema` 不被 DeepSeek V4 接受。我在 provider 层转换为 DeepSeek 支持的 `json_object`，把 schema 注入系统指令，并保留 Runner 的本地 Pydantic 校验。另一个问题是模型可能忽略“请调用工具”的提示，因此改成 SDK 首轮强制聚合证据工具，而不是继续依赖提示词。这个案例可以按“复现 400/随机跳过 → 回归测试 → 供应商适配 → 代码级工具约束 → 真实双 Agent 验证”展开。
+
 ## 3. 架构与核心链路
 
 ### 系统结构

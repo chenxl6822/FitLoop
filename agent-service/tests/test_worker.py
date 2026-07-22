@@ -6,7 +6,13 @@ import pytest
 from pydantic import SecretStr
 
 from fitloop_agent.config import Settings
-from fitloop_agent.schemas import ClaimResponse, CoachOutput, TrainingDay, TrainingPlanProposal
+from fitloop_agent.schemas import (
+    AppealDecision,
+    ClaimResponse,
+    CoachOutput,
+    TrainingDay,
+    TrainingPlanProposal,
+)
 from fitloop_agent.worker import AgentWorker
 
 
@@ -22,7 +28,8 @@ class FakeRedis:
 
 
 class FakeBackend:
-    def __init__(self) -> None:
+    def __init__(self, claim_type: str = "COACH") -> None:
+        self.claim_type = claim_type
         self.proposals: list[dict] = []
         self.completions: list[dict] = []
         self.messages: list[tuple[str, str]] = []
@@ -31,12 +38,13 @@ class FakeBackend:
         return "delegated"
 
     async def claim(self, run_id: str, _token: str) -> ClaimResponse:
+        appeal = self.claim_type == "APPEAL_REVIEW"
         return ClaimResponse(
             runId=run_id,
-            type="COACH",
-            inputJson='{"objective":"safe 5k"}',
+            type=self.claim_type,
+            inputJson='{"appealId":42}' if appeal else '{"objective":"safe 5k"}',
             subjectUserId=7,
-            subjectResourceId=None,
+            subjectResourceId=42 if appeal else None,
             traceId="trace-1",
         )
 
@@ -97,6 +105,64 @@ async def test_mocked_coach_workflow_creates_proposal_without_calling_deepseek(m
     assert backend.completions[0]["status"] == "WAITING_APPROVAL"
     assert backend.completions[0]["input_tokens"] == 100
     assert backend.completions[0]["output_tokens"] == 50
+
+
+@pytest.mark.asyncio
+async def test_mocked_appeal_approval_creates_admin_proposal(monkeypatch) -> None:
+    redis = FakeRedis()
+    backend = FakeBackend("APPEAL_REVIEW")
+    worker = AgentWorker(settings(), redis=redis, backend=backend, provider=FakeProvider())
+    output = AppealDecision(
+        decision="APPROVE",
+        confidence=0.91,
+        evidence=["The isolated speed spike was shorter than the deterministic threshold."],
+        risk_flags=["Administrator confirmation is still required."],
+        reason="The rule was not triggered, so approval is recommended.",
+    )
+    usage = SimpleNamespace(input_tokens=220, output_tokens=80)
+    fake_result = SimpleNamespace(raw_responses=[SimpleNamespace(usage=usage)])
+
+    async def fake_run_appeal(*_args, **_kwargs):
+        return output, fake_result
+
+    monkeypatch.setattr("fitloop_agent.worker.run_appeal", fake_run_appeal)
+    await worker._process(
+        "2-0", {"runId": "run-2", "type": "APPEAL_REVIEW", "traceId": "trace-2"}
+    )
+
+    assert redis.acked == ["2-0"]
+    assert backend.proposals[0]["actionType"] == "REVIEW_APPEAL"
+    assert backend.proposals[0]["requiresAdmin"] is True
+    assert backend.completions[0]["status"] == "WAITING_APPROVAL"
+    assert backend.completions[0]["input_tokens"] == 220
+    assert backend.completions[0]["output_tokens"] == 80
+    assert '"decision":"APPROVE"' in backend.messages[0][1]
+
+
+@pytest.mark.asyncio
+async def test_mocked_appeal_needing_more_info_does_not_create_proposal(monkeypatch) -> None:
+    redis = FakeRedis()
+    backend = FakeBackend("APPEAL_REVIEW")
+    worker = AgentWorker(settings(), redis=redis, backend=backend, provider=FakeProvider())
+    output = AppealDecision(
+        decision="NEED_MORE_INFO",
+        confidence=0.72,
+        evidence=["The available trace summary is incomplete."],
+        reason="An administrator should request the detailed trace before deciding.",
+    )
+    fake_result = SimpleNamespace(raw_responses=[])
+
+    async def fake_run_appeal(*_args, **_kwargs):
+        return output, fake_result
+
+    monkeypatch.setattr("fitloop_agent.worker.run_appeal", fake_run_appeal)
+    await worker._process(
+        "3-0", {"runId": "run-3", "type": "APPEAL_REVIEW", "traceId": "trace-3"}
+    )
+
+    assert redis.acked == ["3-0"]
+    assert backend.proposals == []
+    assert backend.completions[0]["status"] == "SUCCEEDED"
 
 
 def test_timeout_and_network_errors_are_retryable() -> None:
