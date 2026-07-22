@@ -1,0 +1,109 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: fitloop_agent_e2e
+      MYSQL_USER: fitloop_agent_e2e
+      MYSQL_PASSWORD: fitloop-agent-e2e-db-password
+      MYSQL_ROOT_PASSWORD: fitloop-agent-e2e-root-password
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    image: redis:6.2-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ../backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: agent-e2e
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/fitloop_agent_e2e?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+      SPRING_DATASOURCE_USERNAME: fitloop_agent_e2e
+      SPRING_DATASOURCE_PASSWORD: fitloop-agent-e2e-db-password
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      FITLOOP_JWT_SECRET: agent-e2e-public-jwt-secret-not-for-production-2026
+      FITLOOP_AGENT_SERVICE_KEY: agent-e2e-public-service-key-not-for-production-2026
+      FITLOOP_AGENT_DELEGATION_SECRET: agent-e2e-public-delegation-secret-not-for-production-2026
+      FITLOOP_AGENT_STREAM_KEY: fitloop:agent:e2e:runs
+      FITLOOP_OTP_HASH_SECRET: agent-e2e-public-otp-secret-not-for-production-2026
+      FITLOOP_OTP_DEBUG_RETURN: "false"
+      FITLOOP_DEMO_USER_ACCOUNT: agent.user@fitloop.local
+      FITLOOP_DEMO_USER_PASSWORD: "AgentUserDemo!2026"
+      FITLOOP_DEMO_ADMIN_ACCOUNT: agent.admin@fitloop.local
+      FITLOOP_DEMO_ADMIN_PASSWORD: "AgentAdminDemo!2026"
+      FITLOOP_UPLOAD_PATH: /tmp/fitloop-agent-e2e-uploads
+    ports:
+      - "127.0.0.1:${FITLOOP_AGENT_E2E_BACKEND_PORT:-18080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health/readiness"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  model-stub:
+    build:
+      context: ../agent-service
+    command: ["uvicorn", "fitloop_agent.model_stub:app", "--host", "0.0.0.0", "--port", "8091"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  agent-service:
+    build:
+      context: ../agent-service
+    depends_on:
+      backend:
+        condition: service_healthy
+      model-stub:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DEEPSEEK_API_KEY: agent-e2e-not-a-real-api-key
+      DEEPSEEK_BASE_URL: http://model-stub:8091/v1
+      DEEPSEEK_COACH_MODEL: fitloop-agent-e2e-coach
+      DEEPSEEK_APPEAL_MODEL: fitloop-agent-e2e-appeal
+      BACKEND_BASE_URL: http://backend:8080
+      AGENT_SERVICE_KEY: agent-e2e-public-service-key-not-for-production-2026
+      AGENT_WORKER_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
+      AGENT_STREAM_KEY: fitloop:agent:e2e:runs
+      AGENT_CONSUMER_GROUP: fitloop-agent-e2e
+      AGENT_CONSUMER_NAME: agent-e2e-1
+      FLASH_INPUT_USD_PER_MILLION: "0"
+      FLASH_OUTPUT_USD_PER_MILLION: "0"
+      PRO_INPUT_USD_PER_MILLION: "0"
+      PRO_OUTPUT_USD_PER_MILLION: "0"
+    ports:
+      - "127.0.0.1:${FITLOOP_AGENT_E2E_SERVICE_PORT:-18090}:8090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/ready')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+volumes:
+  mysql-data:

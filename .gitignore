@@ -26,6 +26,7 @@ submission/
 application-local.yml
 
 # Java / Spring Boot
+/build/
 backend/target/
 backend/.mvn/wrapper/maven-wrapper.jar
 *.class
