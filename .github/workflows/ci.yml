@@ -49,6 +49,15 @@ jobs:
       - name: Run mocked-model workflow tests
         run: python -m pytest
 
+  agent-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run isolated Agent container E2E
+        shell: pwsh
+        run: ./scripts/run-agent-e2e.ps1 -TimeoutSeconds 300
+
   mobile:
     runs-on: ubuntu-latest
     defaults:
@@ -81,6 +90,8 @@ jobs:
         run: bash -n deploy/deploy.sh deploy/install-apk.sh deploy/monitor.sh deploy/backup.sh deploy/gen-secrets.sh deploy/reload-nginx.sh
       - name: Validate base Compose configuration
         run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config --quiet
+      - name: Validate isolated Agent E2E Compose configuration
+        run: docker compose -f deploy/docker-compose.agent-e2e.yml config --quiet
       - name: Validate TLS Compose configuration
         env:
           FITLOOP_TLS_CERT_FILE: /tmp/fitloop-ci/fullchain.pem
