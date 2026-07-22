@@ -85,12 +85,13 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_COACH_MODEL: ${DEEPSEEK_COACH_MODEL:-deepseek-v4-flash}
       DEEPSEEK_APPEAL_MODEL: ${DEEPSEEK_APPEAL_MODEL:-deepseek-v4-pro}
       BACKEND_BASE_URL: http://backend:8080
-      AGENT_SERVICE_KEY: ${FITLOOP_AGENT_SERVICE_KEY:?FITLOOP_AGENT_SERVICE_KEY is required}
+      AGENT_SERVICE_KEY: ${FITLOOP_AGENT_SERVICE_KEY:-}
+      AGENT_WORKER_ENABLED: ${FITLOOP_AGENT_ENABLED:-true}
       REDIS_URL: redis://redis:6379/0
       AGENT_STREAM_KEY: ${FITLOOP_AGENT_STREAM_KEY:-fitloop:agent:runs}
       AGENT_CONSUMER_NAME: ${AGENT_CONSUMER_NAME:-agent-1}
@@ -101,7 +102,7 @@ services:
     ports:
       - "127.0.0.1:8090:8090"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/ready')"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -114,14 +115,13 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-      agent-service:
-        condition: service_healthy
     ports:
       - "80:80"
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./download.html:/usr/share/nginx/html/download.html:ro
       - ./apk:/usr/share/nginx/html/apk:ro
+
 
 volumes:
   mysql-data:

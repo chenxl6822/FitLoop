@@ -1,6 +1,9 @@
+import asyncio
+from contextlib import suppress
 from types import SimpleNamespace
 
 import pytest
+from pydantic import SecretStr
 
 from fitloop_agent.config import Settings
 from fitloop_agent.schemas import ClaimResponse, CoachOutput, TrainingDay, TrainingPlanProposal
@@ -13,6 +16,9 @@ class FakeRedis:
 
     async def xack(self, _stream: str, _group: str, message_id: str) -> None:
         self.acked.append(message_id)
+
+    async def ping(self) -> bool:
+        return True
 
 
 class FakeBackend:
@@ -98,3 +104,41 @@ def test_timeout_and_network_errors_are_retryable() -> None:
     assert not AgentWorker._is_retryable(type("PermanentAgentError", (RuntimeError,), {})())
     assert not AgentWorker._is_retryable(type("PaymentRequired", (RuntimeError,), {"status_code": 402})())
     assert AgentWorker._is_retryable(type("RateLimited", (RuntimeError,), {"status_code": 429})())
+
+
+@pytest.mark.asyncio
+async def test_readiness_requires_a_live_worker_and_redis() -> None:
+    worker = AgentWorker(
+        settings(), redis=FakeRedis(), backend=FakeBackend(), provider=FakeProvider()
+    )
+    assert not await worker.ready()
+
+    task = asyncio.create_task(asyncio.sleep(10))
+    worker._task = task
+    try:
+        assert await worker.ready()
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
+@pytest.mark.asyncio
+async def test_readiness_fails_closed_without_model_credentials() -> None:
+    missing_key_settings = settings().model_copy(
+        update={"deepseek_api_key": SecretStr("")}
+    )
+    worker = AgentWorker(
+        missing_key_settings,
+        redis=FakeRedis(),
+        backend=FakeBackend(),
+        provider=FakeProvider(),
+    )
+    task = asyncio.create_task(asyncio.sleep(10))
+    worker._task = task
+    try:
+        assert not await worker.ready()
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
