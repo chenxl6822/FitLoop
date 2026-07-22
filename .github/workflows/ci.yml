@@ -44,6 +44,8 @@ jobs:
           cache-dependency-path: agent-service/pyproject.toml
       - name: Install test dependencies
         run: python -m pip install --upgrade pip && python -m pip install -e '.[test]'
+      - name: Compile agent package
+        run: python -m compileall -q src tests
       - name: Run mocked-model workflow tests
         run: python -m pytest
 
@@ -61,6 +63,33 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Build Android release artifact
+        env:
+          FITLOOP_COMPAT_SIGNING: "true"
+        run: >-
+          flutter build apk --release --no-pub
+          --dart-define=FITLOOP_API_BASE_URL=https://example.invalid
+          --dart-define=FITLOOP_APP_VERSION=0.1.6
+          --dart-define=FITLOOP_BUILD_NUMBER=7
+
+  deployment-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check deployment scripts
+        run: bash -n deploy/deploy.sh deploy/install-apk.sh deploy/monitor.sh deploy/backup.sh deploy/gen-secrets.sh
+      - name: Validate base Compose configuration
+        run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config --quiet
+      - name: Validate TLS Compose configuration
+        env:
+          FITLOOP_TLS_CERT_FILE: /tmp/fitloop-ci/fullchain.pem
+          FITLOOP_TLS_KEY_FILE: /tmp/fitloop-ci/privkey.pem
+        run: >-
+          docker compose --env-file deploy/.env.example
+          -f deploy/docker-compose.yml
+          -f deploy/docker-compose.tls.yml
+          config --quiet
 
   dependency-review:
     if: github.event_name == 'pull_request'
