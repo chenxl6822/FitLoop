@@ -1,0 +1,7 @@
+# Public fixture credentials for the isolated agent-e2e profile only.
+fitloop:
+  demo-e2e:
+    user-account: ${FITLOOP_DEMO_USER_ACCOUNT:agent.user@fitloop.local}
+    user-password: ${FITLOOP_DEMO_USER_PASSWORD:AgentUserDemo!2026}
+    admin-account: ${FITLOOP_DEMO_ADMIN_ACCOUNT:agent.admin@fitloop.local}
+    admin-password: ${FITLOOP_DEMO_ADMIN_PASSWORD:AgentAdminDemo!2026}
