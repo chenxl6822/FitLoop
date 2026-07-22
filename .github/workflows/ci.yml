@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check deployment scripts
-        run: bash -n deploy/deploy.sh deploy/install-apk.sh deploy/monitor.sh deploy/backup.sh deploy/gen-secrets.sh
+        run: bash -n deploy/deploy.sh deploy/install-apk.sh deploy/monitor.sh deploy/backup.sh deploy/gen-secrets.sh deploy/reload-nginx.sh
       - name: Validate base Compose configuration
         run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config --quiet
       - name: Validate TLS Compose configuration
@@ -89,6 +89,16 @@ jobs:
           docker compose --env-file deploy/.env.example
           -f deploy/docker-compose.yml
           -f deploy/docker-compose.tls.yml
+          config --quiet
+      - name: Validate post-compatibility Compose configuration
+        env:
+          FITLOOP_TLS_CERT_FILE: /tmp/fitloop-ci/fullchain.pem
+          FITLOOP_TLS_KEY_FILE: /tmp/fitloop-ci/privkey.pem
+        run: >-
+          docker compose --env-file deploy/.env.example
+          -f deploy/docker-compose.yml
+          -f deploy/docker-compose.tls.yml
+          -f deploy/docker-compose.https-only.yml
           config --quiet
 
   dependency-review:

@@ -43,6 +43,7 @@ read_env_value() {
 }
 
 FITLOOP_TLS_ENABLED="${FITLOOP_TLS_ENABLED:-$(read_env_value FITLOOP_TLS_ENABLED)}"
+FITLOOP_HTTP_COMPAT_ENABLED="${FITLOOP_HTTP_COMPAT_ENABLED:-$(read_env_value FITLOOP_HTTP_COMPAT_ENABLED)}"
 FITLOOP_TLS_CERT_FILE="${FITLOOP_TLS_CERT_FILE:-$(read_env_value FITLOOP_TLS_CERT_FILE)}"
 FITLOOP_TLS_KEY_FILE="${FITLOOP_TLS_KEY_FILE:-$(read_env_value FITLOOP_TLS_KEY_FILE)}"
 FITLOOP_PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-$(read_env_value FITLOOP_PUBLIC_BASE_URL)}"
@@ -108,6 +109,16 @@ if [ "${FITLOOP_TLS_ENABLED:-false}" = "true" ]; then
     fi
     COMPOSE_ARGS="$COMPOSE_ARGS -f deploy/docker-compose.tls.yml"
     log_info "启用 HTTPS Compose 覆盖配置"
+
+    if [ "${FITLOOP_HTTP_COMPAT_ENABLED:-true}" = "false" ]; then
+        COMPOSE_ARGS="$COMPOSE_ARGS -f deploy/docker-compose.https-only.yml"
+        log_warn "HTTP API 兼容窗口已关闭；明文 /api/ 将返回 426"
+    else
+        log_warn "HTTP API 兼容窗口仍开启；确认旧客户端退出后再关闭"
+    fi
+elif [ "${FITLOOP_HTTP_COMPAT_ENABLED:-true}" = "false" ]; then
+    log_error "关闭 HTTP API 兼容窗口前必须先启用 TLS"
+    exit 1
 fi
 
 if [ "${FITLOOP_AGENT_ENABLED:-true}" = "true" ]; then
