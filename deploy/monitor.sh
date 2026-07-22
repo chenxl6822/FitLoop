@@ -9,6 +9,15 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+read_env_value() {
+    sed -n "s/^${1}=//p" .env | tail -n 1 | tr -d '\r'
+}
+
+if [ -f .env ]; then
+    FITLOOP_AGENT_ENABLED="${FITLOOP_AGENT_ENABLED:-$(read_env_value FITLOOP_AGENT_ENABLED)}"
+    FITLOOP_PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-$(read_env_value FITLOOP_PUBLIC_BASE_URL)}"
+fi
+
 # --- 阈值 ---
 CPU_THRESHOLD=80       # CPU 使用率 %
 MEM_THRESHOLD=85       # 内存使用率 %
@@ -51,7 +60,7 @@ fi
 echo ""
 echo "--- Docker 容器 ---"
 if command -v docker &> /dev/null; then
-    for SERVICE in fitloop-mysql fitloop-redis fitloop-backend fitloop-nginx; do
+    for SERVICE in fitloop-mysql fitloop-redis fitloop-backend fitloop-agent-service fitloop-nginx; do
         STATUS=$(docker ps --filter "name=${SERVICE}" --format "{{.Status}}" 2>/dev/null || echo "未运行")
         if echo "${STATUS}" | grep -q "Up"; then
             UPTIME=$(echo "${STATUS}" | sed 's/Up //')
@@ -68,17 +77,50 @@ else
     echo "  Docker 未安装"
 fi
 
-# --- API 健康检查 ---
+# --- API 与 Agent 健康检查 ---
 echo ""
 echo "--- API 健康 ---"
-for PORT in 8080 80; do
-    RESP=$(curl -sf -w "%{http_code}" -o /dev/null "http://localhost:${PORT}/actuator/health" 2>/dev/null || true)
+PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-http://localhost}"
+for ENTRY in "Backend|http://localhost:8080/actuator/health" \
+             "Public|${PUBLIC_BASE_URL%/}/actuator/health"; do
+    NAME="${ENTRY%%|*}"
+    URL="${ENTRY#*|}"
+    RESP=$(curl -sf -w "%{http_code}" -o /dev/null "${URL}" 2>/dev/null || true)
     if [ "${RESP}" = "200" ]; then
-        printf "  %-20s ✅ %s\n" "端口 ${PORT}:" "响应 200"
+        printf "  %-20s ✅ %s\n" "${NAME}:" "响应 200"
     else
-        printf "  %-20s ❌ %s\n" "端口 ${PORT}:" "无响应 (${RESP})"
+        printf "  %-20s ❌ %s\n" "${NAME}:" "无响应 (${RESP})"
     fi
 done
+
+AGENT_READY=true
+if [ "${FITLOOP_AGENT_ENABLED:-true}" = "true" ]; then
+    AGENT_RESP=$(curl -sf -w "%{http_code}" -o /dev/null \
+        "http://127.0.0.1:8090/ready" 2>/dev/null || true)
+    if [ "${AGENT_RESP}" = "200" ]; then
+        printf "  %-20s ✅ %s\n" "Agent:" "READY"
+    else
+        AGENT_READY=false
+        printf "  %-20s ⚠️  %s\n" "Agent:" "NOT_READY (${AGENT_RESP})，核心 API 不受影响"
+    fi
+else
+    printf "  %-20s ➖ %s\n" "Agent:" "已禁用"
+fi
+
+TLS_CERT_OK=true
+if [[ "${PUBLIC_BASE_URL}" == https://* ]] && command -v openssl &> /dev/null; then
+    PUBLIC_HOST="${PUBLIC_BASE_URL#https://}"
+    PUBLIC_HOST="${PUBLIC_HOST%%/*}"
+    PUBLIC_HOST="${PUBLIC_HOST%%:*}"
+    if echo | openssl s_client -servername "${PUBLIC_HOST}" \
+        -connect "${PUBLIC_HOST}:443" 2>/dev/null |
+        openssl x509 -noout -checkend 1209600 > /dev/null 2>&1; then
+        printf "  %-20s ✅ %s\n" "TLS 证书:" "有效期超过 14 天"
+    else
+        TLS_CERT_OK=false
+        printf "  %-20s ❌ %s\n" "TLS 证书:" "连接失败或将在 14 天内到期"
+    fi
+fi
 
 # --- 系统负载 ---
 LOAD=$(uptime | awk -F'load average:' '{print $2}' | xargs)
@@ -100,6 +142,12 @@ if [ "$ALERT_MODE" = true ]; then
     fi
     if [ "${DISK_PCT}" -gt "${DISK_THRESHOLD}" ]; then
         ALERTS="${ALERTS}DISK:${DISK_PCT}% "
+    fi
+    if [ "${AGENT_READY}" = false ]; then
+        ALERTS="${ALERTS}AGENT:NOT_READY "
+    fi
+    if [ "${TLS_CERT_OK}" = false ]; then
+        ALERTS="${ALERTS}TLS:CERT "
     fi
     if [ -n "${ALERTS}" ]; then
         echo "[ALERT] 资源告警: ${ALERTS}"

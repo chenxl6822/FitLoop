@@ -1,247 +1,123 @@
 # FitLoop
 
-> 面向高校学生的运动打卡与健康管理应用。项目包含 Flutter 移动端、Spring Boot 后端、MySQL、Redis 与 Docker Compose 部署配置。
+> 面向高校学生的运动打卡与健康管理应用。仓库包含 Flutter 移动端、Spring Boot 后端、受控 Agent 服务、自动化测试与 Docker Compose 部署配置。
 
 ![FitLoop 产品展示图](mobile/assets/ai_generated/readme_hero_mockup.png)
 
-FitLoop 围绕校园运动打卡场景，提供多方式运动记录、健康数据统计、目标管理、提醒、好友激励、异常申诉和后台审核能力。仓库保存代码、测试、部署配置与必要工程说明；课程交付类文档、演示材料和其他本地工作稿不纳入 Git。
-
-## 目录
-
-- [功能概览](#功能概览)
-- [技术栈](#技术栈)
-- [项目结构](#项目结构)
-- [快速开始](#快速开始)
-- [配置说明](#配置说明)
-- [测试与质量检查](#测试与质量检查)
-- [部署](#部署)
-- [项目状态](#项目状态)
-- [文档索引](#文档索引)
-
-## 功能概览
-
-### 移动端
-
-| 功能 | 说明 |
-| --- | --- |
-| 运动打卡 | 支持 GPS 实时定位、传感器计步、拍照打卡、手动输入 4 种方式 |
-| 运动类型 | 支持跑步、骑行、健走、跳绳、自定义运动 |
-| 卡路里估算 | 基于 `MET × 体重(kg) × 时长(h)` 估算消耗 |
-| 离线同步 | 断网时本地缓存打卡数据，网络恢复后自动同步 |
-| 数据统计 | 展示运动次数、时长、里程、卡路里与体重趋势 |
-| 本地提醒 | 支持运动、久坐、喝水、睡眠提醒 |
-| 社交激励 | 好友搜索、添加、列表与积分排行榜 |
-| 账号资料 | 注册、登录、验证码登录、重置密码、头像上传 |
-| 异常申诉 | 对异常运动记录提交申诉 |
-| 启动引导 | Logo 启动页与 3 页引导轮播 |
-
-### 后端
-
-| 模块 | 说明 |
-| --- | --- |
-| 用户系统 | 注册、登录、JWT 鉴权、用户资料、头像上传 |
-| 验证码 | 统一手机/邮箱验证码接口；内测可回显，生产禁用手机通道并推荐邮箱或短信服务 |
-| 运动服务 | 支持 4 种打卡模式、轨迹校验、幂等结束与记录查询 |
-| 目标管理 | 周/月目标创建、删除、进度追踪与自动更新 |
-| 数据统计 | 聚合运动次数、时长、里程、消耗和健康数据 |
-| 提醒配置 | 提供运动、久坐、喝水、睡眠提醒配置接口 |
-| 社交激励 | 积分、等级、勋章、排行榜和好友关系 |
-| 异常申诉 | 申诉提交与管理员审核 |
+当前开发目标是生产稳定过渡版 `0.1.6+7`。代码已具备账号、运动、目标、统计、提醒、社交、申诉、后台审核和 Agent 审核闭环；该版本尚未执行公网发布或生产部署。
 
 ## 技术栈
 
 | 层级 | 技术 |
 | --- | --- |
-| 移动端 | Flutter 3 / Dart、`http`、`geolocator`、`pedometer`、`image_picker`、`flutter_local_notifications`、`fl_chart` |
-| 后端 | Java 17、Spring Boot 3.3、Spring Web、Spring Security、Spring Data JPA、Spring Data Redis、Spring Mail、Actuator |
-| 数据与缓存 | MySQL 8.0、Redis 6.x |
-| 部署 | Docker、Docker Compose、Nginx |
-| 测试 | JUnit 5、Spring Boot Test、Flutter Test |
+| 移动端 | Flutter 3 / Dart、`http`、`flutter_secure_storage`、`geolocator`、`pedometer`、`image_picker`、`flutter_local_notifications`、`fl_chart` |
+| 后端 | Java 21、Spring Boot 4.1、Spring Security、JWT、Spring Data JPA/Redis、Flyway、Actuator、Micrometer |
+| Agent | Python 3.12、FastAPI、OpenAI Agents SDK、DeepSeek、Redis Streams |
+| 数据 | MySQL 8.0、Redis 6.2 |
+| 部署 | Docker Compose、Nginx、TLS 1.2/1.3 |
+| 测试 | JUnit 5、Testcontainers、pytest、Flutter Test、JaCoCo |
+
+## 主要能力
+
+- 密码或验证码登录、刷新令牌轮换、安全存储、主动刷新与并发 401 单次重放。
+- GPS、计步、拍照和手动运动打卡，离线结束队列与异常记录申诉。
+- 周/月目标、健康数据、统计趋势、本地提醒、好友与排行榜。
+- 管理员用户、反馈、申诉、审计和 Agent 审核链路。
+- Agent 独立 readiness 与可降级部署；Agent 故障不阻塞核心 API 和 APK 下载。
 
 ## 项目结构
 
 ```text
 FitLoop/
-├── backend/              # Spring Boot 后端服务
-├── mobile/               # Flutter 移动端应用
-├── deploy/               # Docker Compose、Nginx、APK 下载页和部署脚本
-├── docs/                 # 部署、冒烟测试与面试说明
-├── .github/workflows/    # CI 配置
-├── CONTRIBUTING.md       # 协作与提交规范
-└── README.md
+├── backend/              # Java 21 / Spring Boot API
+├── mobile/               # Flutter Android 应用
+│   └── lib/features/     # 认证、首页、运动、统计、社交、个人中心、后台管理
+├── agent-service/        # Python Agent worker 与内部健康检查
+├── deploy/               # Compose、Nginx、TLS、发布与监控脚本
+├── docs/                 # 部署和真机冒烟清单
+└── .github/workflows/    # CI 门禁
 ```
 
-## 快速开始
+## 本地开发
 
-### 1. 环境准备
+环境要求：Java 21、Maven 3.9+、Flutter stable、Python 3.12；运行容器集成测试和完整 Compose 时还需要 Docker。
 
-本地开发建议准备：
-
-- Java 17
-- Maven 3.9+
-- Flutter SDK 3.4+
-- Docker Desktop 或本机 MySQL 8.0、Redis 6.x
-
-如果使用 Docker 提供数据库和缓存，可以只启动依赖服务：
+后端：
 
 ```powershell
-cd D:\AIWorkspace\projects\FitLoop\deploy
-copy .env.example .env
-docker compose up -d mysql redis
-```
-
-### 2. 启动后端
-
-```powershell
-cd D:\AIWorkspace\projects\FitLoop\backend
-mvn test
+cd backend
+mvn --batch-mode --settings ../.github/maven-settings.xml verify
 mvn spring-boot:run
 ```
 
-默认地址：
-
-- API: `http://localhost:8080/api`
-- 健康检查: `http://localhost:8080/actuator/health`
-- MySQL: `localhost:3306/fitloop`
-- Redis: `localhost:6379`
-
-### 3. 启动移动端
+Agent：
 
 ```powershell
-cd D:\AIWorkspace\projects\FitLoop\mobile
+cd agent-service
+python -m pip install -e ".[test]"
+python -m compileall -q src tests
+python -m pytest
+```
+
+移动端：
+
+```powershell
+cd mobile
 flutter pub get
 flutter analyze
 flutter test
 flutter run --dart-define=FITLOOP_API_BASE_URL=http://10.0.2.2:8080
 ```
 
-API 地址说明：
-
-- Android 模拟器访问电脑后端：`http://10.0.2.2:8080`
-- 真机访问电脑后端：`http://<电脑局域网IP>:8080`
-- 云服务器：`https://your-domain.com` 或 `http://<服务器IP>`
-
-## 配置说明
-
-后端配置位于 [backend/src/main/resources/application.yml](backend/src/main/resources/application.yml)，部署环境变量模板位于 [deploy/.env.example](deploy/.env.example)。
-
-常用环境变量：
-
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `SPRING_DATASOURCE_URL` | `jdbc:mysql://localhost:3306/fitloop...` | MySQL 连接地址 |
-| `SPRING_DATASOURCE_USERNAME` | `fitloop` | MySQL 用户名 |
-| `SPRING_DATASOURCE_PASSWORD` | `fitloop` | MySQL 密码 |
-| `SPRING_REDIS_HOST` | `localhost` | Redis 主机 |
-| `SPRING_REDIS_PORT` | `6379` | Redis 端口 |
-| `SERVER_PORT` | `8080` | 后端服务端口 |
-| `FITLOOP_JWT_SECRET` | 开发默认值 | JWT 签名密钥，生产必须替换 |
-| `FITLOOP_ADMIN_KEY` | 开发默认值 | 管理员审核密钥，生产必须替换 |
-| `FITLOOP_OTP_HASH_SECRET` | 继承 JWT 密钥 | 验证码哈希密钥，生产建议单独配置 |
-| `FITLOOP_OTP_DEBUG_RETURN` | `false` | 是否在响应中返回内测验证码 |
-| `FITLOOP_MAIL_*` | 见模板 | 邮箱验证码 SMTP 配置 |
-| `FITLOOP_UPLOAD_PATH` | `./uploads` | 上传文件存储目录 |
-
-移动端 API 地址由 `--dart-define=FITLOOP_API_BASE_URL=...` 控制，默认值定义在 [mobile/lib/api_config.dart](mobile/lib/api_config.dart)。
-
-## 测试与质量检查
-
-| 类型 | 命令 |
-| --- | --- |
-| 后端测试 | `cd backend && mvn test` |
-| Flutter 静态分析 | `cd mobile && flutter analyze` |
-| Flutter Widget 测试 | `cd mobile && flutter test` |
-
-测试数量会随迭代变化，最新结果以本地命令和 CI 为准。Android 发布前还需执行 [真机冒烟测试清单](docs/SMOKE_TEST_CHECKLIST.md)。
-
-## 部署
-
-### 本地 Docker Compose
+生产 APK 必须注入 HTTPS 地址。兼容签名只用于本周期延续现有安装链，不能当作正式生产签名：
 
 ```powershell
-cd D:\AIWorkspace\projects\FitLoop\deploy
-copy .env.example .env
-docker compose up -d --build
-docker compose ps
+powershell -ExecutionPolicy Bypass -File deploy/build-apk.ps1 `
+  -ApiBaseUrl https://your-domain.example `
+  -SigningMode Compatibility
 ```
 
-如果 Docker Hub 连接较慢，可以叠加国内镜像配置：
+## 配置与秘密
 
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.cn.yml up -d --build
-```
+部署变量模板位于 `deploy/.env.example`。JWT、验证码哈希、SMTP 授权码、DeepSeek Key、Agent 服务密钥和 Android 签名材料只能通过未跟踪的环境变量或秘密存储提供。
 
-服务启动后验证：
+移动端正式签名需要以下四个变量，缺少任何一个时正式构建都会失败：
 
-```powershell
-curl http://localhost/actuator/health
-curl http://localhost:8080/actuator/health
-```
+- `FITLOOP_RELEASE_STORE_FILE`
+- `FITLOOP_RELEASE_STORE_PASSWORD`
+- `FITLOOP_RELEASE_KEY_ALIAS`
+- `FITLOOP_RELEASE_KEY_PASSWORD`
 
-### 生产部署
+正式 keystore 尚未启用。本周期公开 APK 如获批准，只能在签名证书与已发布 APK 指纹一致时继续兼容升级；任何正式签名切换都需要单独的卸载重装方案和公告。
 
-腾讯云 CVM、Docker、Nginx、APK 发布、备份、监控和 HTTPS 配置统一见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
+## 测试与 CI
 
-构建生产 APK：
+CI 执行以下门禁：
 
-```powershell
-cd D:\AIWorkspace\projects\FitLoop
-powershell -ExecutionPolicy Bypass -File deploy/build-apk.ps1 -ApiBaseUrl http://<服务器IP>
-```
+- 后端 `verify`、JaCoCo 覆盖率门禁及 Docker/Testcontainers 集成测试。
+- Agent 包编译和 pytest。
+- Flutter analyze、test 和 Android release 编译。
+- Shell 语法与基础/TLS Compose 配置校验。
+- Pull Request 高危依赖审查。
 
-产物位置：
+当前本地基线：后端 152 项测试通过、JaCoCo 行覆盖率 82.9%；Agent 7 项测试通过；Flutter 31 项测试和静态分析通过。Docker/Testcontainers 仍以 CI 结果为准。
 
-```text
-mobile/build/app/outputs/flutter-apk/app-release.apk
-```
+## 部署与发布
 
-## 项目状态
+详见 [部署与运维指南](docs/DEPLOYMENT.md)。发布顺序固定为：TLS 与兼容后端 → 验证核心服务和 Agent 降级 → 构建并校验 APK → 安装外部产物 → 真机冒烟 → 观察指标。
 
-- Android 生产包已支持 GPS、传感器、拍照和手动输入四种打卡方式。
-- 账号、目标、统计、提醒、社交、反馈申诉和后台管理已形成主要业务闭环。
-- 腾讯云 Docker Compose 部署、APK 下载、数据库备份和健康检查已投入使用。
-- 本地提醒保存事务、通知权限、通知 ID 隔离及 Android Release 混淆崩溃已修复。
+APK 二进制不再进入 Git。发布产物必须附带 SHA-256，服务器通过 `deploy/install-apk.sh` 校验并原子替换，并保留上一版本用于回滚。本周期不改写 Git 历史。
 
-当前已知待办：
+## 当前状态与边界
 
-| 项 | 优先级 | 说明 |
-| --- | --- | --- |
-| 邮箱 SMTP 生产配置 | P1 | 需要配置真实邮箱授权码 |
-| HTTPS | P1 | 需要备案域名与正式证书 |
-| Flutter 页面模块化 | P1 | `main.dart` 仍偏大，建议按 feature 拆分 |
-| 标准 JWT 与安全存储 | P1 | 替换轻量 HMAC Token，并将凭据迁移到安全存储 |
-| 数据库迁移 | P1 | 生产环境由 `ddl-auto` 迁移至 Flyway/Liquibase |
-| iOS 构建 | 中 | 需要 macOS 与 Xcode 环境 |
-| CI/CD pipeline 完善 | 中 | 已有基础 CI 配置 |
+- `0.1.6+7` 为待发布候选版本；线上仍是 `0.1.5+6`，未执行 push、TLS 切换、部署或 APK 发布。
+- TLS、证书到期监控和 Agent 降级配置已准备好；实际域名、证书和自动续期需要在生产主机配置后验证。
+- 正式 keystore 的创建、离线备份和签名切换尚未完成，不能宣称正式生产签名完成。
+- 本周期不包含普通用户 AI 教练 UI、iOS 正式构建、数据库重构、验证码重做或 Git 历史重写。
 
-## 文档索引
+## 文档
 
-| 文档 | 用途 |
-| --- | --- |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | 协作流程、提交规范、分支建议 |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 构建、发布、部署、备份和运维 |
-| [docs/SMOKE_TEST_CHECKLIST.md](docs/SMOKE_TEST_CHECKLIST.md) | 真机冒烟测试清单 |
-| [docs/INTERVIEW_GUIDE.md](docs/INTERVIEW_GUIDE.md) | 简历描述、项目问答、架构与面试自测 |
-
-## Git 规则
-
-- 每完成一个可运行、可测试、可回滚的小任务提交一次。
-- 提交内容只包含代码、测试、部署配置和必要工程说明。
-- 不提交 `.docx`、`.pptx`、`.xlsx`、`.pdf`、本地答辩材料或临时工作稿。
-- 常用提交格式：
-  - `feat(scope): add xxx feature`
-  - `fix(scope): handle xxx edge case`
-  - `test(scope): cover xxx logic`
-  - `docs(scope): update xxx guide`
-  - `chore(scope): adjust project config`
-
-提交前建议执行：
-
-```powershell
-cd D:\AIWorkspace\projects\FitLoop\backend
-mvn test
-
-cd D:\AIWorkspace\projects\FitLoop\mobile
-flutter analyze
-flutter test
-```
+- [部署与运维指南](docs/DEPLOYMENT.md)
+- [0.1.6+7 人工发布执行手册](docs/MANUAL_RELEASE_RUNBOOK.md)
+- [Android 真机冒烟清单](docs/SMOKE_TEST_CHECKLIST.md)
+- [协作与提交规范](CONTRIBUTING.md)

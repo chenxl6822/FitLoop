@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -76,3 +77,16 @@ FastAPIInstrumentor.instrument_app(app)
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "UP"}
+
+
+@app.get("/ready")
+async def ready():
+    worker: AgentWorker | None = getattr(app.state, "worker", None)
+    if worker is None:
+        return {"status": "UP", "worker": "DISABLED"}
+    if await worker.ready():
+        return {"status": "UP", "worker": "READY"}
+    return JSONResponse(
+        status_code=503,
+        content={"status": "DOWN", "worker": "NOT_READY"},
+    )

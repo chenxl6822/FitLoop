@@ -6,11 +6,11 @@
 
 **FitLoop 校园运动打卡与健康管理 App**
 
-基于 Flutter 与 Spring Boot 3 实现移动端、REST API 和后台管理，支持 GPS、传感器、拍照、手动输入四种打卡方式，以及目标、统计、提醒、好友排行榜、异常申诉等业务。实现 HMAC 签名 Token 鉴权、验证码安全控制、弱网离线补偿、轨迹异常检测、Docker Compose 部署和自动化测试，并通过 Nginx 提供 API 与 Android Release 下载。
+基于 Flutter 与 Spring Boot 4.1 实现移动端、REST API 和后台管理，支持 GPS、传感器、拍照、手动输入四种打卡方式，以及目标、统计、提醒、好友排行榜、异常申诉等业务。实现标准 JWT、refresh token 轮换、安全存储、验证码安全控制、弱网离线补偿、轨迹异常检测、Agent 审核、Docker Compose 部署和自动化测试，并通过 Nginx 提供 API 与 Android Release 下载。
 
-**技术栈：** Flutter / Dart、Spring Boot 3 / Java 17、Spring Security、JPA、MySQL、Redis、Docker Compose、Nginx、GitHub Actions、JUnit、Flutter Test。
+**技术栈：** Flutter / Dart、Spring Boot 4.1 / Java 21、Spring Security、JWT、JPA、Flyway、MySQL、Redis、FastAPI、OpenAI Agents SDK、Docker Compose、Nginx、GitHub Actions、JUnit、pytest、Flutter Test。
 
-简历中只写自己能够从代码、测试和部署三个层面解释的内容。不要把轻量 HMAC Token 描述成标准 JWT，也不要声称 Redis 已承担全部排行榜查询。
+简历中只写自己能够从代码、测试和部署三个层面解释的内容。不要声称正式 HTTPS 部署和正式生产签名已经完成，也不要声称 Redis 已承担全部排行榜查询。
 
 ## 2. 项目介绍模板
 
@@ -26,8 +26,8 @@
 2. Flutter App 调用 Spring Boot REST API；后端按 Controller、Service、Repository 分层，MySQL 保存业务数据，Redis用于排行榜缓存失效，Nginx统一代理和分发 APK。
 3. 用户开始运动后获得 `sessionId`，App采集并上传轨迹，结束时后端计算时长、距离和热量，判定异常，再更新目标与积分。
 4. 结束请求失败时，移动端将请求和轨迹放入本地队列，恢复网络后重放；后端依靠 `sessionId` 和记录状态保证重复 finish 不重复结算。
-5. 工程上使用 Spring Security、HMAC Token、验证码限流、文件校验、Docker Compose、健康检查和自动化测试。
-6. 当前不足是 Flutter `main.dart` 偏大、Token 不是标准 JWT、轨迹仍存 JSON、Redis 缓存能力有限，后续可按功能模块重构。
+5. 工程上使用 Spring Security、标准 JWT、refresh token 轮换、验证码限流、文件校验、Docker Compose、健康检查和自动化测试。
+6. 当前不足是生产域名与证书尚未切换、正式 keystore 尚未启用、轨迹仍存 JSON、Redis 缓存能力有限。
 
 ## 3. 架构与核心链路
 
@@ -126,7 +126,7 @@ Android Release 曾因 R8 删除 Gson `TypeToken` 泛型签名而出现 `Missing
 
 ### 后台管理如何鉴权？
 
-当前管理接口使用 `X-Admin-Key`，适合演示型 MVP，不适合多管理员生产系统。正式方案需要管理员账号、角色权限、操作审计、密钥轮换和敏感操作二次确认。
+当前管理接口使用包含角色声明的 JWT，通过管理员账号、RBAC 和审计日志控制访问；历史 `X-Admin-Key` 不再作为移动端管理链路。高风险操作仍应继续完善二次确认和更细粒度权限。
 
 ## 5. 工程化问题
 
@@ -135,10 +135,11 @@ Android Release 曾因 R8 删除 Gson `TypeToken` 泛型签名而出现 `Missing
 - MySQL：业务持久化；
 - Redis：排行榜缓存失效与扩展能力；
 - Backend：Spring Boot API 与健康检查；
+- Agent：消费审核任务并调用模型，readiness 失败时独立降级；
 - Nginx：统一入口、API/上传代理、下载页和 APK；
 - named volumes：保存数据库和上传文件，容器重建不丢数据。
 
-发布流程是：本地测试 → 提升 Android versionCode → 构建 Release APK → 提交并推送 → 服务器备份 → 拉取 → Compose 重建 → 健康检查和真机冒烟。
+发布流程是：本地测试 → 提升 Android versionCode → 构建并校验 Release APK → 上传带 SHA-256 的外部产物 → 服务器备份和拉取代码 → Compose 重建 → 校验并原子安装 APK → 健康检查和真机冒烟。APK 二进制不再提交到 Git。
 
 ### 测试覆盖什么？
 
@@ -156,7 +157,7 @@ Android Release 曾因 R8 删除 Gson `TypeToken` 泛型签名而出现 `Missing
 
 1. **运动闭环：** session、轨迹、结算、异常、目标、积分在一条链路中协作。
 2. **弱网可靠性：** 客户端持久化补偿 + 服务端幂等，解决“结束运动但网络断开”。
-3. **安全意识：** BCrypt、HMAC Token、验证码哈希/限流、文件头校验、生产调试开关隔离。
+3. **安全意识：** BCrypt、JWT 与 refresh token 轮换、安全存储、验证码哈希/限流、文件头校验、生产调试开关隔离。
 4. **真实故障治理：** Android R8 通知崩溃从混淆栈定位到 ProGuard规则、事务顺序和回归测试。
 5. **交付能力：** Docker Compose、Nginx、备份、监控、版本化 APK 和真机冒烟。
 
@@ -166,14 +167,11 @@ Android Release 曾因 R8 删除 Gson `TypeToken` 泛型签名而出现 `Missing
 
 | 当前取舍 | 影响 | 改进方向 |
 | --- | --- | --- |
-| 页面集中在 `main.dart` | 可维护性下降 | feature 分包 + 状态管理 |
-| 自定义 HMAC Token | 缺少标准 JWT 生态能力 | JJWT/Nimbus + refresh token |
-| Token 存 SharedPreferences | 不适合高安全凭据 | flutter_secure_storage |
+| feature 仍通过 Dart `part` 共享顶层库 | 模块边界不够强 | 稳定后逐步转为独立库并明确依赖方向 |
 | 轨迹存 JSON | 大数据量查询困难 | 轨迹点表或对象存储 |
 | 排行榜主要查 MySQL | 数据规模大时成本高 | Redis ZSet + 定期对账 |
-| `ddl-auto: update` | 生产迁移不可审计 | Flyway/Liquibase |
-| `X-Admin-Key` | 权限粒度和审计不足 | RBAC + 管理员会话 + 审计日志 |
-| HTTP 演示地址 | 敏感数据明文风险 | 域名备案 + HTTPS |
+| 正式 keystore 尚未启用 | 暂时延续旧兼容签名 | 离线备份后单独规划签名切换 |
+| 线上仍是 HTTP 演示地址 | 敏感数据明文风险 | 域名备案、证书部署和 HTTPS 观察窗口 |
 
 ## 8. 高频追问速答
 
@@ -194,7 +192,7 @@ Android Release 曾因 R8 删除 Gson `TypeToken` 泛型签名而出现 `Missing
 3. 手写 Haversine 的变量含义，并解释 100m 精度和 8m/s 阈值。
 4. 解释离线队列与服务端幂等为什么缺一不可。
 5. 解释验证码为何存 HMAC、为什么还需要限流和尝试次数。
-6. 说明自定义 Token 与标准 JWT 的区别。
+6. 说明 access token、refresh token 轮换、并发刷新锁和撤销机制。
 7. 讲清本地提醒崩溃的 R8 根因和事务修复。
 8. 说出至少三个当前不足及可落地改进。
 9. 从零写出测试、构建、部署、健康检查和回滚思路。

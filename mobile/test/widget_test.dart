@@ -556,22 +556,26 @@ void _adminDashboardTests() {
     final api = _FakeApi();
     await tester.pumpWidget(MaterialApp(
       home: SettingsPage(
-        session: const UserSession(
+        session: UserSession(
           token: 'user-token',
+          refreshToken: 'user-refresh-token',
+          expiresAt: DateTime.utc(2100),
           userId: 1,
           nickname: 'User',
         ),
         api: api,
       ),
     ));
-    expect(find.text('0.1.5'), findsOneWidget);
-    expect(find.text('6'), findsOneWidget);
+    expect(find.text('0.1.6'), findsOneWidget);
+    expect(find.text('7'), findsOneWidget);
     expect(find.text('管理后台'), findsNothing);
 
     await tester.pumpWidget(MaterialApp(
       home: SettingsPage(
-        session: const UserSession(
+        session: UserSession(
           token: 'admin-token',
+          refreshToken: 'admin-refresh-token',
+          expiresAt: DateTime.utc(2100),
           userId: 2,
           nickname: 'Admin',
           role: 'ADMIN',
@@ -898,7 +902,13 @@ class _FakeApi implements FitLoopApi {
     lastLoginPassword = password;
     lastLoginCode = code;
     lastLoginType = loginType;
-    return const UserSession(token: 'token', userId: 1, nickname: '测试用户');
+    return UserSession(
+      token: 'token',
+      refreshToken: 'refresh-token',
+      expiresAt: DateTime.utc(2100),
+      userId: 1,
+      nickname: '测试用户',
+    );
   }
 
   @override

@@ -45,6 +45,14 @@ mobile/.flutter-plugins-dependencies
 mobile/build/
 mobile/.packages
 
+# Release artifacts and metadata are published outside Git.
+deploy/apk/*.apk
+deploy/apk/*.apk.sha256
+deploy/apk/version.json
+deploy/apk/*.previous
+deploy/certbot-www/*
+!deploy/certbot-www/.gitkeep
+
 # IDE / OS
 .idea/
 .vscode/*

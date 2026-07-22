@@ -36,6 +36,21 @@ if [ ! -f "$ENV_FILE" ]; then
     fi
 fi
 
+# Read only the values needed by this script. Do not source .env: passwords can
+# contain shell metacharacters and a dotenv file is not an executable script.
+read_env_value() {
+    sed -n "s/^${1}=//p" "$ENV_FILE" | tail -n 1 | tr -d '\r'
+}
+
+FITLOOP_TLS_ENABLED="${FITLOOP_TLS_ENABLED:-$(read_env_value FITLOOP_TLS_ENABLED)}"
+FITLOOP_HTTP_COMPAT_ENABLED="${FITLOOP_HTTP_COMPAT_ENABLED:-$(read_env_value FITLOOP_HTTP_COMPAT_ENABLED)}"
+FITLOOP_TLS_CERT_FILE="${FITLOOP_TLS_CERT_FILE:-$(read_env_value FITLOOP_TLS_CERT_FILE)}"
+FITLOOP_TLS_KEY_FILE="${FITLOOP_TLS_KEY_FILE:-$(read_env_value FITLOOP_TLS_KEY_FILE)}"
+FITLOOP_PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-$(read_env_value FITLOOP_PUBLIC_BASE_URL)}"
+FITLOOP_AGENT_ENABLED="${FITLOOP_AGENT_ENABLED:-$(read_env_value FITLOOP_AGENT_ENABLED)}"
+DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$(read_env_value DEEPSEEK_API_KEY)}"
+FITLOOP_AGENT_SERVICE_KEY="${FITLOOP_AGENT_SERVICE_KEY:-$(read_env_value FITLOOP_AGENT_SERVICE_KEY)}"
+
 # --- 检查 Docker ---
 if ! command -v docker &> /dev/null; then
     log_error "Docker 未安装！请先安装 Docker"
@@ -79,10 +94,45 @@ case "$ENV" in
         ;;
 esac
 
-# --- 拉取最新代码（如果有 git） ---
-if [ -d ".git" ]; then
-    log_info "拉取最新代码..."
-    git pull --rebase 2>/dev/null || log_warn "git pull 失败，跳过（可能无网络或无远程）"
+if [ "${FITLOOP_TLS_ENABLED:-false}" = "true" ]; then
+    if [ -z "${FITLOOP_TLS_CERT_FILE:-}" ] || [ ! -f "${FITLOOP_TLS_CERT_FILE}" ]; then
+        log_error "FITLOOP_TLS_CERT_FILE 不存在或不是文件"
+        exit 1
+    fi
+    if [ -z "${FITLOOP_TLS_KEY_FILE:-}" ] || [ ! -f "${FITLOOP_TLS_KEY_FILE}" ]; then
+        log_error "FITLOOP_TLS_KEY_FILE 不存在或不是文件"
+        exit 1
+    fi
+    if [[ "${FITLOOP_PUBLIC_BASE_URL:-}" != https://* ]]; then
+        log_error "启用 TLS 时 FITLOOP_PUBLIC_BASE_URL 必须使用 https://"
+        exit 1
+    fi
+    COMPOSE_ARGS="$COMPOSE_ARGS -f deploy/docker-compose.tls.yml"
+    log_info "启用 HTTPS Compose 覆盖配置"
+
+    if [ "${FITLOOP_HTTP_COMPAT_ENABLED:-true}" = "false" ]; then
+        COMPOSE_ARGS="$COMPOSE_ARGS -f deploy/docker-compose.https-only.yml"
+        log_warn "HTTP API 兼容窗口已关闭；明文 /api/ 将返回 426"
+    else
+        log_warn "HTTP API 兼容窗口仍开启；确认旧客户端退出后再关闭"
+    fi
+elif [ "${FITLOOP_HTTP_COMPAT_ENABLED:-true}" = "false" ]; then
+    log_error "关闭 HTTP API 兼容窗口前必须先启用 TLS"
+    exit 1
+fi
+
+if [ "${FITLOOP_AGENT_ENABLED:-true}" = "true" ]; then
+    if [ -z "${DEEPSEEK_API_KEY:-}" ] || [[ "${DEEPSEEK_API_KEY}" == replace-with-* ]]; then
+        log_error "Agent 已启用，但 DEEPSEEK_API_KEY 尚未配置"
+        exit 1
+    fi
+    if [ -z "${FITLOOP_AGENT_SERVICE_KEY:-}" ] ||
+       [[ "${FITLOOP_AGENT_SERVICE_KEY}" == replace-with-* ]]; then
+        log_error "Agent 已启用，但 FITLOOP_AGENT_SERVICE_KEY 尚未配置"
+        exit 1
+    fi
+else
+    log_warn "Agent worker 已禁用；核心 API 和下载站仍会正常启动"
 fi
 
 # --- 构建并启动 ---
@@ -120,4 +170,14 @@ echo ""
 log_info "📝 查看日志: $COMPOSE_CMD $COMPOSE_ARGS --env-file $ENV_FILE logs -f"
 log_info "🌐 API 地址: http://localhost:8080/api/"
 log_info "🏥 健康检查: http://localhost:8080/actuator/health"
+if [ "${FITLOOP_TLS_ENABLED:-false}" = "true" ]; then
+    log_info "🔒 公网地址: ${FITLOOP_PUBLIC_BASE_URL}"
+fi
+if [ "${FITLOOP_AGENT_ENABLED:-true}" = "true" ]; then
+    if curl -sf http://127.0.0.1:8090/ready > /dev/null 2>&1; then
+        log_info "🤖 Agent readiness: READY"
+    else
+        log_warn "🤖 Agent 未就绪，但不影响核心 API；请检查 agent-service 日志"
+    fi
+fi
 log_info "✅ 部署完成！"

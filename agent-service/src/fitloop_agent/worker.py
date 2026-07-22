@@ -58,6 +58,19 @@ class AgentWorker:
         await self.provider.close()
         await self.redis.aclose()
 
+    async def ready(self) -> bool:
+        """Return whether the worker can consume new jobs right now."""
+        if self._task is None or self._task.done():
+            return False
+        if not self.settings.deepseek_api_key.get_secret_value().strip():
+            return False
+        if not self.settings.agent_service_key.get_secret_value().strip():
+            return False
+        try:
+            return bool(await self.redis.ping())
+        except Exception:
+            return False
+
     async def _consume(self) -> None:
         while True:
             try:

@@ -1,249 +1,69 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'api_models.dart';
+import 'api_services.dart';
+import 'auth_session.dart';
+import 'secure_session_storage.dart';
 
-abstract class FitLoopApi {
-  Future<UserSession> login({
-    required String account,
-    String? password,
-    String? code,
-    String loginType = 'password',
-  });
+export 'api_models.dart';
+export 'api_services.dart';
+export 'auth_session.dart';
 
-  Future<void> register({
-    required String account,
-    required String password,
-    required String nickname,
-    String? code,
-  });
-
-  Future<SportStart> startSport({
-    required String token,
-    required String sportType,
-    required String checkinMode,
-  });
-
-  Future<void> uploadTrackPoint({
-    required String token,
-    required TrackPoint point,
-  });
-
-  Future<SportRecord> finishSport({
-    required String token,
-    required String sessionId,
-    required int durationSeconds,
-    required double weightKg,
-    double? distanceKm,
-    double? calorie,
-    String? note,
-    String? photoUrl,
-  });
-
-  Future<SportStats> sportStats({required String token});
-
-  Future<List<SportRecord>> listSportRecords({required String token});
-
-  Future<List<SportTarget>> currentTargets({required String token});
-
-  Future<SportTarget> createTarget({
-    required String token,
-    required String periodType,
-    required String metric,
-    required double targetValue,
-  });
-
-  Future<void> deleteTarget({
-    required String token,
-    required int targetId,
-  });
-
-  Future<SportTarget> editTarget({
-    required String token,
-    required int targetId,
-    required String periodType,
-    required String metric,
-    required double targetValue,
-  });
-
-  Future<MedalSummary> medalSummary({required String token});
-
-  Future<RankingResult> ranking({
-    required String token,
-    String scope = 'friends',
-    String period = 'week',
-    int page = 1,
-    int size = 20,
-  });
-
-  Future<HealthData> addHealthData({
-    required String token,
-    double? weightKg,
-    double? sleepHours,
-    String? dietNote,
-    required String dataDate,
-  });
-
-  Future<TargetReminderListResponse> targetReminders({required String token});
-
-  Future<void> acknowledgeTargetReminder({
-    required String token,
-    required int targetId,
-  });
-
-  Future<ReminderListResponse> listReminders({required String token});
-
-  Future<ReminderConfig> upsertReminder({
-    required String token,
-    required int remindId,
-    required String type,
-    String? time,
-    String? cycle,
-    bool? enabled,
-  });
-
-  Future<FriendListResponse> listFriends({required String token});
-
-  Future<UserSearchResponse> searchUsers(
-      {required String token, required String query});
-
-  Future<void> addFriend({required String token, required int friendUserId});
-
-  Future<AppealListResponse> listAppeals({required String token});
-
-  Future<void> createAppeal(
-      {required String token, required int recordId, required String reason});
-
-  Future<SportHistoryResponse> sportHistory({
-    required String token,
-    String period = 'week',
-    String metric = 'all',
-  });
-
-  Future<WeightHistoryResponse> weightHistory({
-    required String token,
-    int days = 30,
-  });
-
-  Future<String> uploadAvatar({
-    required String token,
-    required String imagePath,
-  });
-
-  Future<UserProfileResponse> getUserProfile({required String token});
-
-  Future<Map<String, String>> sendSmsCode({required String phone});
-
-  Future<Map<String, String>> sendVerificationCode({
-    required String channel,
-    required String target,
-    required String purpose,
-  });
-
-  Future<void> resetPassword({
-    required String account,
-    required String code,
-    required String newPassword,
-  });
-
-  Future<String> uploadSportPhoto({
-    required String token,
-    required String imagePath,
-  });
-
-  Future<FeatureFlags> fetchFeatureFlags();
-
-  Future<FeedbackItem> submitFeedback({
-    required String token,
-    required String type,
-    required String content,
-    String? contact,
-  });
-
-  Future<FeedbackListResponse> listFeedback({required String token});
-
-  Future<AdminStats> adminGetStats({required String token});
-
-  Future<AdminUserListResponse> adminListUsers({
-    required String token,
-    int page = 0,
-    int size = 20,
-  });
-
-  Future<AdminUserDetail> adminGetUserDetail({
-    required String token,
-    required int userId,
-  });
-
-  Future<FeedbackListResponse> adminListFeedback({required String token});
-
-  Future<void> adminUpdateFeedback({
-    required String token,
-    required int feedbackId,
-    required String status,
-    String? adminNote,
-  });
-
-  Future<AdminAppealPage> adminListAppeals({
-    required String token,
-    String? status,
-    int page = 0,
-    int size = 20,
-  });
-
-  Future<void> adminReviewAppeal({
-    required String token,
-    required int appealId,
-    required String status,
-    String? reviewNote,
-  });
-
-  Future<String> adminStartAppealAgentReview({
-    required String token,
-    required int appealId,
-  });
-
-  Future<AdminAgentRunPage> adminListAgentRuns({
-    required String token,
-    String? type,
-    String? status,
-    int page = 0,
-    int size = 20,
-  });
-
-  Future<AgentRunAudit> adminGetAgentRunAudit({
-    required String token,
-    required String runId,
-  });
-
-  Future<void> adminConfirmAgentProposal({
-    required String token,
-    required int proposalId,
-  });
-
-  Future<void> adminRejectAgentProposal({
-    required String token,
-    required int proposalId,
-    String? reason,
-  });
-
-  Future<AdminAuditPage> adminListAuditLogs({
-    required String token,
-    String? resourceType,
-    String? resourceId,
-    int page = 0,
-    int size = 20,
-  });
-}
-
-class HttpFitLoopApi implements FitLoopApi {
-  HttpFitLoopApi({String? baseUrl}) : baseUrl = baseUrl ?? ApiConfig.baseUrl;
+class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
+  HttpFitLoopApi({
+    String? baseUrl,
+    SessionStore? sessionStore,
+    DateTime Function()? now,
+  })  : baseUrl = baseUrl ?? ApiConfig.baseUrl,
+        _sessionStore = sessionStore ?? const SecureSessionStore(),
+        _now = now ?? DateTime.now;
 
   final String baseUrl;
+  final SessionStore _sessionStore;
+  final DateTime Function() _now;
   final HttpClient _client = HttpClient()
     ..connectionTimeout = const Duration(seconds: 10);
+  final StreamController<UserSession?> _sessionController =
+      StreamController<UserSession?>.broadcast();
+
+  static const _refreshWindow = Duration(seconds: 30);
+
+  UserSession? _session;
+  Future<UserSession>? _refreshInFlight;
+
+  @override
+  Stream<UserSession?> get sessionChanges => _sessionController.stream;
+
+  @override
+  Future<UserSession?> restoreSession() async {
+    final restored = await _sessionStore.load();
+    _session = restored;
+    return restored;
+  }
+
+  @override
+  Future<void> logoutSession() async {
+    final refreshToken = _session?.refreshToken;
+    try {
+      if (refreshToken != null && refreshToken.isNotEmpty) {
+        await _executeJson(
+          'POST',
+          '/api/v1/auth/logout',
+          payload: {'refreshToken': refreshToken},
+        );
+      }
+    } catch (_) {
+      // Local logout must always succeed. A rotating refresh token expires on
+      // the server even when the revocation request cannot reach it.
+    } finally {
+      await _invalidateSession();
+    }
+  }
 
   @override
   Future<UserSession> login({
@@ -253,20 +73,18 @@ class HttpFitLoopApi implements FitLoopApi {
     String loginType = 'password',
   }) async {
     final isCodeLogin = loginType.toLowerCase() == 'code';
-    final body = await _post('/api/auth/login', {
+    final response = await _executeJson(
+      'POST',
+      '/api/v1/auth/login',
+      payload: {
       'account': account,
       'loginType': loginType,
       if (isCodeLogin) 'code': code else 'password': password,
-    });
-    final data = body['data'] as Map<String, dynamic>;
-    final profile = data['userProfile'] as Map<String, dynamic>;
-    return UserSession(
-      token: data['token'] as String,
-      userId: profile['userId'] as int,
-      nickname: profile['nickname'] as String? ?? 'FitLoop 用户',
-      avatarUrl: _absoluteUrl(profile['avatarUrl'] as String?),
-      role: data['role'] as String? ?? 'USER',
+      },
     );
+    final session = _sessionFromAuthPayload(_expectDirect(response));
+    await _acceptSession(session);
+    return session;
   }
 
   @override
@@ -639,29 +457,13 @@ class HttpFitLoopApi implements FitLoopApi {
     required String imagePath,
   }) async {
     final safePath = await _safeFilePath(imagePath);
-    try {
-      final uri = Uri.parse('$baseUrl/api/user/avatar');
-      final client = http.Client();
-      try {
-        final multipart = http.MultipartRequest('POST', uri);
-        multipart.headers['Authorization'] = 'Bearer $token';
-        multipart.files
-            .add(await http.MultipartFile.fromPath('file', safePath));
-        final streamed =
-            await client.send(multipart).timeout(const Duration(seconds: 30));
-        final response = await http.Response.fromStream(streamed);
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        if (body['code'] != 0) {
-          throw ApiException(body['message'] as String? ?? '上传失败');
-        }
-        return _absoluteUrl(body['data'] as String?) ?? '';
-      } finally {
-        client.close();
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('头像上传失败，请检查网络后重试');
-    }
+    final result = await _uploadMultipart(
+      path: '/api/user/avatar',
+      token: token,
+      imagePath: safePath,
+      failureMessage: '头像上传失败，请检查网络后重试',
+    );
+    return _absoluteUrl(result) ?? '';
   }
 
   @override
@@ -725,29 +527,13 @@ class HttpFitLoopApi implements FitLoopApi {
     required String imagePath,
   }) async {
     final safePath = await _safeFilePath(imagePath);
-    try {
-      final uri = Uri.parse('$baseUrl/api/sport/photo');
-      final client = http.Client();
-      try {
-        final multipart = http.MultipartRequest('POST', uri);
-        multipart.headers['Authorization'] = 'Bearer $token';
-        multipart.files
-            .add(await http.MultipartFile.fromPath('file', safePath));
-        final streamed =
-            await client.send(multipart).timeout(const Duration(seconds: 30));
-        final response = await http.Response.fromStream(streamed);
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        if (body['code'] != 0) {
-          throw ApiException(body['message'] as String? ?? '上传照片失败');
-        }
-        return _absoluteUrl(body['data'] as String?) ?? '';
-      } finally {
-        client.close();
-      }
-    } catch (e) {
-      if (e is ApiException) rethrow;
-      throw ApiException('照片上传失败，请检查网络后重试');
-    }
+    final result = await _uploadMultipart(
+      path: '/api/sport/photo',
+      token: token,
+      imagePath: safePath,
+      failureMessage: '照片上传失败，请检查网络后重试',
+    );
+    return _absoluteUrl(result) ?? '';
   }
 
   @override
@@ -822,23 +608,17 @@ class HttpFitLoopApi implements FitLoopApi {
   }
 
   Future<Map<String, dynamic>> _delete(String path, {String? token}) async {
-    final request = await _client.deleteUrl(Uri.parse('$baseUrl$path'));
-    _setHeaders(request, token);
-    return _send(request);
+    return _request('DELETE', path, token: token);
   }
 
   Future<Map<String, dynamic>> _put(String path,
       {Map<String, dynamic>? body, String? token}) async {
-    final request = await _client.putUrl(Uri.parse('$baseUrl$path'));
-    _setHeaders(request, token);
-    request.write(jsonEncode(body ?? <String, dynamic>{}));
-    return _send(request);
+    return _request('PUT', path,
+        payload: body ?? <String, dynamic>{}, token: token);
   }
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
-    final request = await _client.getUrl(Uri.parse('$baseUrl$path'));
-    _setHeaders(request, token);
-    return _send(request);
+    return _request('GET', path, token: token);
   }
 
   Future<Map<String, dynamic>> _post(
@@ -846,17 +626,202 @@ class HttpFitLoopApi implements FitLoopApi {
     Map<String, dynamic> payload, {
     String? token,
   }) async {
-    final request = await _client.postUrl(Uri.parse('$baseUrl$path'));
-    _setHeaders(request, token);
-    request.write(jsonEncode(payload));
-    return _send(request);
+    return _request('POST', path, payload: payload, token: token);
   }
 
-  void _setHeaders(HttpClientRequest request, String? token) {
+  Future<Map<String, dynamic>> _request(
+    String method,
+    String path, {
+    Map<String, dynamic>? payload,
+    String? token,
+  }) async {
+    var accessToken = await _accessTokenForRequest(token);
+    var response = await _executeJson(
+      method,
+      path,
+      payload: payload,
+      token: accessToken,
+    );
+    if (response.statusCode == HttpStatus.unauthorized &&
+        token != null &&
+        _session != null) {
+      final refreshed = await _refreshSession(rejectedToken: accessToken);
+      accessToken = refreshed.token;
+      response = await _executeJson(
+        method,
+        path,
+        payload: payload,
+        token: accessToken,
+      );
+    }
+    return _expectEnvelope(response);
+  }
+
+  Future<String?> _accessTokenForRequest(String? fallbackToken) async {
+    if (fallbackToken == null) return null;
+    final current = _session;
+    if (current == null) return fallbackToken;
+    if (current.expiresWithin(_refreshWindow, _now())) {
+      return (await _refreshSession()).token;
+    }
+    return current.token;
+  }
+
+  Future<UserSession> _refreshSession({String? rejectedToken}) async {
+    final current = _session;
+    if (current == null) {
+      throw ApiException('登录状态已过期，请重新登录');
+    }
+    if (rejectedToken != null && current.token != rejectedToken) {
+      return current;
+  }
+    final inFlight = _refreshInFlight;
+    if (inFlight != null) return inFlight;
+
+    final pending = _performRefresh(current);
+    _refreshInFlight = pending;
+    try {
+      return await pending;
+    } finally {
+      if (identical(_refreshInFlight, pending)) {
+        _refreshInFlight = null;
+      }
+    }
+  }
+
+  Future<UserSession> _performRefresh(UserSession current) async {
+    final response = await _executeJson(
+      'POST',
+      '/api/v1/auth/refresh',
+      payload: {'refreshToken': current.refreshToken},
+    );
+    if (response.statusCode == HttpStatus.unauthorized ||
+        response.statusCode == HttpStatus.forbidden) {
+      await _invalidateSession();
+      throw ApiException('登录状态已过期，请重新登录');
+    }
+    final refreshed = _sessionFromAuthPayload(_expectDirect(response));
+    await _acceptSession(refreshed);
+    return refreshed;
+  }
+
+  UserSession _sessionFromAuthPayload(Map<String, dynamic> data) {
+    final profile = data['userProfile'];
+    final token = data['token'];
+    final refreshToken = data['refreshToken'];
+    final expiresIn = data['expiresIn'];
+    if (profile is! Map<String, dynamic> ||
+        token is! String ||
+        token.isEmpty ||
+        refreshToken is! String ||
+        refreshToken.isEmpty ||
+        expiresIn is! num) {
+      throw const FormatException('Invalid authentication response');
+    }
+    return UserSession(
+      token: token,
+      refreshToken: refreshToken,
+      expiresAt: _now().toUtc().add(Duration(seconds: expiresIn.toInt())),
+      userId: profile['userId'] as int,
+      nickname: profile['nickname'] as String? ?? 'FitLoop 用户',
+      avatarUrl: _absoluteUrl(profile['avatarUrl'] as String?),
+      role: data['role'] as String? ?? 'USER',
+    );
+  }
+
+  Future<void> _acceptSession(UserSession value) async {
+    await _sessionStore.save(value);
+    _session = value;
+    _sessionController.add(value);
+  }
+
+  Future<void> _invalidateSession() async {
+    _session = null;
+    await _sessionStore.clear();
+    _sessionController.add(null);
+  }
+
+  Future<_JsonHttpResponse> _executeJson(
+    String method,
+    String path, {
+    Map<String, dynamic>? payload,
+    String? token,
+  }) async {
+    try {
+      final request = await _client.openUrl(method, Uri.parse('$baseUrl$path'));
     request.headers.contentType = ContentType.json;
     request.headers.set(HttpHeaders.acceptHeader, ContentType.json.mimeType);
     if (token != null) {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    }
+      if (payload != null) request.write(jsonEncode(payload));
+      return _send(request);
+    } on SocketException {
+      throw ApiException('无法连接服务器，请检查网络或稍后重试');
+    } on HttpException {
+      throw ApiException('无法连接服务器，请检查网络或稍后重试');
+    }
+  }
+
+  Map<String, dynamic> _expectEnvelope(_JsonHttpResponse response) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+          _extractErrorMessage(response.body, response.statusCode));
+    }
+    if (response.body['code'] != 0 && response.body['code'] != 200) {
+      throw ApiException(
+          _extractErrorMessage(response.body, response.statusCode));
+    }
+    return response.body;
+  }
+
+  Map<String, dynamic> _expectDirect(_JsonHttpResponse response) {
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+          _extractErrorMessage(response.body, response.statusCode));
+    }
+    return response.body;
+  }
+
+  Future<String> _uploadMultipart({
+    required String path,
+    required String token,
+    required String imagePath,
+    required String failureMessage,
+  }) async {
+    try {
+      var accessToken = await _accessTokenForRequest(token);
+      var response = await _sendMultipart(path, imagePath, accessToken!);
+      if (response.statusCode == HttpStatus.unauthorized && _session != null) {
+        final refreshed = await _refreshSession(rejectedToken: accessToken);
+        accessToken = refreshed.token;
+        response = await _sendMultipart(path, imagePath, accessToken);
+      }
+      final body = _expectEnvelope(response);
+      return body['data'] as String? ?? '';
+    } catch (error) {
+      if (error is ApiException) rethrow;
+      throw ApiException(failureMessage);
+    }
+  }
+
+  Future<_JsonHttpResponse> _sendMultipart(
+      String path, String imagePath, String token) async {
+    final client = http.Client();
+    try {
+      final multipart =
+          http.MultipartRequest('POST', Uri.parse('$baseUrl$path'));
+      multipart.headers[HttpHeaders.authorizationHeader] = 'Bearer $token';
+      multipart.files.add(await http.MultipartFile.fromPath('file', imagePath));
+      final streamed =
+          await client.send(multipart).timeout(const Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamed);
+      final body = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body) as Map<String, dynamic>;
+      return _JsonHttpResponse(response.statusCode, body);
+    } finally {
+      client.close();
     }
   }
 
@@ -1062,20 +1027,14 @@ class HttpFitLoopApi implements FitLoopApi {
     return '$base$url';
   }
 
-  Future<Map<String, dynamic>> _send(HttpClientRequest request) async {
+  Future<_JsonHttpResponse> _send(HttpClientRequest request) async {
     try {
       final response = await request.close();
       final text = await response.transform(utf8.decoder).join();
       final body = text.isEmpty
           ? <String, dynamic>{}
           : jsonDecode(text) as Map<String, dynamic>;
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw ApiException(_extractErrorMessage(body, response.statusCode));
-      }
-      if (body['code'] != 0 && body['code'] != 200) {
-        throw ApiException(_extractErrorMessage(body, response.statusCode));
-      }
-      return body;
+      return _JsonHttpResponse(response.statusCode, body);
     } on SocketException {
       throw ApiException('无法连接服务器，请检查网络或稍后重试');
     } on HttpException {
@@ -1086,985 +1045,9 @@ class HttpFitLoopApi implements FitLoopApi {
   }
 }
 
-class FeatureFlags {
-  const FeatureFlags({required this.smsEnabled});
-
-  final bool smsEnabled;
-}
-
-class FeedbackItem {
-  const FeedbackItem({
-    required this.feedbackId,
-    required this.type,
-    required this.content,
-    this.contact,
-    required this.status,
-    this.adminNote,
-    required this.createdAt,
-  });
-
-  factory FeedbackItem.fromJson(Map<String, dynamic> json) {
-    return FeedbackItem(
-      feedbackId: json['feedbackId'] as int,
-      type: json['type'] as String,
-      content: json['content'] as String,
-      contact: json['contact'] as String?,
-      status: json['status'] as String,
-      adminNote: json['adminNote'] as String?,
-      createdAt: json['createdAt'] as String,
-    );
-  }
-
-  final int feedbackId;
-  final String type;
-  final String content;
-  final String? contact;
-  final String status;
-  final String? adminNote;
-  final String createdAt;
-}
-
-class FeedbackListResponse {
-  const FeedbackListResponse({required this.feedbacks});
-
-  final List<FeedbackItem> feedbacks;
-}
-
-class AdminStats {
-  const AdminStats({
-    required this.totalUsers,
-    required this.todayNewUsers,
-    required this.totalSportRecords,
-    required this.todayCheckins,
-    required this.pendingFeedbackCount,
-  });
-
-  factory AdminStats.fromJson(Map<String, dynamic> json) {
-    return AdminStats(
-      totalUsers: json['totalUsers'] as int,
-      todayNewUsers: json['todayNewUsers'] as int,
-      totalSportRecords: json['totalSportRecords'] as int,
-      todayCheckins: json['todayCheckins'] as int,
-      pendingFeedbackCount: json['pendingFeedbackCount'] as int,
-    );
-  }
-
-  final int totalUsers;
-  final int todayNewUsers;
-  final int totalSportRecords;
-  final int todayCheckins;
-  final int pendingFeedbackCount;
-}
-
-class AdminUserListItem {
-  const AdminUserListItem({
-    required this.userId,
-    required this.nickname,
-    this.phone,
-    this.email,
-    this.points,
-    this.level,
-    this.createdAt,
-  });
-
-  factory AdminUserListItem.fromJson(Map<String, dynamic> json) {
-    return AdminUserListItem(
-      userId: json['userId'] as int,
-      nickname: json['nickname'] as String,
-      phone: json['phone'] as String?,
-      email: json['email'] as String?,
-      points: json['points'] as int?,
-      level: json['level'] as int?,
-      createdAt: json['createdAt'] as String?,
-    );
-  }
-
-  final int userId;
-  final String nickname;
-  final String? phone;
-  final String? email;
-  final int? points;
-  final int? level;
-  final String? createdAt;
-}
-
-class AdminUserListResponse {
-  const AdminUserListResponse({
-    required this.users,
-    required this.total,
-  });
-
-  factory AdminUserListResponse.fromJson(Map<String, dynamic> json) {
-    final list = json['users'] as List<dynamic>;
-    return AdminUserListResponse(
-      users: list
-          .map((e) => AdminUserListItem.fromJson(e as Map<String, dynamic>))
-          .toList(),
-      total: json['total'] as int,
-    );
-  }
-
-  final List<AdminUserListItem> users;
-  final int total;
-}
-
-class AdminUserDetail {
-  const AdminUserDetail({
-    required this.userId,
-    required this.nickname,
-    this.phone,
-    this.email,
-    this.avatarUrl,
-    this.createdAt,
-    required this.sportRecordCount,
-    required this.targetCount,
-    required this.totalDurationSeconds,
-    required this.totalDistanceKm,
-  });
-
-  factory AdminUserDetail.fromJson(Map<String, dynamic> json) {
-    return AdminUserDetail(
-      userId: json['userId'] as int,
-      nickname: json['nickname'] as String,
-      phone: json['phone'] as String?,
-      email: json['email'] as String?,
-      avatarUrl: json['avatarUrl'] as String?,
-      createdAt: json['createdAt'] as String?,
-      sportRecordCount: json['sportRecordCount'] as int,
-      targetCount: json['targetCount'] as int,
-      totalDurationSeconds: json['totalDurationSeconds'] as int,
-      totalDistanceKm: (json['totalDistanceKm'] as num).toDouble(),
-    );
-  }
-
-  final int userId;
-  final String nickname;
-  final String? phone;
-  final String? email;
-  final String? avatarUrl;
-  final String? createdAt;
-  final int sportRecordCount;
-  final int targetCount;
-  final int totalDurationSeconds;
-  final double totalDistanceKm;
-}
-
-class AdminAppealItem {
-  const AdminAppealItem({
-    required this.appealId,
-    required this.userId,
-    required this.recordId,
-    required this.reason,
-    this.evidenceUrl,
-    required this.status,
-    this.reviewNote,
-    required this.createdAt,
-  });
-
-  factory AdminAppealItem.fromJson(Map<String, dynamic> json) {
-    return AdminAppealItem(
-      appealId: json['appealId'] as int,
-      userId: json['userId'] as int,
-      recordId: json['recordId'] as int,
-      reason: json['reason'] as String,
-      evidenceUrl: json['evidenceUrl'] as String?,
-      status: json['status'] as String,
-      reviewNote: json['reviewNote'] as String?,
-      createdAt: json['createdAt'] as String,
-    );
-  }
-
-  final int appealId;
-  final int userId;
-  final int recordId;
-  final String reason;
-  final String? evidenceUrl;
-  final String status;
-  final String? reviewNote;
-  final String createdAt;
-}
-
-class AdminAppealPage {
-  const AdminAppealPage({required this.items, required this.totalElements});
-
-  factory AdminAppealPage.fromJson(Map<String, dynamic> json) {
-    return AdminAppealPage(
-      items: (json['items'] as List<dynamic>)
-          .map((item) => AdminAppealItem.fromJson(item as Map<String, dynamic>))
-          .toList(),
-      totalElements: json['totalElements'] as int,
-    );
-  }
-
-  final List<AdminAppealItem> items;
-  final int totalElements;
-}
-
-class AdminAgentRunItem {
-  const AdminAgentRunItem({
-    required this.runId,
-    required this.type,
-    required this.status,
-    required this.subjectUserId,
-    this.subjectResourceId,
-    required this.traceId,
-    this.model,
-    this.promptVersion,
-    this.latencyMs,
-    this.errorMessage,
-    required this.createdAt,
-  });
-
-  factory AdminAgentRunItem.fromJson(Map<String, dynamic> json) {
-    return AdminAgentRunItem(
-      runId: json['runId'] as String,
-      type: json['type'] as String,
-      status: json['status'] as String,
-      subjectUserId: json['subjectUserId'] as int,
-      subjectResourceId: json['subjectResourceId'] as int?,
-      traceId: json['traceId'] as String,
-      model: json['model'] as String?,
-      promptVersion: json['promptVersion'] as String?,
-      latencyMs: json['latencyMs'] as int?,
-      errorMessage: json['errorMessage'] as String?,
-      createdAt: json['createdAt'] as String,
-    );
-  }
-
-  final String runId;
-  final String type;
-  final String status;
-  final int subjectUserId;
-  final int? subjectResourceId;
-  final String traceId;
-  final String? model;
-  final String? promptVersion;
-  final int? latencyMs;
-  final String? errorMessage;
-  final String createdAt;
-}
-
-class AdminAgentRunPage {
-  const AdminAgentRunPage({required this.items, required this.totalElements});
-
-  factory AdminAgentRunPage.fromJson(Map<String, dynamic> json) {
-    return AdminAgentRunPage(
-      items: (json['items'] as List<dynamic>)
-          .map((item) =>
-              AdminAgentRunItem.fromJson(item as Map<String, dynamic>))
-          .toList(),
-      totalElements: json['totalElements'] as int,
-    );
-  }
-
-  final List<AdminAgentRunItem> items;
-  final int totalElements;
-}
-
-class AgentProposalItem {
-  const AgentProposalItem({
-    required this.proposalId,
-    required this.actionType,
-    required this.payloadJson,
-    required this.status,
-    required this.requiresAdmin,
-    this.decidedByUserId,
-    this.decidedAt,
-    this.decisionNote,
-  });
-
-  factory AgentProposalItem.fromJson(Map<String, dynamic> json) {
-    return AgentProposalItem(
-      proposalId: json['proposalId'] as int,
-      actionType: json['actionType'] as String,
-      payloadJson: json['payloadJson'] as String,
-      status: json['status'] as String,
-      requiresAdmin: json['requiresAdmin'] as bool,
-      decidedByUserId: json['decidedByUserId'] as int?,
-      decidedAt: json['decidedAt'] as String?,
-      decisionNote: json['decisionNote'] as String?,
-    );
-  }
-
-  final int proposalId;
-  final String actionType;
-  final String payloadJson;
-  final String status;
-  final bool requiresAdmin;
-  final int? decidedByUserId;
-  final String? decidedAt;
-  final String? decisionNote;
-}
-
-class AgentToolAuditItem {
-  const AgentToolAuditItem({
-    required this.toolName,
-    required this.succeeded,
-    this.durationMs,
-    this.errorMessage,
-  });
-
-  factory AgentToolAuditItem.fromJson(Map<String, dynamic> json) {
-    return AgentToolAuditItem(
-      toolName: json['toolName'] as String,
-      succeeded: json['succeeded'] as bool,
-      durationMs: json['durationMs'] as int?,
-      errorMessage: json['errorMessage'] as String?,
-    );
-  }
-
-  final String toolName;
-  final bool succeeded;
-  final int? durationMs;
-  final String? errorMessage;
-}
-
-class AgentRunAudit {
-  const AgentRunAudit({
-    required this.runId,
-    required this.status,
-    this.resultJson,
-    this.model,
-    this.promptVersion,
-    required this.proposals,
-    required this.toolCalls,
-  });
-
-  factory AgentRunAudit.fromJson(Map<String, dynamic> json) {
-    final run = json['run'] as Map<String, dynamic>;
-    return AgentRunAudit(
-      runId: run['runId'] as String,
-      status: run['status'] as String,
-      resultJson: run['resultJson'] as String?,
-      model: run['model'] as String?,
-      promptVersion: run['promptVersion'] as String?,
-      proposals: (run['proposals'] as List<dynamic>)
-          .map((item) =>
-              AgentProposalItem.fromJson(item as Map<String, dynamic>))
-          .toList(),
-      toolCalls: (json['toolCalls'] as List<dynamic>)
-          .map((item) =>
-              AgentToolAuditItem.fromJson(item as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-
-  final String runId;
-  final String status;
-  final String? resultJson;
-  final String? model;
-  final String? promptVersion;
-  final List<AgentProposalItem> proposals;
-  final List<AgentToolAuditItem> toolCalls;
-}
-
-class AdminAuditEntry {
-  const AdminAuditEntry({
-    required this.actorUserId,
-    required this.action,
-    required this.resourceType,
-    required this.resourceId,
-    this.detailsJson,
-    required this.createdAt,
-  });
-
-  factory AdminAuditEntry.fromJson(Map<String, dynamic> json) {
-    return AdminAuditEntry(
-      actorUserId: json['actorUserId'] as int,
-      action: json['action'] as String,
-      resourceType: json['resourceType'] as String,
-      resourceId: json['resourceId'] as String,
-      detailsJson: json['detailsJson'] as String?,
-      createdAt: json['createdAt'] as String,
-    );
-  }
-
-  final int actorUserId;
-  final String action;
-  final String resourceType;
-  final String resourceId;
-  final String? detailsJson;
-  final String createdAt;
-}
-
-class AdminAuditPage {
-  const AdminAuditPage({required this.items, required this.totalElements});
-
-  factory AdminAuditPage.fromJson(Map<String, dynamic> json) {
-    return AdminAuditPage(
-      items: (json['items'] as List<dynamic>)
-          .map((item) => AdminAuditEntry.fromJson(item as Map<String, dynamic>))
-          .toList(),
-      totalElements: json['totalElements'] as int,
-    );
-  }
-
-  final List<AdminAuditEntry> items;
-  final int totalElements;
-}
-
-class ApiException implements Exception {
-  ApiException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
-}
-
-class UserSession {
-  const UserSession({
-    required this.token,
-    required this.userId,
-    required this.nickname,
-    this.avatarUrl,
-    this.role = 'USER',
-  });
-
-  final String token;
-  final int userId;
-  final String nickname;
-  final String? avatarUrl;
-  final String role;
-
-  bool get isAdmin => role == 'ADMIN';
-}
-
-class SportStart {
-  const SportStart({required this.sessionId, required this.startTime});
-
-  final String sessionId;
-  final String startTime;
-}
-
-class TrackPoint {
-  const TrackPoint({
-    required this.sessionId,
-    required this.lat,
-    required this.lng,
-    required this.accuracy,
-    required this.timestamp,
-  });
-
-  final String sessionId;
-  final double lat;
-  final double lng;
-  final double accuracy;
-  final DateTime timestamp;
-
-  Map<String, dynamic> toJson() {
-    return {
-      'sessionId': sessionId,
-      'lat': lat,
-      'lng': lng,
-      'accuracy': accuracy,
-      'timestamp': timestamp.toUtc().toIso8601String(),
-    };
-  }
-}
-
-class SportRecord {
-  const SportRecord({
-    required this.recordId,
-    required this.status,
-    required this.durationSeconds,
-    required this.distanceKm,
-    required this.calorie,
-    this.sportType,
-    this.abnormalReason,
-    this.startedAt,
-  });
-
-  factory SportRecord.fromJson(Map<String, dynamic> json) {
-    return SportRecord(
-      recordId: json['recordId'] as int,
-      status: json['status'] as int,
-      durationSeconds: json['durationSeconds'] as int,
-      distanceKm: (json['distanceKm'] as num).toDouble(),
-      calorie: (json['calorie'] as num).toDouble(),
-      sportType: json['sportType'] as String?,
-      abnormalReason: json['abnormalReason'] as String?,
-      startedAt: json['startedAt'] == null
-          ? null
-          : DateTime.parse(json['startedAt'] as String),
-    );
-  }
-
-  final int recordId;
-  final int status;
-  final int durationSeconds;
-  final double distanceKm;
-  final double calorie;
-  final String? sportType;
-  final String? abnormalReason;
-  final DateTime? startedAt;
-}
-
-class SportStats {
-  const SportStats({
-    required this.checkinCount,
-    required this.durationSeconds,
-    required this.distanceKm,
-    required this.calorie,
-  });
-
-  final int checkinCount;
-  final int durationSeconds;
-  final double distanceKm;
-  final double calorie;
-}
-
-class SportTarget {
-  const SportTarget({
-    required this.targetId,
-    required this.periodType,
-    required this.metric,
-    required this.targetValue,
-    required this.completedValue,
-    required this.progress,
-    required this.startDate,
-    required this.endDate,
-    required this.status,
-  });
-
-  factory SportTarget.fromJson(Map<String, dynamic> json) {
-    return SportTarget(
-      targetId: json['targetId'] as int,
-      periodType: json['periodType'] as String,
-      metric: json['metric'] as String,
-      targetValue: (json['targetValue'] as num).toDouble(),
-      completedValue: (json['completedValue'] as num).toDouble(),
-      progress: (json['progress'] as num).toDouble(),
-      startDate: json['startDate'] as String,
-      endDate: json['endDate'] as String,
-      status: json['status'] as String,
-    );
-  }
-
-  final int targetId;
-  final String periodType;
-  final String metric;
-  final double targetValue;
-  final double completedValue;
-  final double progress;
-  final String startDate;
-  final String endDate;
-  final String status;
-}
-
-class MedalSummary {
-  const MedalSummary({
-    required this.points,
-    required this.level,
-    required this.medals,
-  });
-
-  factory MedalSummary.fromJson(Map<String, dynamic> json) {
-    final medals = json['medals'] as List<dynamic>;
-    return MedalSummary(
-      points: json['points'] as int,
-      level: json['level'] as int,
-      medals: medals.map((item) => item as String).toList(),
-    );
-  }
-
-  final int points;
-  final int level;
-  final List<String> medals;
-}
-
-class RankingResult {
-  const RankingResult({
-    required this.scope,
-    required this.period,
-    required this.rows,
-  });
-
-  factory RankingResult.fromJson(Map<String, dynamic> json) {
-    final rows = json['rankingList'] as List<dynamic>;
-    return RankingResult(
-      scope: json['scope'] as String,
-      period: json['period'] as String,
-      rows: rows
-          .map((item) => RankingRow.fromJson(item as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-
-  final String scope;
-  final String period;
-  final List<RankingRow> rows;
-}
-
-class RankingRow {
-  const RankingRow({
-    required this.rank,
-    required this.userId,
-    required this.nickname,
-    required this.distanceKm,
-    required this.calorie,
-  });
-
-  factory RankingRow.fromJson(Map<String, dynamic> json) {
-    return RankingRow(
-      rank: json['rank'] as int,
-      userId: json['userId'] as int,
-      nickname: json['nickname'] as String,
-      distanceKm: (json['distanceKm'] as num).toDouble(),
-      calorie: (json['calorie'] as num).toDouble(),
-    );
-  }
-
-  final int rank;
-  final int userId;
-  final String nickname;
-  final double distanceKm;
-  final double calorie;
-}
-
-class TargetReminderResponse {
-  const TargetReminderResponse({
-    required this.targetId,
-    required this.periodType,
-    required this.metric,
-    required this.targetValue,
-    required this.completedValue,
-    required this.progress,
-    required this.startDate,
-    required this.endDate,
-    required this.status,
-    required this.due,
-    required this.acknowledged,
-    this.remindTime,
-    required this.message,
-  });
-
-  factory TargetReminderResponse.fromJson(Map<String, dynamic> json) {
-    return TargetReminderResponse(
-      targetId: json['targetId'] as int,
-      periodType: json['periodType'] as String,
-      metric: json['metric'] as String,
-      targetValue: (json['targetValue'] as num).toDouble(),
-      completedValue: (json['completedValue'] as num).toDouble(),
-      progress: (json['progress'] as num).toDouble(),
-      startDate: json['startDate'] as String,
-      endDate: json['endDate'] as String,
-      status: json['status'] as String,
-      due: json['due'] as bool,
-      acknowledged: json['acknowledged'] as bool,
-      remindTime: json['remindTime'] as String?,
-      message: json['message'] as String,
-    );
-  }
-
-  final int targetId;
-  final String periodType;
-  final String metric;
-  final double targetValue;
-  final double completedValue;
-  final double progress;
-  final String startDate;
-  final String endDate;
-  final String status;
-  final bool due;
-  final bool acknowledged;
-  final String? remindTime;
-  final String message;
-}
-
-class TargetReminderListResponse {
-  const TargetReminderListResponse({required this.targets});
-
-  final List<TargetReminderResponse> targets;
-}
-
-class ReminderConfig {
-  const ReminderConfig({
-    required this.id,
-    required this.type,
-    this.time,
-    required this.cycle,
-    required this.enabled,
-  });
-
-  factory ReminderConfig.fromJson(Map<String, dynamic> json) {
-    return ReminderConfig(
-      id: json['id'] as int,
-      type: json['type'] as String,
-      time: json['time'] as String?,
-      cycle: json['cycle'] as String,
-      enabled: json['enabled'] as bool,
-    );
-  }
-
-  final int id;
-  final String type;
-  final String? time;
-  final String cycle;
-  final bool enabled;
-
-  String get label {
-    switch (type) {
-      case 'sport':
-        return '运动'; // runner icon
-      case 'sit':
-        return '久坐'; // chair icon
-      case 'drink':
-        return '喝水'; // water icon
-      case 'sleep':
-        return '睡眠'; // bed icon
-      default:
-        return type;
-    }
-  }
-}
-
-class ReminderListResponse {
-  const ReminderListResponse({required this.reminders});
-
-  final List<ReminderConfig> reminders;
-}
-
-class FriendInfo {
-  const FriendInfo({
-    required this.friendId,
-    required this.friendUserId,
-    required this.nickname,
-    required this.points,
-    required this.level,
-    required this.status,
-  });
-
-  factory FriendInfo.fromJson(Map<String, dynamic> json) {
-    return FriendInfo(
-      friendId: json['friendId'] as int,
-      friendUserId: json['friendUserId'] as int,
-      nickname: json['nickname'] as String,
-      points: json['points'] as int,
-      level: json['level'] as int,
-      status: json['status'] as String,
-    );
-  }
-
-  final int friendId;
-  final int friendUserId;
-  final String nickname;
-  final int points;
-  final int level;
-  final String status;
-}
-
-class FriendListResponse {
-  const FriendListResponse({required this.friends});
-
-  final List<FriendInfo> friends;
-}
-
-class UserSearchItem {
-  const UserSearchItem({
-    required this.userId,
-    required this.nickname,
-    required this.points,
-    required this.level,
-    required this.isFriend,
-  });
-
-  factory UserSearchItem.fromJson(Map<String, dynamic> json) {
-    return UserSearchItem(
-      userId: json['userId'] as int,
-      nickname: json['nickname'] as String,
-      points: json['points'] as int,
-      level: json['level'] as int,
-      isFriend: json['isFriend'] as bool,
-    );
-  }
-
-  final int userId;
-  final String nickname;
-  final int points;
-  final int level;
-  final bool isFriend;
-}
-
-class UserSearchResponse {
-  const UserSearchResponse({required this.users});
-
-  final List<UserSearchItem> users;
-}
-
-class AppealResponse {
-  const AppealResponse({
-    required this.appealId,
-    required this.recordId,
-    required this.reason,
-    this.evidenceUrl,
-    required this.status,
-    this.reviewNote,
-    required this.createdAt,
-    this.updatedAt,
-  });
-
-  factory AppealResponse.fromJson(Map<String, dynamic> json) {
-    return AppealResponse(
-      appealId: json['appealId'] as int,
-      recordId: json['recordId'] as int,
-      reason: json['reason'] as String,
-      evidenceUrl: json['evidenceUrl'] as String?,
-      status: json['status'] as String,
-      reviewNote: json['reviewNote'] as String?,
-      createdAt: json['createdAt'] as String,
-      updatedAt: json['updatedAt'] as String?,
-    );
-  }
-
-  final int appealId;
-  final int recordId;
-  final String reason;
-  final String? evidenceUrl;
-  final String status;
-  final String? reviewNote;
-  final String createdAt;
-  final String? updatedAt;
-
-  String get statusLabel {
-    switch (status) {
-      case 'pending':
-        return '审核中';
-      case 'approved':
-        return '已通过';
-      case 'rejected':
-        return '已驳回';
-      default:
-        return status;
-    }
-  }
-}
-
-class AppealListResponse {
-  const AppealListResponse({required this.appeals});
-
-  final List<AppealResponse> appeals;
-}
-
-class HealthData {
-  const HealthData({
-    required this.healthId,
-    this.weightKg,
-    this.sleepHours,
-    this.dietNote,
-    required this.dataDate,
-  });
-
-  factory HealthData.fromJson(Map<String, dynamic> json) {
-    return HealthData(
-      healthId: json['healthId'] as int,
-      weightKg: (json['weightKg'] as num?)?.toDouble(),
-      sleepHours: (json['sleepHours'] as num?)?.toDouble(),
-      dietNote: json['dietNote'] as String?,
-      dataDate: json['dataDate'] as String,
-    );
-  }
-
-  final int healthId;
-  final double? weightKg;
-  final double? sleepHours;
-  final String? dietNote;
-  final String dataDate;
-}
-
-class SportHistoryPoint {
-  const SportHistoryPoint({
-    required this.date,
-    required this.count,
-    required this.durationSeconds,
-    required this.distanceKm,
-    required this.calorie,
-  });
-
-  factory SportHistoryPoint.fromJson(Map<String, dynamic> json) {
-    return SportHistoryPoint(
-      date: json['date'] as String,
-      count: json['count'] as int,
-      durationSeconds: json['durationSeconds'] as int,
-      distanceKm: (json['distanceKm'] as num).toDouble(),
-      calorie: (json['calorie'] as num).toDouble(),
-    );
-  }
-
-  final String date;
-  final int count;
-  final int durationSeconds;
-  final double distanceKm;
-  final double calorie;
-}
-
-class SportHistoryResponse {
-  const SportHistoryResponse({
-    required this.period,
-    required this.metric,
-    required this.points,
-  });
-
-  factory SportHistoryResponse.fromJson(Map<String, dynamic> json) {
-    final list = json['points'] as List<dynamic>;
-    return SportHistoryResponse(
-      period: json['period'] as String,
-      metric: json['metric'] as String,
-      points: list
-          .map((e) => SportHistoryPoint.fromJson(e as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-
-  final String period;
-  final String metric;
-  final List<SportHistoryPoint> points;
-}
-
-class WeightHistoryPoint {
-  const WeightHistoryPoint({required this.date, this.weightKg});
-
-  factory WeightHistoryPoint.fromJson(Map<String, dynamic> json) {
-    return WeightHistoryPoint(
-      date: json['date'] as String,
-      weightKg: (json['weightKg'] as num?)?.toDouble(),
-    );
-  }
-
-  final String date;
-  final double? weightKg;
-}
-
-class WeightHistoryResponse {
-  const WeightHistoryResponse({required this.points});
-
-  factory WeightHistoryResponse.fromJson(Map<String, dynamic> json) {
-    final list = json['points'] as List<dynamic>;
-    return WeightHistoryResponse(
-      points: list
-          .map((e) => WeightHistoryPoint.fromJson(e as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-
-  final List<WeightHistoryPoint> points;
-}
-
-class UserProfileResponse {
-  const UserProfileResponse({
-    required this.userId,
-    required this.nickname,
-    this.avatarUrl,
-  });
-
-  final int userId;
-  final String nickname;
-  final String? avatarUrl;
-
-  factory UserProfileResponse.fromJson(Map<String, dynamic> json) =>
-      UserProfileResponse(
-        userId: (json['userId'] as num).toInt(),
-        nickname: json['nickname'] as String,
-        avatarUrl: json['avatarUrl'] as String?,
-      );
+class _JsonHttpResponse {
+  const _JsonHttpResponse(this.statusCode, this.body);
+
+  final int statusCode;
+  final Map<String, dynamic> body;
 }
