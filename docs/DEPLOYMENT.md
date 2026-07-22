@@ -2,6 +2,8 @@
 
 本文适用于生产稳定过渡版 `0.1.6+7`。任何 push、证书切换、生产部署或 APK 发布都必须在执行前单独确认。
 
+需要从 PR、域名、密钥、证书一路执行到真机、发布和回滚时，直接使用 [人工发布执行手册](MANUAL_RELEASE_RUNBOOK.md)。
+
 ## 1. 服务拓扑与降级边界
 
 | 服务 | 容器 | 对外入口 | 就绪条件 |
@@ -52,6 +54,7 @@ FITLOOP_MAIL_PASSWORD=<SMTP_AUTHORIZATION_CODE>
 
 ```dotenv
 FITLOOP_TLS_ENABLED=true
+FITLOOP_HTTP_COMPAT_ENABLED=true
 FITLOOP_TLS_CERT_FILE=/etc/letsencrypt/live/app.example.com/fullchain.pem
 FITLOOP_TLS_KEY_FILE=/etc/letsencrypt/live/app.example.com/privkey.pem
 FITLOOP_PUBLIC_BASE_URL=https://app.example.com
@@ -59,22 +62,28 @@ FITLOOP_PUBLIC_BASE_URL=https://app.example.com
 
 `deploy/nginx.tls.conf` 只启用 TLS 1.2/1.3。端口 80 在兼容窗口内继续代理旧 `/api/` 请求，不对旧版 POST 做重定向；新 APK 必须使用 HTTPS。
 
-使用 Certbot 时启用系统续期计时器，并在续期后重建 Nginx 容器以重新绑定证书文件：
+Compose 会把 `deploy/certbot-www` 作为 ACME webroot 挂载到 Nginx。使用 Certbot 时采用 webroot 模式，不需要停止线上 Nginx：
 
 ```bash
+certbot certonly --webroot \
+  --webroot-path /root/FitLoop/deploy/certbot-www \
+  --domain app.example.com \
+  --email ops@example.com \
+  --agree-tos --no-eff-email
+
 systemctl enable --now certbot.timer
-certbot renew --dry-run
 cat >/etc/letsencrypt/renewal-hooks/deploy/fitloop-nginx.sh <<'HOOK'
 #!/bin/sh
 cd /root/FitLoop
-docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.cn.yml -f deploy/docker-compose.tls.yml --env-file .env up -d --force-recreate nginx
+bash deploy/reload-nginx.sh cn
 HOOK
 chmod 700 /etc/letsencrypt/renewal-hooks/deploy/fitloop-nginx.sh
+certbot renew --dry-run
 ```
 
 证书路径和 Compose 组合需按实际环境调整。`deploy/monitor.sh --alert` 会在公网证书无法连接或剩余有效期不足 14 天时失败，建议每天执行。
 
-记录 HTTPS 启用日期，在至少 30 天且确认旧客户端退出后，另行评审并关闭端口 80 的明文 API；本版本不会自动关闭。
+记录 HTTPS 启用日期。TLS 日志会记录 `transport=80/443`；在至少 30 天且确认旧客户端退出后，经单独批准把 `FITLOOP_HTTP_COMPAT_ENABLED` 改为 `false`。部署脚本将启用 `nginx.https-only.conf`，明文 `/api/` 返回 426。
 
 ## 4. 部署核心服务
 
