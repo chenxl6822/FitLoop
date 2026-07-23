@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class FeatureFlags {
   const FeatureFlags({required this.smsEnabled});
 
@@ -210,6 +212,109 @@ class AdminAppealPage {
 
   final List<AdminAppealItem> items;
   final int totalElements;
+}
+
+class AgentRunCreated {
+  const AgentRunCreated({
+    required this.runId,
+    required this.type,
+    required this.status,
+    required this.traceId,
+  });
+
+  factory AgentRunCreated.fromJson(Map<String, dynamic> json) {
+    return AgentRunCreated(
+      runId: json['runId'] as String,
+      type: json['type'] as String,
+      status: json['status'] as String,
+      traceId: json['traceId'] as String,
+    );
+  }
+
+  final String runId;
+  final String type;
+  final String status;
+  final String traceId;
+}
+
+class AgentRunDetail {
+  const AgentRunDetail({
+    required this.runId,
+    required this.type,
+    required this.status,
+    required this.traceId,
+    this.resultJson,
+    this.errorMessage,
+    this.proposals = const <AgentProposalItem>[],
+  });
+
+  factory AgentRunDetail.fromJson(Map<String, dynamic> json) {
+    final proposalJson =
+        json['proposals'] as List<dynamic>? ?? const <dynamic>[];
+    return AgentRunDetail(
+      runId: json['runId'] as String,
+      type: json['type'] as String,
+      status: json['status'] as String,
+      traceId: json['traceId'] as String,
+      resultJson: json['resultJson'] as String?,
+      errorMessage: json['errorMessage'] as String?,
+      proposals: proposalJson
+          .map((item) =>
+              AgentProposalItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final String runId;
+  final String type;
+  final String status;
+  final String traceId;
+  final String? resultJson;
+  final String? errorMessage;
+  final List<AgentProposalItem> proposals;
+
+  CoachAdvice? get advice => CoachAdvice.tryParse(resultJson);
+
+  bool get shouldPoll =>
+      status == 'QUEUED' || status == 'RUNNING' || status == 'FAILED_RETRYABLE';
+}
+
+class CoachAdvice {
+  const CoachAdvice({
+    required this.answer,
+    required this.rationale,
+    required this.safetyNotices,
+  });
+
+  static CoachAdvice? tryParse(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final answer = decoded['answer'];
+      if (answer is! String || answer.trim().isEmpty) return null;
+      return CoachAdvice(
+        answer: answer.trim(),
+        rationale: _stringList(decoded['rationale']),
+        safetyNotices: _stringList(decoded['safety_notices']),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static List<String> _stringList(Object? value) {
+    if (value is! List<dynamic>) return const <String>[];
+    return value.whereType<String>().map((item) => item.trim()).where(
+      (item) {
+        return item.isNotEmpty;
+      },
+    ).toList(growable: false);
+  }
+
+  final String answer;
+  final List<String> rationale;
+  final List<String> safetyNotices;
 }
 
 class AdminAgentRunItem {

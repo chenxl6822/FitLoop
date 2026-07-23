@@ -845,6 +845,28 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   @override
+  Future<AgentRunCreated> createCoachRun({
+    required String token,
+    required String objective,
+  }) async {
+    final body = await _post(
+      '/api/v1/agent/coach/runs',
+      {'objective': objective},
+      token: token,
+    );
+    return AgentRunCreated.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<AgentRunDetail> getAgentRun({
+    required String token,
+    required String runId,
+  }) async {
+    final body = await _get('/api/v1/agent/runs/$runId', token: token);
+    return AgentRunDetail.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  @override
   Future<AdminStats> adminGetStats({required String token}) async {
     final body = await _get('/api/admin/stats', token: token);
     final data = body['data'] as Map<String, dynamic>;

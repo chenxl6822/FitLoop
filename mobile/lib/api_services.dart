@@ -160,6 +160,16 @@ abstract class FitLoopApi {
 
   Future<FeedbackListResponse> listFeedback({required String token});
 
+  Future<AgentRunCreated> createCoachRun({
+    required String token,
+    required String objective,
+  });
+
+  Future<AgentRunDetail> getAgentRun({
+    required String token,
+    required String runId,
+  });
+
   Future<AdminStats> adminGetStats({required String token});
 
   Future<AdminUserListResponse> adminListUsers({
