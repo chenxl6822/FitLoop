@@ -224,12 +224,12 @@ abstract class FitLoopApi {
     required String runId,
   });
 
-  Future<void> adminConfirmAgentProposal({
+  Future<AgentProposalDecision> confirmAgentProposal({
     required String token,
     required int proposalId,
   });
 
-  Future<void> adminRejectAgentProposal({
+  Future<AgentProposalDecision> rejectAgentProposal({
     required String token,
     required int proposalId,
     String? reason,

@@ -289,12 +289,12 @@ class _AdminAgentRunsTabState extends State<_AdminAgentRunsTab> {
   }) async {
     try {
       if (confirm) {
-        await widget.api.adminConfirmAgentProposal(
+        await widget.api.confirmAgentProposal(
           token: widget.token,
           proposalId: proposal.proposalId,
         );
       } else {
-        await widget.api.adminRejectAgentProposal(
+        await widget.api.rejectAgentProposal(
           token: widget.token,
           proposalId: proposal.proposalId,
           reason: '管理员拒绝 Agent 建议',

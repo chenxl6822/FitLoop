@@ -504,7 +504,8 @@ void main() {
     expect(find.text('运动 提醒'), findsOneWidget);
   });
 
-  testWidgets('opens AI coach on demand and shows advice without saving a plan',
+  testWidgets(
+      'shows coach evidence and exact actionable plan without writing data',
       (tester) async {
     final api = _FakeApi();
     await tester.pumpWidget(
@@ -526,14 +527,8 @@ void main() {
     expect(api.createdCoachRuns, 1);
     expect(api.lastCoachObjective, '为下周安排两次循序渐进的跑步训练');
     expect(find.text('建议安排两次低到中等强度训练。'), findsOneWidget);
-    final coachList = find.descendant(
-      of: find.byType(CoachPage),
-      matching: find.byType(ListView),
-    );
-    await tester.drag(coachList, const Offset(0, -300));
-    await tester.pumpAndSettle();
-    expect(find.text('训练计划草案待确认'), findsOneWidget);
-    expect(find.text('确认创建训练计划'), findsNothing);
+    expect(find.text('依据摘要（Agent 生成）'), findsOneWidget);
+    expect(find.textContaining('近期训练负荷较低。'), findsOneWidget);
     expect(
       tester
           .widget<FilledButton>(
@@ -542,6 +537,305 @@ void main() {
           .onPressed,
       isNull,
     );
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-plan-preview')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('训练计划草案'), findsOneWidget);
+    expect(find.text('下周可执行跑步计划'), findsOneWidget);
+    expect(find.text('逐步恢复跑步习惯'), findsOneWidget);
+    expect(find.text('第 1 天 · 轻松跑'), findsOneWidget);
+    expect(find.text('30 分钟 · 低强度'), findsOneWidget);
+    expect(find.text('结果摘要中的标题'), findsNothing);
+    expect(find.textContaining('trace-1'), findsNothing);
+    expect(find.textContaining('"session_type"'), findsNothing);
+    expect(find.byKey(const Key('coach-confirm-plan')), findsOneWidget);
+    expect(find.byKey(const Key('coach-reject-plan')), findsOneWidget);
+    expect(api.confirmedCoachProposals, isEmpty);
+    expect(api.rejectedCoachProposals, isEmpty);
+  });
+
+  testWidgets('requires explicit confirmation before creating a coach plan',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+    await _openCoachPage(tester);
+    await tester.enterText(
+      find.byKey(const Key('coach-objective')),
+      '帮我安排训练',
+    );
+    await tester.tap(find.byKey(const Key('coach-submit')));
+    await tester.pumpAndSettle();
+
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-plan-preview')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, -300),
+    );
+    await tester.ensureVisible(find.byKey(const Key('coach-confirm-plan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('coach-confirm-plan')));
+    await tester.tap(
+      find.byKey(const Key('coach-confirm-plan')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('创建这份训练计划？'), findsOneWidget);
+    expect(find.textContaining('将立即写入你的训练计划'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextButton>(
+            find.byKey(const Key('coach-confirm-cancel')),
+          )
+          .autofocus,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const Key('coach-confirm-cancel')));
+    await tester.pumpAndSettle();
+    expect(api.confirmedCoachProposals, isEmpty);
+
+    await tester.tap(find.byKey(const Key('coach-confirm-plan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('coach-confirm-dialog-action')));
+    await tester.pumpAndSettle();
+
+    expect(api.confirmedCoachProposals, [7]);
+    expect(find.text('训练计划 #42 已创建'), findsOneWidget);
+    expect(find.byKey(const Key('coach-confirm-plan')), findsNothing);
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-submit')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, 300),
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('coach-submit')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets(
+      'locks an uncertain coach decision until a later refresh reconciles it',
+      (tester) async {
+    final confirmation = Completer<AgentProposalDecision>();
+    final api = _FakeApi(
+      coachConfirmFuture: confirmation.future,
+      coachRuns: [
+        _coachApprovalRun(),
+        _coachApprovalRun(),
+        _coachApprovalRun(proposalStatus: 'CONFIRMED'),
+      ],
+    );
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+    await _openCoachPage(tester);
+    await tester.enterText(
+      find.byKey(const Key('coach-objective')),
+      '帮我安排训练',
+    );
+    await tester.tap(find.byKey(const Key('coach-submit')));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-plan-preview')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, -300),
+    );
+    await tester.ensureVisible(find.byKey(const Key('coach-confirm-plan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('coach-confirm-plan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('coach-confirm-dialog-action')));
+    await tester.pump();
+
+    expect(api.confirmedCoachProposals, [7]);
+    await tester.pump(const Duration(seconds: 16));
+    await tester.pumpAndSettle();
+
+    expect(api.coachRunQueries, 2);
+    expect(find.textContaining('为避免重复提交'), findsWidgets);
+    expect(find.byKey(const Key('coach-confirm-plan')), findsNothing);
+    expect(find.byKey(const Key('coach-reject-plan')), findsNothing);
+
+    confirmation.complete(const AgentProposalDecision(
+      proposalId: 7,
+      status: 'CONFIRMED',
+      affectedResourceId: 42,
+    ));
+    await tester.pump();
+    await tester.dragUntilVisible(
+      find.text('重新获取状态'),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, 300),
+    );
+    await tester.tap(find.text('重新获取状态'));
+    await tester.pumpAndSettle();
+
+    expect(api.coachRunQueries, 3);
+    expect(api.confirmedCoachProposals, [7]);
+    expect(find.text('训练计划已创建'), findsOneWidget);
+    expect(find.byKey(const Key('coach-confirm-plan')), findsNothing);
+  });
+
+  testWidgets('reconciles a mismatched coach decision response before receipt',
+      (tester) async {
+    final api = _FakeApi(
+      coachConfirmFuture: Future.value(
+        const AgentProposalDecision(
+          proposalId: 999,
+          status: 'CONFIRMED',
+          affectedResourceId: 99,
+        ),
+      ),
+      coachRuns: [
+        _coachApprovalRun(),
+        _coachApprovalRun(proposalStatus: 'CONFIRMED'),
+      ],
+    );
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+    await _openCoachPage(tester);
+    await tester.enterText(
+      find.byKey(const Key('coach-objective')),
+      '帮我安排训练',
+    );
+    await tester.tap(find.byKey(const Key('coach-submit')));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-plan-preview')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, -300),
+    );
+    await tester.ensureVisible(find.byKey(const Key('coach-confirm-plan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('coach-confirm-plan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('coach-confirm-dialog-action')));
+    await tester.pumpAndSettle();
+
+    expect(api.confirmedCoachProposals, [7]);
+    expect(api.coachRunQueries, 2);
+    expect(find.text('训练计划 #99 已创建'), findsNothing);
+    expect(find.text('训练计划已创建'), findsOneWidget);
+  });
+
+  testWidgets('rejects a coach draft without creating a training plan',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+    await _openCoachPage(tester);
+    await tester.enterText(
+      find.byKey(const Key('coach-objective')),
+      '帮我安排训练',
+    );
+    await tester.tap(find.byKey(const Key('coach-submit')));
+    await tester.pumpAndSettle();
+
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-plan-preview')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, -300),
+    );
+    await tester.ensureVisible(find.byKey(const Key('coach-reject-plan')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('coach-reject-plan')));
+    await tester.tap(
+      find.byKey(const Key('coach-reject-plan')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.rejectedCoachProposals, [7]);
+    expect(api.confirmedCoachProposals, isEmpty);
+    expect(find.text('草案已拒绝，未创建训练计划'), findsOneWidget);
+    expect(find.byKey(const Key('coach-confirm-plan')), findsNothing);
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-submit')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, 300),
+    );
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('coach-submit')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+  });
+
+  testWidgets('fails closed for an expired coach plan and allows regeneration',
+      (tester) async {
+    final api = _FakeApi(
+      coachRuns: const [
+        AgentRunDetail(
+          runId: 'coach-run-1',
+          type: 'COACH',
+          status: 'WAITING_APPROVAL',
+          traceId: 'trace-1',
+          resultJson: '{"answer":"旧建议。","rationale":[],"safety_notices":[]}',
+          proposals: [
+            AgentProposalItem(
+              proposalId: 9,
+              actionType: 'CREATE_TRAINING_PLAN',
+              payloadJson:
+                  '{"title":"已过期计划","goal":"验证过期保护","days":[{"day":1,"session_type":"轻松跑","duration_minutes":30,"intensity":"LOW","notes":null}]}',
+              status: 'PENDING',
+              requiresAdmin: false,
+              expiresAt: '2000-01-01T00:00:00Z',
+            ),
+          ],
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+    await _openCoachPage(tester);
+    await tester.enterText(
+      find.byKey(const Key('coach-objective')),
+      '帮我安排训练',
+    );
+    await tester.tap(find.byKey(const Key('coach-submit')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<FilledButton>(
+            find.byKey(const Key('coach-submit')),
+          )
+          .onPressed,
+      isNotNull,
+    );
+    expect(find.text('重新生成建议'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-plan-preview')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('草案已过期'), findsOneWidget);
+    expect(find.byKey(const Key('coach-confirm-plan')), findsNothing);
+    expect(find.byKey(const Key('coach-reject-plan')), findsNothing);
+    expect(api.confirmedCoachProposals, isEmpty);
+    expect(api.rejectedCoachProposals, isEmpty);
   });
 
   testWidgets('keeps coach creation locked until the POST result is known',
@@ -626,9 +920,11 @@ void main() {
             AgentProposalItem(
               proposalId: 8,
               actionType: 'CREATE_TRAINING_PLAN',
-              payloadJson: '{"title":"轮询计划"}',
+              payloadJson:
+                  '{"title":"轮询计划","goal":"完成轮询验证","days":[{"day":1,"session_type":"轻松跑","duration_minutes":30,"intensity":"LOW","notes":"保持舒适"}]}',
               status: 'PENDING',
               requiresAdmin: false,
+              expiresAt: '2100-01-01T00:00:00Z',
             ),
           ],
         ),
@@ -663,7 +959,7 @@ void main() {
     await tester.drag(coachList, const Offset(0, -300));
     await tester.pumpAndSettle();
     expect(find.text('轮询完成。'), findsOneWidget);
-    expect(find.text('训练计划草案待确认'), findsOneWidget);
+    expect(find.text('训练计划草案'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 3));
     expect(api.coachRunQueries, 4);
@@ -819,6 +1115,28 @@ void _expectEnabledSportButton(WidgetTester tester) {
   expect(button.onPressed, isNotNull);
 }
 
+AgentRunDetail _coachApprovalRun({String proposalStatus = 'PENDING'}) {
+  return AgentRunDetail(
+    runId: 'coach-run-1',
+    type: 'COACH',
+    status: proposalStatus == 'PENDING' ? 'WAITING_APPROVAL' : 'SUCCEEDED',
+    traceId: 'trace-1',
+    resultJson:
+        '{"answer":"建议安排两次低到中等强度训练。","rationale":["近期训练负荷较低。"],"safety_notices":["如有疼痛或眩晕，请立即停止。"]}',
+    proposals: [
+      AgentProposalItem(
+        proposalId: 7,
+        actionType: 'CREATE_TRAINING_PLAN',
+        payloadJson:
+            '{"title":"下周可执行跑步计划","goal":"逐步恢复跑步习惯","days":[{"day":1,"session_type":"轻松跑","duration_minutes":30,"intensity":"LOW","notes":"以能轻松交谈为准"}]}',
+        status: proposalStatus,
+        requiresAdmin: false,
+        expiresAt: '2100-01-01T00:00:00Z',
+      ),
+    ],
+  );
+}
+
 class _FakeLocationService implements LocationService {
   _FakeLocationService({
     this.initialPermission = LocationPermission.always,
@@ -953,6 +1271,7 @@ class _FakeApi implements FitLoopApi {
     this.reminderUpsertError,
     this.coachCreateError,
     this.coachCreateFuture,
+    this.coachConfirmFuture,
     List<AgentRunDetail> coachRuns = const <AgentRunDetail>[],
   })  : _targets = List.of(targets),
         _reminders = List.of(reminders),
@@ -987,6 +1306,7 @@ class _FakeApi implements FitLoopApi {
   final Object? reminderUpsertError;
   final Object? coachCreateError;
   final Future<AgentRunCreated>? coachCreateFuture;
+  final Future<AgentProposalDecision>? coachConfirmFuture;
   int uploadedTrackPoints = 0;
   int startedSports = 0;
   int finishedSports = 0;
@@ -997,6 +1317,8 @@ class _FakeApi implements FitLoopApi {
   int createdCoachRuns = 0;
   int coachRunQueries = 0;
   int rankingCalls = 0;
+  final List<int> confirmedCoachProposals = [];
+  final List<int> rejectedCoachProposals = [];
   String? lastRankingScope;
   String? lastCoachObjective;
   double? _lastWeight;
@@ -1044,20 +1366,27 @@ class _FakeApi implements FitLoopApi {
           : _coachRuns.length - 1;
       return _coachRuns[responseIndex];
     }
-    return const AgentRunDetail(
+    final proposalStatus = confirmedCoachProposals.isNotEmpty
+        ? 'CONFIRMED'
+        : rejectedCoachProposals.isNotEmpty
+            ? 'REJECTED'
+            : 'PENDING';
+    return AgentRunDetail(
       runId: 'coach-run-1',
       type: 'COACH',
-      status: 'WAITING_APPROVAL',
+      status: proposalStatus == 'PENDING' ? 'WAITING_APPROVAL' : 'SUCCEEDED',
       traceId: 'trace-1',
       resultJson:
-          '{"answer":"建议安排两次低到中等强度训练。","rationale":["近期训练负荷较低。"],"safety_notices":["如有疼痛或眩晕，请立即停止。"],"proposal":{"title":"下周跑步计划","goal":"安全恢复跑步习惯","days":[]}}',
+          '{"answer":"建议安排两次低到中等强度训练。","rationale":["近期训练负荷较低。"],"safety_notices":["如有疼痛或眩晕，请立即停止。"],"proposal":{"title":"结果摘要中的标题","goal":"不得用作确认预览","days":[]}}',
       proposals: [
         AgentProposalItem(
           proposalId: 7,
           actionType: 'CREATE_TRAINING_PLAN',
-          payloadJson: '{"title":"下周跑步计划"}',
-          status: 'PENDING',
+          payloadJson:
+              '{"title":"下周可执行跑步计划","goal":"逐步恢复跑步习惯","days":[{"day":1,"session_type":"轻松跑","duration_minutes":30,"intensity":"LOW","notes":"以能轻松交谈为准"}]}',
+          status: proposalStatus,
           requiresAdmin: false,
+          expiresAt: '2100-01-01T00:00:00Z',
         ),
       ],
     );
@@ -1574,17 +1903,32 @@ class _FakeApi implements FitLoopApi {
   }
 
   @override
-  Future<void> adminConfirmAgentProposal({
+  Future<AgentProposalDecision> confirmAgentProposal({
     required String token,
     required int proposalId,
-  }) async {}
+  }) async {
+    confirmedCoachProposals.add(proposalId);
+    final decisionFuture = coachConfirmFuture;
+    if (decisionFuture != null) return decisionFuture;
+    return AgentProposalDecision(
+      proposalId: proposalId,
+      status: 'CONFIRMED',
+      affectedResourceId: 42,
+    );
+  }
 
   @override
-  Future<void> adminRejectAgentProposal({
+  Future<AgentProposalDecision> rejectAgentProposal({
     required String token,
     required int proposalId,
     String? reason,
-  }) async {}
+  }) async {
+    rejectedCoachProposals.add(proposalId);
+    return AgentProposalDecision(
+      proposalId: proposalId,
+      status: 'REJECTED',
+    );
+  }
 
   @override
   Future<AdminAuditPage> adminListAuditLogs({

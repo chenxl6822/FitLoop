@@ -996,26 +996,36 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   @override
-  Future<void> adminConfirmAgentProposal({
+  Future<AgentProposalDecision> confirmAgentProposal({
     required String token,
     required int proposalId,
   }) async {
-    await _post('/api/v1/agent/actions/$proposalId/confirm', const {},
-        token: token);
+    final body = await _post(
+      '/api/v1/agent/actions/$proposalId/confirm',
+      const {},
+      token: token,
+    );
+    return AgentProposalDecision.fromJson(
+      body['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
-  Future<void> adminRejectAgentProposal({
+  Future<AgentProposalDecision> rejectAgentProposal({
     required String token,
     required int proposalId,
     String? reason,
   }) async {
-    await _post(
-        '/api/v1/agent/actions/$proposalId/reject',
-        {
-          if (reason != null && reason.isNotEmpty) 'reason': reason,
-        },
-        token: token);
+    final body = await _post(
+      '/api/v1/agent/actions/$proposalId/reject',
+      {
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      },
+      token: token,
+    );
+    return AgentProposalDecision.fromJson(
+      body['data'] as Map<String, dynamic>,
+    );
   }
 
   @override
