@@ -965,6 +965,49 @@ void main() {
     expect(api.coachRunQueries, 4);
   });
 
+  testWidgets('keeps the coach run retryable when status loading times out',
+      (tester) async {
+    final run = Completer<AgentRunDetail>();
+    final api = _FakeApi(coachRunFuture: run.future);
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+    await _openCoachPage(tester);
+
+    await tester.enterText(
+      find.byKey(const Key('coach-objective')),
+      '帮我安排训练',
+    );
+    await tester.tap(find.byKey(const Key('coach-submit')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(api.createdCoachRuns, 1);
+    expect(api.coachRunQueries, 1);
+
+    await tester.pump(const Duration(seconds: 16));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('AI 教练暂时不可用'), findsOneWidget);
+    expect(find.text('重新获取状态'), findsOneWidget);
+    expect(api.createdCoachRuns, 1);
+
+    run.complete(_coachApprovalRun());
+    await tester.tap(find.text('重新获取状态'));
+    await tester.pumpAndSettle();
+
+    expect(api.coachRunQueries, 2);
+    expect(api.createdCoachRuns, 1);
+    expect(find.text('重新获取状态'), findsNothing);
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-plan-preview')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, -300),
+    );
+    expect(find.byKey(const Key('coach-plan-preview')), findsOneWidget);
+  });
+
   testWidgets('keeps core navigation usable when AI coach is unavailable',
       (tester) async {
     final api =
@@ -1271,6 +1314,7 @@ class _FakeApi implements FitLoopApi {
     this.reminderUpsertError,
     this.coachCreateError,
     this.coachCreateFuture,
+    this.coachRunFuture,
     this.coachConfirmFuture,
     List<AgentRunDetail> coachRuns = const <AgentRunDetail>[],
   })  : _targets = List.of(targets),
@@ -1306,6 +1350,7 @@ class _FakeApi implements FitLoopApi {
   final Object? reminderUpsertError;
   final Object? coachCreateError;
   final Future<AgentRunCreated>? coachCreateFuture;
+  final Future<AgentRunDetail>? coachRunFuture;
   final Future<AgentProposalDecision>? coachConfirmFuture;
   int uploadedTrackPoints = 0;
   int startedSports = 0;
@@ -1360,6 +1405,8 @@ class _FakeApi implements FitLoopApi {
     required String runId,
   }) async {
     coachRunQueries += 1;
+    final runFuture = coachRunFuture;
+    if (runFuture != null) return runFuture;
     if (_coachRuns.isNotEmpty) {
       final responseIndex = coachRunQueries <= _coachRuns.length
           ? coachRunQueries - 1

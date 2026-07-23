@@ -258,4 +258,61 @@ void main() {
     await handled.future;
     await server.close(force: true);
   });
+
+  test('surfaces service unavailability for all coach endpoints', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    final requests = <String>[];
+
+    server.listen((request) async {
+      requests.add('${request.method} ${request.uri.path}');
+      await utf8.decoder.bind(request).join();
+      request.response
+        ..statusCode = HttpStatus.serviceUnavailable
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({
+          'title': 'Service Unavailable',
+          'status': HttpStatus.serviceUnavailable,
+          'detail': 'agent temporarily unavailable',
+        }));
+      await request.response.close();
+    });
+
+    final api = HttpFitLoopApi(
+      baseUrl: 'http://127.0.0.1:${server.port}',
+    );
+    final unavailable = isA<ApiException>().having(
+      (error) => error.message,
+      'message',
+      'agent temporarily unavailable',
+    );
+
+    await expectLater(
+      api.createCoachRun(token: 'user-jwt', objective: 'safe plan'),
+      throwsA(unavailable),
+    );
+    await expectLater(
+      api.getAgentRun(token: 'user-jwt', runId: 'coach-run-1'),
+      throwsA(unavailable),
+    );
+    await expectLater(
+      api.confirmAgentProposal(token: 'user-jwt', proposalId: 7),
+      throwsA(unavailable),
+    );
+    await expectLater(
+      api.rejectAgentProposal(
+        token: 'user-jwt',
+        proposalId: 8,
+        reason: 'not now',
+      ),
+      throwsA(unavailable),
+    );
+
+    expect(requests, [
+      'POST /api/v1/agent/coach/runs',
+      'GET /api/v1/agent/runs/coach-run-1',
+      'POST /api/v1/agent/actions/7/confirm',
+      'POST /api/v1/agent/actions/8/reject',
+    ]);
+  });
 }
