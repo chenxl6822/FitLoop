@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class FeatureFlags {
   const FeatureFlags({required this.smsEnabled});
 
@@ -212,6 +214,109 @@ class AdminAppealPage {
   final int totalElements;
 }
 
+class AgentRunCreated {
+  const AgentRunCreated({
+    required this.runId,
+    required this.type,
+    required this.status,
+    required this.traceId,
+  });
+
+  factory AgentRunCreated.fromJson(Map<String, dynamic> json) {
+    return AgentRunCreated(
+      runId: json['runId'] as String,
+      type: json['type'] as String,
+      status: json['status'] as String,
+      traceId: json['traceId'] as String,
+    );
+  }
+
+  final String runId;
+  final String type;
+  final String status;
+  final String traceId;
+}
+
+class AgentRunDetail {
+  const AgentRunDetail({
+    required this.runId,
+    required this.type,
+    required this.status,
+    required this.traceId,
+    this.resultJson,
+    this.errorMessage,
+    this.proposals = const <AgentProposalItem>[],
+  });
+
+  factory AgentRunDetail.fromJson(Map<String, dynamic> json) {
+    final proposalJson =
+        json['proposals'] as List<dynamic>? ?? const <dynamic>[];
+    return AgentRunDetail(
+      runId: json['runId'] as String,
+      type: json['type'] as String,
+      status: json['status'] as String,
+      traceId: json['traceId'] as String,
+      resultJson: json['resultJson'] as String?,
+      errorMessage: json['errorMessage'] as String?,
+      proposals: proposalJson
+          .map((item) =>
+              AgentProposalItem.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  final String runId;
+  final String type;
+  final String status;
+  final String traceId;
+  final String? resultJson;
+  final String? errorMessage;
+  final List<AgentProposalItem> proposals;
+
+  CoachAdvice? get advice => CoachAdvice.tryParse(resultJson);
+
+  bool get shouldPoll =>
+      status == 'QUEUED' || status == 'RUNNING' || status == 'FAILED_RETRYABLE';
+}
+
+class CoachAdvice {
+  const CoachAdvice({
+    required this.answer,
+    required this.rationale,
+    required this.safetyNotices,
+  });
+
+  static CoachAdvice? tryParse(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final answer = decoded['answer'];
+      if (answer is! String || answer.trim().isEmpty) return null;
+      return CoachAdvice(
+        answer: answer.trim(),
+        rationale: _stringList(decoded['rationale']),
+        safetyNotices: _stringList(decoded['safety_notices']),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static List<String> _stringList(Object? value) {
+    if (value is! List<dynamic>) return const <String>[];
+    return value.whereType<String>().map((item) => item.trim()).where(
+      (item) {
+        return item.isNotEmpty;
+      },
+    ).toList(growable: false);
+  }
+
+  final String answer;
+  final List<String> rationale;
+  final List<String> safetyNotices;
+}
+
 class AdminAgentRunItem {
   const AdminAgentRunItem({
     required this.runId,
@@ -273,6 +378,128 @@ class AdminAgentRunPage {
   final int totalElements;
 }
 
+class TrainingPlanDayPreview {
+  const TrainingPlanDayPreview({
+    required this.day,
+    required this.sessionType,
+    required this.durationMinutes,
+    required this.intensity,
+    this.notes,
+  });
+
+  final int day;
+  final String sessionType;
+  final int durationMinutes;
+  final String intensity;
+  final String? notes;
+}
+
+class TrainingPlanPreview {
+  const TrainingPlanPreview({
+    required this.title,
+    required this.goal,
+    required this.days,
+  });
+
+  static const _topLevelFields = <String>{'title', 'goal', 'days'};
+  static const _dayFields = <String>{
+    'day',
+    'session_type',
+    'duration_minutes',
+    'intensity',
+    'notes',
+  };
+  static const _requiredDayFields = <String>{
+    'day',
+    'session_type',
+    'duration_minutes',
+    'intensity',
+  };
+  static const _knownIntensities = <String>{'LOW', 'MODERATE', 'HIGH'};
+
+  static TrainingPlanPreview? tryParse(String raw) {
+    if (raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic> ||
+          decoded.keys.toSet().difference(_topLevelFields).isNotEmpty ||
+          !_topLevelFields.every(decoded.containsKey)) {
+        return null;
+      }
+
+      final title = decoded['title'];
+      final goal = decoded['goal'];
+      final rawDays = decoded['days'];
+      if (!_validRequiredString(title, 120) ||
+          !_validRequiredString(goal, 300) ||
+          rawDays is! List<dynamic> ||
+          rawDays.isEmpty ||
+          rawDays.length > 28) {
+        return null;
+      }
+
+      final days = <TrainingPlanDayPreview>[];
+      for (final rawDay in rawDays) {
+        if (rawDay is! Map<String, dynamic> ||
+            rawDay.keys.toSet().difference(_dayFields).isNotEmpty ||
+            !_requiredDayFields.every(rawDay.containsKey)) {
+          return null;
+        }
+
+        final day = rawDay['day'];
+        final sessionType = rawDay['session_type'];
+        final durationMinutes = rawDay['duration_minutes'];
+        final intensity = rawDay['intensity'];
+        final notes = rawDay['notes'];
+        if (day is! int ||
+            day < 1 ||
+            day > 28 ||
+            !_validRequiredString(sessionType, 80) ||
+            durationMinutes is! int ||
+            durationMinutes < 5 ||
+            durationMinutes > 180 ||
+            intensity is! String ||
+            !_knownIntensities.contains(intensity) ||
+            !_validOptionalString(notes, 300)) {
+          return null;
+        }
+
+        days.add(
+          TrainingPlanDayPreview(
+            day: day,
+            sessionType: sessionType as String,
+            durationMinutes: durationMinutes,
+            intensity: intensity,
+            notes: notes as String?,
+          ),
+        );
+      }
+
+      return TrainingPlanPreview(
+        title: title as String,
+        goal: goal as String,
+        days: List.unmodifiable(days),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static bool _validRequiredString(Object? value, int maxLength) {
+    return value is String &&
+        value.trim().isNotEmpty &&
+        value.length <= maxLength;
+  }
+
+  static bool _validOptionalString(Object? value, int maxLength) {
+    return value == null || (value is String && value.length <= maxLength);
+  }
+
+  final String title;
+  final String goal;
+  final List<TrainingPlanDayPreview> days;
+}
+
 class AgentProposalItem {
   const AgentProposalItem({
     required this.proposalId,
@@ -283,7 +510,8 @@ class AgentProposalItem {
     this.decidedByUserId,
     this.decidedAt,
     this.decisionNote,
-  });
+    String? expiresAt,
+  }) : _expiresAt = expiresAt;
 
   factory AgentProposalItem.fromJson(Map<String, dynamic> json) {
     return AgentProposalItem(
@@ -295,6 +523,7 @@ class AgentProposalItem {
       decidedByUserId: json['decidedByUserId'] as int?,
       decidedAt: json['decidedAt'] as String?,
       decisionNote: json['decisionNote'] as String?,
+      expiresAt: json['expiresAt'] as String?,
     );
   }
 
@@ -306,6 +535,44 @@ class AgentProposalItem {
   final int? decidedByUserId;
   final String? decidedAt;
   final String? decisionNote;
+  final String? _expiresAt;
+
+  DateTime? get expiresAt {
+    final raw = _expiresAt;
+    if (raw == null || !RegExp(r'(?:Z|[+-]\d{2}:\d{2})$').hasMatch(raw)) {
+      return null;
+    }
+    return DateTime.tryParse(raw)?.toUtc();
+  }
+
+  TrainingPlanPreview? get trainingPlanPreview {
+    return TrainingPlanPreview.tryParse(payloadJson);
+  }
+
+  bool isExpiredAt(DateTime now) {
+    final expiration = expiresAt;
+    return expiration == null || !expiration.isAfter(now.toUtc());
+  }
+}
+
+class AgentProposalDecision {
+  const AgentProposalDecision({
+    required this.proposalId,
+    required this.status,
+    this.affectedResourceId,
+  });
+
+  factory AgentProposalDecision.fromJson(Map<String, dynamic> json) {
+    return AgentProposalDecision(
+      proposalId: json['proposalId'] as int,
+      status: json['status'] as String,
+      affectedResourceId: json['affectedResourceId'] as int?,
+    );
+  }
+
+  final int proposalId;
+  final String status;
+  final int? affectedResourceId;
 }
 
 class AgentToolAuditItem {

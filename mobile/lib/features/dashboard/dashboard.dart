@@ -48,6 +48,17 @@ class _DashboardPageState extends State<DashboardPage> {
     return widget.api.targetReminders(token: widget.session.token);
   }
 
+  void _openCoach() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => CoachPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
   Future<void> _deleteTarget(SportTarget target) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -379,6 +390,15 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: _QuickAction(
+                    icon: Icons.auto_awesome,
+                    label: 'AI 教练',
+                    onTap: _openCoach,
+                  ),
                 ),
               ],
             ),

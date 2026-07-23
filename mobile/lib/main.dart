@@ -20,6 +20,7 @@ import 'sync_queue.dart';
 part 'features/workout/workout.dart';
 part 'features/admin/admin.dart';
 part 'features/auth/auth.dart';
+part 'features/coach/coach.dart';
 part 'features/dashboard/dashboard.dart';
 part 'features/stats/stats.dart';
 part 'features/social/social.dart';
