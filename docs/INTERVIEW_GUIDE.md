@@ -39,19 +39,9 @@
 
 ### 系统结构
 
-```text
-Flutter App
-  ├─ 页面状态、权限、定位、传感器、本地通知
-  ├─ API Client
-  └─ SharedPreferences 离线队列
-          │ HTTP / Authorization
-          ▼
-Nginx ── Spring Security Filter
-          │
-          ▼
-Controller → Service → Repository → MySQL
-                    └─────────────→ Redis（缓存失效）
-```
+Flutter App 经 Nginx 调用 Spring Boot；Spring 负责鉴权、业务事务和 Agent 状态机，MySQL 保存权威状态，Redis Stream 将已提交的 Agent Run 异步交给 Python Worker。Worker 通过短期委托令牌读取 Spring 白名单证据，由 DeepSeek 生成结构化建议；训练计划或申诉结果仍须用户或管理员确认后由 Spring 写入。
+
+完整拓扑、部署边界与双 Agent 时序见 [系统架构与 Agent 时序](ARCHITECTURE.md)。这里不复制第二份图，避免讲解材料与代码路径漂移。
 
 ### 一次运动
 
@@ -193,7 +183,7 @@ Android Release 曾因 R8 删除 Gson `TypeToken` 泛型签名而出现 `Missing
 
 不看文档完成以下任务：
 
-1. 画出 Flutter、Nginx、Backend、MySQL、Redis 的架构图。
+1. 画出 Flutter、Nginx、Spring、MySQL、Redis Stream、Worker、DeepSeek，并说明工具审计和人工确认边界。
 2. 从 `start` 讲到 `finish`，说明异常、目标和积分在哪里发生。
 3. 手写 Haversine 的变量含义，并解释 100m 精度和 8m/s 阈值。
 4. 解释离线队列与服务端幂等为什么缺一不可。
