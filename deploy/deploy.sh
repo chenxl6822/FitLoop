@@ -5,7 +5,7 @@
 # 第一次部署和后续更新都执行这个脚本
 # =============================================
 
-set -e
+set -euo pipefail
 
 cd "$(dirname "$0")/.."
 echo "📍 工作目录: $(pwd)"
@@ -21,16 +21,16 @@ log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # --- 检查必要文件 ---
-ENV_FILE=".env"
+ENV_FILE="${FITLOOP_ENV_FILE:-.env}"
 if [ ! -f "$ENV_FILE" ]; then
-    if [ -f "deploy/.env.production" ]; then
+    if [ "$ENV_FILE" = ".env" ] && [ -f "deploy/.env.production" ]; then
         log_warn ".env 不存在，从 deploy/.env.production 复制"
-        cp deploy/.env.production .env
+        cp deploy/.env.production "$ENV_FILE"
         log_error "请先编辑 .env 文件，填入真实的密码和密钥！"
         log_error "  执行: nano .env"
         exit 1
     else
-        log_error "找不到 .env 文件！"
+        log_error "找不到环境文件: $ENV_FILE"
         log_error "请先创建: cp deploy/.env.example .env"
         exit 1
     fi
@@ -137,24 +137,72 @@ fi
 
 # --- 构建并启动 ---
 log_info "正在构建和启动服务..."
-$COMPOSE_CMD $COMPOSE_ARGS --env-file .env up -d --build
+$COMPOSE_CMD $COMPOSE_ARGS --env-file "$ENV_FILE" up -d --build
 
 # --- 等待后端就绪 ---
+BACKEND_HEALTH_URL="${FITLOOP_BACKEND_HEALTH_URL:-http://localhost:8080/actuator/health}"
+HEALTH_ATTEMPTS="${FITLOOP_DEPLOY_HEALTH_ATTEMPTS:-30}"
+HEALTH_INTERVAL_SECONDS="${FITLOOP_DEPLOY_HEALTH_INTERVAL_SECONDS:-2}"
+
+if ! [[ "${HEALTH_ATTEMPTS}" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "FITLOOP_DEPLOY_HEALTH_ATTEMPTS 必须是正整数"
+    exit 1
+fi
+if ! [[ "${HEALTH_INTERVAL_SECONDS}" =~ ^[0-9]+$ ]]; then
+    log_error "FITLOOP_DEPLOY_HEALTH_INTERVAL_SECONDS 必须是非负整数"
+    exit 1
+fi
+
 log_info "等待后端启动..."
-for i in $(seq 1 30); do
-    if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
+BACKEND_READY=false
+for i in $(seq 1 "${HEALTH_ATTEMPTS}"); do
+    if curl -sf "${BACKEND_HEALTH_URL}" > /dev/null 2>&1; then
         echo ""
         log_info "✅ 后端启动成功！"
+        BACKEND_READY=true
         break
     fi
     echo -n "."
-    sleep 2
+    if [ "${HEALTH_INTERVAL_SECONDS}" -gt 0 ]; then
+        sleep "${HEALTH_INTERVAL_SECONDS}"
+    fi
 done
 
-if ! curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
+if [ "${BACKEND_READY}" = false ]; then
     echo ""
-    log_warn "⚠️  后端未在 60 秒内就绪，请检查日志："
-    log_info "  $COMPOSE_CMD $COMPOSE_ARGS --env-file $ENV_FILE logs -f backend"
+    log_error "后端未在健康检查窗口内就绪，部署判定失败"
+    $COMPOSE_CMD $COMPOSE_ARGS --env-file "$ENV_FILE" ps || true
+    $COMPOSE_CMD $COMPOSE_ARGS --env-file "$ENV_FILE" \
+        logs --tail=100 backend || true
+    exit 1
+fi
+
+# --- 等待公网入口就绪 ---
+PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-http://localhost}"
+PUBLIC_HEALTH_URL="${FITLOOP_PUBLIC_HEALTH_URL:-${PUBLIC_BASE_URL%/}/actuator/health}"
+
+log_info "等待公网入口启动..."
+PUBLIC_READY=false
+for i in $(seq 1 "${HEALTH_ATTEMPTS}"); do
+    if curl -sf "${PUBLIC_HEALTH_URL}" > /dev/null 2>&1; then
+        echo ""
+        log_info "✅ 公网入口启动成功！"
+        PUBLIC_READY=true
+        break
+    fi
+    echo -n "."
+    if [ "${HEALTH_INTERVAL_SECONDS}" -gt 0 ]; then
+        sleep "${HEALTH_INTERVAL_SECONDS}"
+    fi
+done
+
+if [ "${PUBLIC_READY}" = false ]; then
+    echo ""
+    log_error "公网入口未在健康检查窗口内就绪，部署判定失败"
+    $COMPOSE_CMD $COMPOSE_ARGS --env-file "$ENV_FILE" ps || true
+    $COMPOSE_CMD $COMPOSE_ARGS --env-file "$ENV_FILE" \
+        logs --tail=100 nginx || true
+    exit 1
 fi
 
 # --- 清理旧镜像 ---

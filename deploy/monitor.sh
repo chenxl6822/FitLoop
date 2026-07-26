@@ -9,11 +9,13 @@ set -e
 
 cd "$(dirname "$0")/.."
 
+ENV_FILE="${FITLOOP_ENV_FILE:-.env}"
+
 read_env_value() {
-    sed -n "s/^${1}=//p" .env | tail -n 1 | tr -d '\r'
+    sed -n "s/^${1}=//p" "${ENV_FILE}" | tail -n 1 | tr -d '\r'
 }
 
-if [ -f .env ]; then
+if [ -f "${ENV_FILE}" ]; then
     FITLOOP_AGENT_ENABLED="${FITLOOP_AGENT_ENABLED:-$(read_env_value FITLOOP_AGENT_ENABLED)}"
     FITLOOP_PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-$(read_env_value FITLOOP_PUBLIC_BASE_URL)}"
 fi
@@ -59,28 +61,49 @@ fi
 # --- Docker 容器状态 ---
 echo ""
 echo "--- Docker 容器 ---"
-if command -v docker &> /dev/null; then
-    for SERVICE in fitloop-mysql fitloop-redis fitloop-backend fitloop-agent-service fitloop-nginx; do
-        STATUS=$(docker ps --filter "name=${SERVICE}" --format "{{.Status}}" 2>/dev/null || echo "未运行")
-        if echo "${STATUS}" | grep -q "Up"; then
+CONTAINER_ALERTS=""
+EXPECTED_SERVICES=(
+    fitloop-mysql
+    fitloop-redis
+    fitloop-backend
+    fitloop-nginx
+)
+if [ "${FITLOOP_AGENT_ENABLED:-true}" = "true" ]; then
+    EXPECTED_SERVICES+=(fitloop-agent-service)
+fi
+
+if ! command -v docker &> /dev/null; then
+    CONTAINER_ALERTS="${CONTAINER_ALERTS}DOCKER:UNAVAILABLE "
+    echo "  Docker 未安装"
+elif ! docker ps --format "{{.Names}}" > /dev/null 2>&1; then
+    CONTAINER_ALERTS="${CONTAINER_ALERTS}DOCKER:UNAVAILABLE "
+    echo "  Docker 不可用"
+else
+    for SERVICE in "${EXPECTED_SERVICES[@]}"; do
+        STATUS=$(docker ps --filter "name=${SERVICE}" --format "{{.Status}}" 2>/dev/null || true)
+        if [[ "${STATUS}" == Up* ]] &&
+           { [[ "${STATUS}" != *"("* ]] || [[ "${STATUS}" == *"(healthy)" ]]; }; then
             UPTIME=$(echo "${STATUS}" | sed 's/Up //')
             printf "  %-20s ✅ %s\n" "${SERVICE}:" "${UPTIME}"
+        elif [[ "${STATUS}" == Up* ]]; then
+            CONTAINER_ALERTS="${CONTAINER_ALERTS}CONTAINER:${SERVICE}:UNHEALTHY "
+            printf "  %-20s ❌ 不健康\n" "${SERVICE}:"
+        elif docker ps -a --filter "name=${SERVICE}" --format "{{.Names}}" 2>/dev/null | grep -q "${SERVICE}"; then
+            CONTAINER_ALERTS="${CONTAINER_ALERTS}CONTAINER:${SERVICE}:DOWN "
+            printf "  %-20s ❌ 已停止\n" "${SERVICE}:"
         else
-            if docker ps -a --filter "name=${SERVICE}" --format "{{.Names}}" 2>/dev/null | grep -q "${SERVICE}"; then
-                printf "  %-20s ❌ 已停止\n" "${SERVICE}:"
-            else
-                printf "  %-20s ➖ 未创建\n" "${SERVICE}:"
-            fi
+            CONTAINER_ALERTS="${CONTAINER_ALERTS}CONTAINER:${SERVICE}:DOWN "
+            printf "  %-20s ➖ 未创建\n" "${SERVICE}:"
         fi
     done
-else
-    echo "  Docker 未安装"
 fi
 
 # --- API 与 Agent 健康检查 ---
 echo ""
 echo "--- API 健康 ---"
 PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-http://localhost}"
+BACKEND_OK=false
+PUBLIC_OK=false
 for ENTRY in "Backend|http://localhost:8080/actuator/health" \
              "Public|${PUBLIC_BASE_URL%/}/actuator/health"; do
     NAME="${ENTRY%%|*}"
@@ -88,6 +111,11 @@ for ENTRY in "Backend|http://localhost:8080/actuator/health" \
     RESP=$(curl -sf -w "%{http_code}" -o /dev/null "${URL}" 2>/dev/null || true)
     if [ "${RESP}" = "200" ]; then
         printf "  %-20s ✅ %s\n" "${NAME}:" "响应 200"
+        if [ "${NAME}" = "Backend" ]; then
+            BACKEND_OK=true
+        else
+            PUBLIC_OK=true
+        fi
     else
         printf "  %-20s ❌ %s\n" "${NAME}:" "无响应 (${RESP})"
     fi
@@ -143,6 +171,13 @@ if [ "$ALERT_MODE" = true ]; then
     if [ "${DISK_PCT}" -gt "${DISK_THRESHOLD}" ]; then
         ALERTS="${ALERTS}DISK:${DISK_PCT}% "
     fi
+    ALERTS="${ALERTS}${CONTAINER_ALERTS}"
+    if [ "${BACKEND_OK}" = false ]; then
+        ALERTS="${ALERTS}BACKEND:UNHEALTHY "
+    fi
+    if [ "${PUBLIC_OK}" = false ]; then
+        ALERTS="${ALERTS}PUBLIC:UNHEALTHY "
+    fi
     if [ "${AGENT_READY}" = false ]; then
         ALERTS="${ALERTS}AGENT:NOT_READY "
     fi
@@ -150,7 +185,7 @@ if [ "$ALERT_MODE" = true ]; then
         ALERTS="${ALERTS}TLS:CERT "
     fi
     if [ -n "${ALERTS}" ]; then
-        echo "[ALERT] 资源告警: ${ALERTS}"
+        echo "[ALERT] 健康告警: ${ALERTS}"
         exit 2
     fi
 fi
