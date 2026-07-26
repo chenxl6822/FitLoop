@@ -35,7 +35,7 @@ FitLoop/
 │   └── lib/features/     # 认证、首页、运动、统计、社交、AI 教练、个人中心、后台管理
 ├── agent-service/        # Python Agent worker 与内部健康检查
 ├── deploy/               # Compose、Nginx、TLS、发布与监控脚本
-├── docs/                 # 部署和真机冒烟清单
+├── docs/                 # 架构、演示、部署与验证文档
 └── .github/workflows/    # CI 门禁
 ```
 
@@ -141,6 +141,7 @@ APK 二进制不再进入 Git。发布产物必须附带 SHA-256，服务器通�
 
 ## 文档
 
+- [系统架构与 Agent 时序](docs/ARCHITECTURE.md)
 - [部署与运维指南](docs/DEPLOYMENT.md)
 - [Agent 可重复演示](docs/AGENT_DEMO.md)
 - [面试讲解指南](docs/INTERVIEW_GUIDE.md)
