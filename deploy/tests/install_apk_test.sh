@@ -21,6 +21,7 @@ LOCK_RELEASE_FILE=""
 SYNC_FAIL_CALLS=""
 SYNC_COUNTER_FILE=""
 SYNC_LOG_FILE=""
+MV_FAIL_PARENT=""
 
 COMPATIBILITY_SIGNER="69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
 WRONG_SIGNER="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -39,6 +40,10 @@ cleanup() {
             return 1
             ;;
     esac
+    find -P "${TEST_ROOT}" \
+        -type d \
+        -exec chmod u+rwx -- {} + \
+        2>/dev/null || true
     rm -rf -- "${TEST_ROOT}"
 }
 trap cleanup EXIT INT TERM
@@ -232,6 +237,7 @@ run_install() {
             SYNC_FAIL_CALLS="${SYNC_FAIL_CALLS}" \
             SYNC_COUNTER_FILE="${SYNC_COUNTER_FILE}" \
             SYNC_LOG_FILE="${SYNC_LOG_FILE}" \
+            MV_FAIL_PARENT="${MV_FAIL_PARENT}" \
             timeout 5 bash deploy/install-apk.sh "$@"
     ) > "${case_dir}/output.log" 2>&1
     INSTALL_EXIT=$?
@@ -298,6 +304,40 @@ SCRIPT
     TEST_COMMAND_PATH="${fake_bin}:${ORIGINAL_PATH}"
 }
 
+configure_finalize_mv_failure() {
+    local case_dir="$1"
+    local fail_parent="$2"
+    local fake_bin="${case_dir}/bin"
+
+    case "${fail_parent}" in
+        releases|states)
+            ;;
+        *)
+            fail "unsupported finalize mv failure parent: ${fail_parent}"
+            ;;
+    esac
+
+    mkdir -p "${fake_bin}"
+    cat > "${fake_bin}/mv" <<'SCRIPT'
+#!/bin/bash
+last_argument=""
+for argument in "$@"; do
+    last_argument="${argument}"
+done
+last_argument="${last_argument%/}"
+case "${last_argument}" in
+    */deploy/apk/${MV_FAIL_PARENT}/*)
+        : > "${FAIL_MARKER}"
+        exit 73
+        ;;
+esac
+exec "${REAL_MV}" "$@"
+SCRIPT
+    chmod +x "${fake_bin}/mv"
+    TEST_COMMAND_PATH="${fake_bin}:${ORIGINAL_PATH}"
+    MV_FAIL_PARENT="${fail_parent}"
+}
+
 configure_signal_after_active_mv() {
     local case_dir="$1"
     local fake_bin="${case_dir}/bin"
@@ -330,6 +370,7 @@ reset_fault_injection() {
     SYNC_FAIL_CALLS=""
     SYNC_COUNTER_FILE=""
     SYNC_LOG_FILE=""
+    MV_FAIL_PARENT=""
 }
 
 active_snapshot() {
@@ -410,6 +451,40 @@ publication_tree_snapshot() {
     )
 }
 
+assert_no_managed_staging() {
+    local case_name="$1"
+    local case_dir="$2"
+    local apk_root="${case_dir}/fixture/deploy/apk"
+    local staging_path
+
+    if [ ! -d "${apk_root}/releases" ] ||
+       [ -L "${apk_root}/releases" ] ||
+       [ ! -d "${apk_root}/states" ] ||
+       [ -L "${apk_root}/states" ]
+    then
+        fail "${case_name}: managed release/state parents are unavailable"
+    fi
+    if ! staging_path="$(
+        find \
+            "${apk_root}/releases" \
+            "${apk_root}/states" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            \( \
+                -name '.release-staging.*' -o \
+                -name '.state-staging.*' \
+            \) \
+            -print \
+            -quit \
+            2>/dev/null
+    )"; then
+        fail "${case_name}: could not inspect managed staging paths"
+    fi
+    if [ -n "${staging_path}" ]; then
+        fail "${case_name}: managed staging path was not cleaned: ${staging_path}"
+    fi
+}
+
 assert_failure_unchanged() {
     local case_name="$1"
     local case_dir="$2"
@@ -436,6 +511,7 @@ assert_failure_unchanged() {
         "${case_dir}/output.log" >/dev/null; then
         fail "${case_name}: failure path printed a success message"
     fi
+    assert_no_managed_staging "${case_name}" "${case_dir}"
     pass "${case_name}"
 }
 
@@ -482,6 +558,7 @@ assert_active_layout() {
     elif [ -e "${state_dir}/previous" ] || [ -L "${state_dir}/previous" ]; then
         fail "${case_name}: first install unexpectedly created previous"
     fi
+    assert_no_managed_staging "${case_name}" "${case_dir}"
 }
 
 assert_published_bytes() {
@@ -853,6 +930,66 @@ if [ ! -d "${active_directory_dir}/fixture/deploy/apk/active" ] ||
 fi
 pass "active-is-directory"
 
+release_finalize_failure_dir="${TEST_ROOT}/release-finalize-failure"
+make_existing_case "${release_finalize_failure_dir}"
+release_finalize_before="$(
+    active_snapshot "${release_finalize_failure_dir}"
+)"
+release_finalize_sha="$(
+    cat "${release_finalize_failure_dir}/new.sha256"
+)"
+configure_finalize_mv_failure \
+    "${release_finalize_failure_dir}" \
+    "releases"
+run_install "${release_finalize_failure_dir}" \
+    "file://${release_finalize_failure_dir}/source/app-release.apk" \
+    "${release_finalize_sha}" \
+    "file://${release_finalize_failure_dir}/source/version.json" || true
+reset_fault_injection
+if [ ! -f "${release_finalize_failure_dir}/mv-failed-once" ]; then
+    cat "${release_finalize_failure_dir}/output.log" >&2
+    fail "release-finalize-move-failure: injected mv failure did not run"
+fi
+if ! grep -F \
+    'Could not finalize content-addressed release directory' \
+    "${release_finalize_failure_dir}/output.log" >/dev/null; then
+    cat "${release_finalize_failure_dir}/output.log" >&2
+    fail "release-finalize-move-failure: failure was not logged"
+fi
+assert_failure_unchanged \
+    "release-finalize-move-failure" \
+    "${release_finalize_failure_dir}" \
+    "${release_finalize_before}"
+pass "release-finalize-move-failure-marker-and-log"
+
+state_finalize_failure_dir="${TEST_ROOT}/state-finalize-failure"
+make_existing_case "${state_finalize_failure_dir}"
+state_finalize_before="$(active_snapshot "${state_finalize_failure_dir}")"
+state_finalize_sha="$(cat "${state_finalize_failure_dir}/new.sha256")"
+configure_finalize_mv_failure \
+    "${state_finalize_failure_dir}" \
+    "states"
+run_install "${state_finalize_failure_dir}" \
+    "file://${state_finalize_failure_dir}/source/app-release.apk" \
+    "${state_finalize_sha}" \
+    "file://${state_finalize_failure_dir}/source/version.json" || true
+reset_fault_injection
+if [ ! -f "${state_finalize_failure_dir}/mv-failed-once" ]; then
+    cat "${state_finalize_failure_dir}/output.log" >&2
+    fail "state-finalize-move-failure: injected mv failure did not run"
+fi
+if ! grep -F \
+    'Could not finalize release state' \
+    "${state_finalize_failure_dir}/output.log" >/dev/null; then
+    cat "${state_finalize_failure_dir}/output.log" >&2
+    fail "state-finalize-move-failure: failure was not logged"
+fi
+assert_failure_unchanged \
+    "state-finalize-move-failure" \
+    "${state_finalize_failure_dir}" \
+    "${state_finalize_before}"
+pass "state-finalize-move-failure-marker-and-log"
+
 activation_failure_dir="${TEST_ROOT}/activation-failure"
 make_existing_case "${activation_failure_dir}"
 activation_before="$(active_snapshot "${activation_failure_dir}")"
@@ -881,11 +1018,8 @@ run_install "${activation_failure_dir}" \
     "${activation_sha}" \
     "file://${activation_failure_dir}/source/version.json" || true
 TEST_COMMAND_PATH="${ORIGINAL_PATH}"
-assert_failure_unchanged \
-    "active-link-move-failure" \
-    "${activation_failure_dir}" \
-    "${activation_before}"
 if [ ! -f "${activation_failure_dir}/mv-failed-once" ]; then
+    cat "${activation_failure_dir}/output.log" >&2
     fail "active-link-move-failure: injected mv failure did not run"
 fi
 if ! grep -F \
@@ -894,6 +1028,10 @@ if ! grep -F \
     cat "${activation_failure_dir}/output.log" >&2
     fail "active-link-move-failure: rollback/activation failure was not logged"
 fi
+assert_failure_unchanged \
+    "active-link-move-failure" \
+    "${activation_failure_dir}" \
+    "${activation_before}"
 pass "active-link-move-failure-marker-and-log"
 
 release_sync_dir="${TEST_ROOT}/release-sync-failure"

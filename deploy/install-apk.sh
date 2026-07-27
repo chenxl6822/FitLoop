@@ -196,7 +196,84 @@ fi
 TMP_DIR="$(mktemp -d "${APK_DIR}/.install.XXXXXX")"
 chmod 0700 -- "${TMP_DIR}"
 
+MANAGED_STAGING_DIRS=()
+CREATED_STAGING_DIR=""
+
+create_managed_staging() {
+    local staging_kind="$1"
+    local staging_template
+
+    case "${staging_kind}" in
+        release)
+            staging_template="${RELEASES_DIR}/.release-staging.XXXXXX"
+            ;;
+        state)
+            staging_template="${STATES_DIR}/.state-staging.XXXXXX"
+            ;;
+        *)
+            echo "Unknown managed staging kind: ${staging_kind}" >&2
+            return 1
+            ;;
+    esac
+
+    if ! CREATED_STAGING_DIR="$(
+        mktemp -d "${staging_template}"
+    )"; then
+        return 1
+    fi
+    MANAGED_STAGING_DIRS+=("${CREATED_STAGING_DIR}")
+}
+
+cleanup_managed_staging() {
+    local staging_directory="$1"
+    local staging_parent
+    local staging_name
+
+    staging_parent="${staging_directory%/*}"
+    staging_name="${staging_directory##*/}"
+    if ! {
+        [ "${staging_parent}" = "${RELEASES_DIR}" ] &&
+        [[ "${staging_name}" = .release-staging.?* ]]
+    } && ! {
+        [ "${staging_parent}" = "${STATES_DIR}" ] &&
+        [[ "${staging_name}" = .state-staging.?* ]]
+    }; then
+        echo "Refusing to clean unexpected managed staging path: ${staging_directory}" >&2
+        return 1
+    fi
+
+    if [ ! -e "${staging_directory}" ] &&
+       [ ! -L "${staging_directory}" ]
+    then
+        return 0
+    fi
+    if [ -L "${staging_directory}" ] ||
+       [ ! -d "${staging_directory}" ]
+    then
+        echo "Refusing to clean unsafe managed staging path: ${staging_directory}" >&2
+        return 1
+    fi
+    if [ "$(stat -c '%u' "${staging_directory}")" != "${CURRENT_PROCESS_UID}" ]; then
+        echo "Refusing to clean managed staging owned by another user: ${staging_directory}" >&2
+        return 1
+    fi
+    if ! chmod u+rwx -- "${staging_directory}"; then
+        echo "Could not restore managed staging permissions: ${staging_directory}" >&2
+        return 1
+    fi
+    if ! rm -rf -- "${staging_directory}"; then
+        echo "Could not remove managed staging directory: ${staging_directory}" >&2
+        return 1
+    fi
+}
+
 cleanup() {
+    local staging_directory
+
+    for staging_directory in "${MANAGED_STAGING_DIRS[@]}"; do
+        cleanup_managed_staging "${staging_directory}" || true
+    done
+
     if [ -n "${TMP_DIR:-}" ]; then
         case "${TMP_DIR}" in
             "${APK_DIR}"/.install.*)
@@ -953,9 +1030,10 @@ perform_legacy_import() {
             fail "Existing managed legacy release is invalid or differs from the trusted flat bundle"
         fi
     else
-        import_release_staging="${TMP_DIR}/legacy-release"
-        mkdir -- "${import_release_staging}"
-        chmod 0755 -- "${import_release_staging}"
+        if ! create_managed_staging release; then
+            fail "Could not create managed legacy release staging"
+        fi
+        import_release_staging="${CREATED_STAGING_DIR}"
         cp -- \
             "${APK_DIR}/app-release.apk" \
             "${import_release_staging}/app-release.apk"
@@ -999,9 +1077,10 @@ perform_legacy_import() {
         fail "Generated legacy import state already exists: ${import_state_id}"
     fi
 
-    import_state_staging="${TMP_DIR}/legacy-state"
-    mkdir -- "${import_state_staging}"
-    chmod 0755 -- "${import_state_staging}"
+    if ! create_managed_staging state; then
+        fail "Could not create managed legacy state staging"
+    fi
+    import_state_staging="${CREATED_STAGING_DIR}"
     if ! ln -s -- "../../releases/${import_sha256}" \
         "${import_state_staging}/current"
     then
@@ -1119,9 +1198,10 @@ perform_rollback() {
             fail "Generated rollback state already exists: ${rollback_state_id}"
         fi
 
-        rollback_state_staging="${TMP_DIR}/rollback-state"
-        mkdir -- "${rollback_state_staging}"
-        chmod 0755 -- "${rollback_state_staging}"
+        if ! create_managed_staging state; then
+            fail "Could not create rollback state staging"
+        fi
+        rollback_state_staging="${CREATED_STAGING_DIR}"
         ln -s -- "../../releases/${rollback_sha256}" \
             "${rollback_state_staging}/current"
         if [ "${preserve_failed_current}" = true ]; then
@@ -1218,9 +1298,10 @@ if [ -e "${RELEASE_DIR}" ] || [ -L "${RELEASE_DIR}" ]; then
         fail "Existing content-addressed release is invalid or differs from the candidate"
     fi
 else
-    RELEASE_STAGING="${TMP_DIR}/release"
-    mkdir -- "${RELEASE_STAGING}"
-    chmod 0755 -- "${RELEASE_STAGING}"
+    if ! create_managed_staging release; then
+        fail "Could not create content-addressed release staging"
+    fi
+    RELEASE_STAGING="${CREATED_STAGING_DIR}"
     cp -- "${TMP_APK}" "${RELEASE_STAGING}/app-release.apk"
     cp -- "${TMP_METADATA}" "${RELEASE_STAGING}/version.json"
     printf '%s  app-release.apk\n' "${ACTUAL_SHA256}" \
@@ -1274,9 +1355,10 @@ if [ -e "${STATE_DIR}" ] || [ -L "${STATE_DIR}" ]; then
     fail "Generated release state already exists: ${STATE_ID}"
 fi
 
-STATE_STAGING="${TMP_DIR}/state"
-mkdir -- "${STATE_STAGING}"
-chmod 0755 -- "${STATE_STAGING}"
+if ! create_managed_staging state; then
+    fail "Could not create release state staging"
+fi
+STATE_STAGING="${CREATED_STAGING_DIR}"
 if ! ln -s -- \
     "../../releases/${ACTUAL_SHA256}" \
     "${STATE_STAGING}/current"
