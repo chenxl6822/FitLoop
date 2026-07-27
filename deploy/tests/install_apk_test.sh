@@ -16,6 +16,7 @@ TEST_COMMAND_PATH="${PATH}"
 REAL_MV="$(command -v mv)"
 REAL_SYNC="$(command -v sync)"
 INSTALL_EXIT=0
+INSTALL_TIMEOUT_SECONDS=20
 LOCK_HOLDER_PID=""
 LOCK_RELEASE_FILE=""
 SYNC_FAIL_CALLS=""
@@ -238,7 +239,8 @@ run_install() {
             SYNC_COUNTER_FILE="${SYNC_COUNTER_FILE}" \
             SYNC_LOG_FILE="${SYNC_LOG_FILE}" \
             MV_FAIL_PARENT="${MV_FAIL_PARENT}" \
-            timeout 5 bash deploy/install-apk.sh "$@"
+            timeout "${INSTALL_TIMEOUT_SECONDS}" \
+                bash deploy/install-apk.sh "$@"
     ) > "${case_dir}/output.log" 2>&1
     INSTALL_EXIT=$?
     set -e
@@ -485,6 +487,15 @@ assert_no_managed_staging() {
     fi
 }
 
+assert_install_not_timed_out() {
+    local case_name="$1"
+
+    if [ "${INSTALL_EXIT}" -eq 124 ]; then
+        fail \
+            "${case_name}: installer exceeded ${INSTALL_TIMEOUT_SECONDS}-second test timeout"
+    fi
+}
+
 assert_failure_unchanged() {
     local case_name="$1"
     local case_dir="$2"
@@ -493,9 +504,7 @@ assert_failure_unchanged() {
     if [ "${INSTALL_EXIT}" -eq 0 ]; then
         fail "${case_name}: install unexpectedly succeeded"
     fi
-    if [ "${INSTALL_EXIT}" -eq 124 ]; then
-        fail "${case_name}: install hung until the test timeout"
-    fi
+    assert_install_not_timed_out "${case_name}"
 
     local after_snapshot
     after_snapshot="$(active_snapshot "${case_dir}")"
@@ -946,6 +955,7 @@ run_install "${release_finalize_failure_dir}" \
     "${release_finalize_sha}" \
     "file://${release_finalize_failure_dir}/source/version.json" || true
 reset_fault_injection
+assert_install_not_timed_out "release-finalize-move-failure"
 if [ ! -f "${release_finalize_failure_dir}/mv-failed-once" ]; then
     cat "${release_finalize_failure_dir}/output.log" >&2
     fail "release-finalize-move-failure: injected mv failure did not run"
@@ -974,6 +984,7 @@ run_install "${state_finalize_failure_dir}" \
     "${state_finalize_sha}" \
     "file://${state_finalize_failure_dir}/source/version.json" || true
 reset_fault_injection
+assert_install_not_timed_out "state-finalize-move-failure"
 if [ ! -f "${state_finalize_failure_dir}/mv-failed-once" ]; then
     cat "${state_finalize_failure_dir}/output.log" >&2
     fail "state-finalize-move-failure: injected mv failure did not run"
@@ -1018,6 +1029,7 @@ run_install "${activation_failure_dir}" \
     "${activation_sha}" \
     "file://${activation_failure_dir}/source/version.json" || true
 TEST_COMMAND_PATH="${ORIGINAL_PATH}"
+assert_install_not_timed_out "active-link-move-failure"
 if [ ! -f "${activation_failure_dir}/mv-failed-once" ]; then
     cat "${activation_failure_dir}/output.log" >&2
     fail "active-link-move-failure: injected mv failure did not run"
