@@ -51,6 +51,11 @@ deploy/apk/*.apk
 deploy/apk/*.apk.sha256
 deploy/apk/version.json
 deploy/apk/*.previous
+deploy/apk/releases/
+deploy/apk/states/
+deploy/apk/active
+deploy/apk/.install.lock
+deploy/apk/.install.*
 deploy/certbot-www/*
 !deploy/certbot-www/.gitkeep
 

@@ -116,7 +116,18 @@ Move-Item -Force $temporaryTarget $apkTarget
 
 $sizeMb = [Math]::Round((Get-Item $apkTarget).Length / 1MB, 1)
 $sha256 = (Get-FileHash -Algorithm SHA256 $apkTarget).Hash.ToLowerInvariant()
-"$sha256  app-release.apk" | Set-Content -Encoding ASCII $checksumTarget
+$canonicalChecksum = "$sha256  app-release.apk`n"
+[System.IO.File]::WriteAllText(
+    $checksumTarget,
+    $canonicalChecksum,
+    [System.Text.Encoding]::ASCII
+)
+if ([System.IO.File]::ReadAllText(
+        $checksumTarget,
+        [System.Text.Encoding]::ASCII
+    ) -cne $canonicalChecksum) {
+    throw "Checksum file was not written in canonical LF format"
+}
 
 @{
     version       = $versionName

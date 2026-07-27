@@ -69,7 +69,8 @@ jobs:
         with:
           channel: stable
           cache: true
-      - run: flutter pub get
+      - run: flutter pub get --enforce-lockfile
+      - run: git diff --exit-code -- pubspec.lock
       - run: flutter analyze
       - run: flutter test
       - name: Build Android release artifact
@@ -87,13 +88,30 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Check deployment scripts
-        run: bash -n deploy/deploy.sh deploy/install-apk.sh deploy/monitor.sh deploy/backup.sh deploy/gen-secrets.sh deploy/reload-nginx.sh deploy/tests/backup_test.sh deploy/tests/deploy_health_test.sh deploy/tests/monitor_alert_test.sh
+        run: bash -n deploy/deploy.sh deploy/install-apk.sh deploy/monitor.sh deploy/backup.sh deploy/gen-secrets.sh deploy/reload-nginx.sh deploy/tests/backup_test.sh deploy/tests/deploy_health_test.sh deploy/tests/monitor_alert_test.sh deploy/tests/install_apk_test.sh
+      - name: Check APK build PowerShell syntax
+        shell: pwsh
+        run: |
+          $scriptPath = (Resolve-Path 'deploy/build-apk.ps1').Path
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -ne 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
       - name: Test database backup safety
         run: bash deploy/tests/backup_test.sh
       - name: Test deployment health gates
         run: bash deploy/tests/deploy_health_test.sh
       - name: Test monitoring alert gates
         run: bash deploy/tests/monitor_alert_test.sh
+      - name: Test APK bundle installation
+        run: bash deploy/tests/install_apk_test.sh
       - name: Validate base Compose configuration
         run: docker compose --env-file deploy/.env.example -f deploy/docker-compose.yml config --quiet
       - name: Validate isolated Agent E2E Compose configuration
