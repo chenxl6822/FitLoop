@@ -197,23 +197,68 @@ if ($LocalMainCommit -cne $RemoteMainCommit) {
   throw "本地 main 与 origin/main 不一致，拒绝交付备份脚本"
 }
 
-$SafeBackupScript = (
-  Resolve-Path 'deploy\backup.sh'
-).Path
-$SafeBackupScriptSha256 = (
-  Get-FileHash -Algorithm SHA256 $SafeBackupScript
-).Hash.ToLowerInvariant()
-$RemoteSafeBackupScript = "/tmp/fitloop-backup-$SafeBackupScriptSha256.sh"
+$SafeBackupStage = Join-Path `
+  ([IO.Path]::GetTempPath()) `
+  "fitloop-safe-backup-$RemoteMainCommit"
+$SafeBackupArchive = "$SafeBackupStage.zip"
+if ((Test-Path -LiteralPath $SafeBackupStage) -or
+    (Test-Path -LiteralPath $SafeBackupArchive)) {
+  throw "临时交付路径已存在，拒绝覆盖: $SafeBackupStage"
+}
 
-scp $SafeBackupScript `
-  "${SshTarget}:$RemoteSafeBackupScript"
+try {
+  New-Item -ItemType Directory -Path $SafeBackupStage `
+    -ErrorAction Stop | Out-Null
+  git `
+    -c core.autocrlf=false `
+    archive `
+    --format=zip `
+    "--output=$SafeBackupArchive" `
+    $RemoteMainCommit `
+    deploy/backup.sh
+  if ($LASTEXITCODE -ne 0) {
+    throw '无法从已验证的 origin/main Git 对象导出 backup.sh'
+  }
+  Expand-Archive `
+    -LiteralPath $SafeBackupArchive `
+    -DestinationPath $SafeBackupStage `
+    -ErrorAction Stop
 
-Write-Host "Safe backup script: $RemoteSafeBackupScript"
-Write-Host "Safe backup script SHA-256: $SafeBackupScriptSha256"
+  $SafeBackupScript = Join-Path `
+    $SafeBackupStage `
+    'deploy\backup.sh'
+  if (-not (Test-Path -LiteralPath $SafeBackupScript -PathType Leaf)) {
+    throw '导出的 backup.sh 不存在'
+  }
+  $SafeBackupScriptSha256 = (
+    Get-FileHash -Algorithm SHA256 $SafeBackupScript
+  ).Hash.ToLowerInvariant()
+  $RemoteSafeBackupScript =
+    "/tmp/fitloop-backup-$SafeBackupScriptSha256.sh"
+
+  scp $SafeBackupScript `
+    "${SshTarget}:$RemoteSafeBackupScript"
+  if ($LASTEXITCODE -ne 0) {
+    throw '上传安全 backup.sh 失败'
+  }
+
+  Write-Host "Safe backup script: $RemoteSafeBackupScript"
+  Write-Host "Safe backup script SHA-256: $SafeBackupScriptSha256"
+}
+finally {
+  if (Test-Path -LiteralPath $SafeBackupArchive) {
+    Remove-Item -LiteralPath $SafeBackupArchive -Force
+  }
+  if (Test-Path -LiteralPath $SafeBackupStage) {
+    Remove-Item -LiteralPath $SafeBackupStage -Recurse -Force
+  }
+}
 ```
 
-记录两个输出值。服务器必须在执行脚本前重新计算并匹配 SHA-256；不要从
-服务器旧工作树复制或运行同名脚本。
+`git archive` 必须从已验证的 `origin/main` 提交导出脚本，并显式关闭
+`core.autocrlf`，避免 Windows 工作树或归档过滤把 CRLF 换行带入 Linux
+服务器。记录两个输出值。服务器必须在执行脚本前重新计算并匹配 SHA-256；
+不要从服务器旧工作树复制或运行同名脚本。
 
 登录服务器：
 
