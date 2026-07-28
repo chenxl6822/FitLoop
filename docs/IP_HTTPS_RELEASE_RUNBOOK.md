@@ -263,12 +263,33 @@ test "$(
     --format '{{.HostConfig.NetworkMode}}'
 )" = 'none'
 
+RESTORE_INIT_DONE=false
+for i in $(seq 1 60); do
+    test "$(
+      docker inspect "${RESTORE_NAME}" \
+        --format '{{.State.Running}}'
+    )" = 'true'
+    RESTORE_LOGS="$(docker logs "${RESTORE_NAME}" 2>&1)"
+    case "${RESTORE_LOGS}" in
+        *'MySQL init process done. Ready for start up.'*)
+            RESTORE_INIT_DONE=true
+            break
+            ;;
+    esac
+    sleep 2
+done
+test "${RESTORE_INIT_DONE}" = true
+
 RESTORE_READY=false
 for i in $(seq 1 60); do
-    if docker exec "${RESTORE_NAME}" \
-        mysqladmin \
+    if RESTORE_QUERY_RESULT="$(
+      docker exec "${RESTORE_NAME}" \
+        mysql \
         --defaults-extra-file=/run/secrets/restore-client.cnf \
-        ping --silent
+        --batch \
+        --skip-column-names \
+        -e 'SELECT 1;' 2>/dev/null
+    )" && [ "${RESTORE_QUERY_RESULT}" = '1' ]
     then
         RESTORE_READY=true
         break
@@ -276,6 +297,7 @@ for i in $(seq 1 60); do
     sleep 2
 done
 test "${RESTORE_READY}" = true
+unset RESTORE_LOGS RESTORE_QUERY_RESULT
 
 gzip -cd "${BACKUP_FILE}" |
   docker exec -i "${RESTORE_NAME}" \
@@ -307,8 +329,10 @@ docker exec "${RESTORE_NAME}" \
 ```
 
 如果生产 `MYSQL_DATABASE` 不是 `fitloop`，先读取实际非秘密数据库名并调整
-查询；不要猜测。任一恢复检查失败都停止发布并保留临时容器、日志和备份，
-但仍需妥善保护两个 `0600` 临时凭据文件。临时容器的环境配置在容器删除前
+查询；不要猜测。就绪检查必须先看到官方镜像的初始化完成标记，再通过同一
+临时凭据执行 `SELECT 1`；不得用认证失败时仍可能返回成功的
+`mysqladmin ping` 代替。任一恢复检查失败都停止发布，并保留临时容器、日志和
+备份；但仍需妥善保护两个 `0600` 临时凭据文件。临时容器的环境配置在容器删除前
 可由具有 Docker 管理权限的人读取，因此该随机密码只用于本次隔离演练。
 
 全部成功且证据已记录后，先确认清理目标：
