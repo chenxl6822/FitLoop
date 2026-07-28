@@ -18,7 +18,9 @@ Agent readiness 会检查 worker、Redis 和必要配置。Agent 或 DeepSeek �
 
 ## 2. 生产前置条件
 
-- 已备案域名解析到服务器，安全组开放 `22`、`80`、`443`；不要开放 `3306`、`6379` 或 `8090`。
+- 已备案域名解析到服务器，或已确认服务器使用长期固定的公网 IP；安全组开放
+  `22`、`80`、`443`，不要开放 `3306`、`6379` 或 `8090`。固定公网 IP
+  使用 [IP HTTPS 发布补充手册](IP_HTTPS_RELEASE_RUNBOOK.md)。
 - 生产主机安装 Docker、Docker Compose、curl、openssl、bc、Python 3 和
   `flock`（通常由 `util-linux` 提供）。
 - `.env`、SMTP 授权码、DeepSeek Key、JWT/OTP/Agent 密钥不进入 Git。
@@ -59,6 +61,7 @@ FITLOOP_HTTP_COMPAT_ENABLED=true
 FITLOOP_TLS_CERT_FILE=/etc/letsencrypt/live/app.example.com/fullchain.pem
 FITLOOP_TLS_KEY_FILE=/etc/letsencrypt/live/app.example.com/privkey.pem
 FITLOOP_PUBLIC_BASE_URL=https://app.example.com
+FITLOOP_TLS_CERT_MIN_VALID_SECONDS=1209600
 ```
 
 `deploy/nginx.tls.conf` 只启用 TLS 1.2/1.3。端口 80 在兼容窗口内继续代理旧 `/api/` 请求，不对旧版 POST 做重定向；新 APK 必须使用 HTTPS。
@@ -82,7 +85,15 @@ chmod 700 /etc/letsencrypt/renewal-hooks/deploy/fitloop-nginx.sh
 certbot renew --dry-run
 ```
 
-证书路径和 Compose 组合需按实际环境调整。`deploy/monitor.sh --alert` 会在公网证书无法连接或剩余有效期不足 14 天时失败，建议每天执行。
+固定公网 IP 的 Let’s Encrypt 证书使用不同的 Certbot 参数和短证书监控阈值，
+不要把上述域名命令直接替换成 IP。完整步骤见
+[IP HTTPS 发布补充手册](IP_HTTPS_RELEASE_RUNBOOK.md)。
+
+证书路径和 Compose 组合需按实际环境调整。`deploy/monitor.sh --alert` 会在
+公网证书无法连接，或剩余有效期低于
+`FITLOOP_TLS_CERT_MIN_VALID_SECONDS` 时失败。域名证书默认使用
+`1209600` 秒（14 天）；160 小时的 IP 短证书使用 `172800` 秒（48 小时）。
+阈值必须是 1 到 31536000 的整数秒数。
 
 记录 HTTPS 启用日期。TLS 日志会记录 `transport=80/443`；在至少 30 天且确认旧客户端退出后，经单独批准把 `FITLOOP_HTTP_COMPAT_ENABLED` 改为 `false`。部署脚本将启用 `nginx.https-only.conf`，明文 `/api/` 返回 426。
 
