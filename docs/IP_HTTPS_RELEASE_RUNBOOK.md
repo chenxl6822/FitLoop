@@ -192,19 +192,25 @@ certificate SHA-256:
 
 ## 4. 生产数据库备份和隔离恢复
 
-取得服务器备份/临时容器写入授权后：
+取得服务器备份/临时容器写入授权后，严格执行
+[人工发布执行手册第 3 节](MANUAL_RELEASE_RUNBOOK.md#3-服务器备份并更新代码)
+中从上传安全脚本到输出 `Protection phase complete.` 为止的保护阶段；
+不要运行服务器旧提交里的 `deploy/backup.sh`，也不要继续执行代码更新块。
+
+把保护阶段输出的安全目录填入 `BACKUP_DIR`，并确认其中只有一个本次新建的
+数据库备份：
 
 ```bash
-sudo -i
-cd /root/FitLoop
-bash deploy/backup.sh
-ls -lh /root/backups/fitloop/
-```
-
-从脚本输出复制本次准确文件名：
-
-```bash
-BACKUP_FILE='/root/backups/fitloop/fitloop_YYYYMMDD_HHMMSS.sql.gz'
+BACKUP_DIR='<粘贴保护阶段输出的 Pre-upgrade backup 绝对路径>'
+mapfile -d '' -t BACKUP_FILES < <(
+  find "${BACKUP_DIR}/database" \
+    -maxdepth 1 \
+    -type f \
+    -name 'fitloop_*.sql.gz' \
+    -print0
+)
+test "${#BACKUP_FILES[@]}" -eq 1
+BACKUP_FILE="${BACKUP_FILES[0]}"
 test -f "${BACKUP_FILE}"
 test -s "${BACKUP_FILE}"
 gzip -t "${BACKUP_FILE}"
@@ -215,8 +221,14 @@ docker inspect fitloop-mysql --format '{{.Config.Image}}'
 恢复演练必须使用独立 MySQL 8 容器，不挂载生产数据卷，不连接生产网络：
 
 ```bash
+set -euo pipefail
+
 RESTORE_NAME='fitloop-restore-drill-YYYYMMDD-01'
-RESTORE_IMAGE='mysql:8.0'
+RESTORE_IMAGE="$(
+  docker inspect fitloop-mysql --format '{{.Config.Image}}'
+)"
+test -n "${RESTORE_IMAGE}"
+docker image inspect "${RESTORE_IMAGE}" >/dev/null
 
 if docker inspect "${RESTORE_NAME}" >/dev/null 2>&1; then
     echo 'ERROR: 临时容器名称已存在' >&2
@@ -242,9 +254,14 @@ unset RESTORE_PASSWORD
 docker run -d \
   --name "${RESTORE_NAME}" \
   --network none \
+  --pull never \
   --env-file "${RESTORE_ENV}" \
   -v "${RESTORE_CLIENT_CONFIG}:/run/secrets/restore-client.cnf:ro" \
   "${RESTORE_IMAGE}"
+test "$(
+  docker inspect "${RESTORE_NAME}" \
+    --format '{{.HostConfig.NetworkMode}}'
+)" = 'none'
 
 RESTORE_READY=false
 for i in $(seq 1 60); do
@@ -315,13 +332,18 @@ rm -f -- "${RESTORE_ENV}" "${RESTORE_CLIENT_CONFIG}"
 
 严格执行
 [人工发布执行手册第 3 节](MANUAL_RELEASE_RUNBOOK.md#3-服务器备份并更新代码)
-的 fail-fast 代码块，并把第 3 节记录的 `$LegacySha256` 作为
-`LEGACY_APPROVED_SHA256`。
+中保护阶段之后的代码更新与导入块，并把第 3 节记录的 `$LegacySha256`
+作为 `LEGACY_APPROVED_SHA256`。未取得独立的代码更新与部署批准时停在
+保护阶段，不得执行本节。
 
 关键约束：
 
+- pull 前的数据库备份必须使用从已验证本地 `main` 上传并按 SHA-256
+  复核的安全 `backup.sh`；不得运行服务器旧提交中的同名脚本。
 - 拉取前 `git status --porcelain` 必须为空。
 - 只允许 `git pull --ff-only origin main`。
+- 首次迁移时，pull 会删除旧提交跟踪的 flat 三件套；必须从仓库外的安全
+  备份恢复三件套后，才执行 `--import-legacy`。
 - 新版 Nginx 启动前必须完成 `--import-legacy`。
 - 导入后 `deploy/apk/active/current` 的实际 APK 哈希必须等于可信旧 SHA。
 - 在新版 Nginx 已从 managed active 提供同一旧版之前，保留已备份的 flat
