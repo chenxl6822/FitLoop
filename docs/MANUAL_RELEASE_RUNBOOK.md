@@ -397,6 +397,8 @@ find "${BACKUP_DIR}" -type f -exec chmod 0600 -- {} +
         -print0 |
       sort -z |
       xargs -0 sha256sum > SHA256SUMS
+    chmod 0600 SHA256SUMS
+    test "$(stat -c '%a' SHA256SUMS)" = '600'
     sha256sum -c SHA256SUMS
 )
 
