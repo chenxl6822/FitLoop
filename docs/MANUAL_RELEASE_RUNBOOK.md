@@ -145,6 +145,8 @@ gh pr checks $ReleaseBranch --watch
 gh pr ready $ReleaseBranch
 gh pr merge $ReleaseBranch --merge
 git fetch origin
+git switch main
+git merge --ff-only origin/main
 git log origin/main -1 --oneline
 ```
 
@@ -174,6 +176,90 @@ Test-NetConnection $Domain -Port 80
 
 ## 3. 服务器备份并更新代码
 
+服务器可能仍运行旧提交中的不安全备份脚本。必须先从已经通过 CI 的本地
+`main` 把当前 `deploy/backup.sh` 作为只读来源上传到服务器 `/tmp`，不得
+先在服务器执行旧版 `deploy/backup.sh`。
+
+在本地 PowerShell 执行：
+
+```powershell
+cd $Repo
+if (@(git status --porcelain).Count -ne 0) {
+  throw '本地工作区不干净，拒绝交付备份脚本'
+}
+$LocalBranch = (git branch --show-current).Trim()
+if ($LocalBranch -cne 'main') {
+  throw "当前本地分支不是 main: $LocalBranch"
+}
+$LocalMainCommit = (git rev-parse HEAD).Trim()
+$RemoteMainCommit = (git rev-parse origin/main).Trim()
+if ($LocalMainCommit -cne $RemoteMainCommit) {
+  throw "本地 main 与 origin/main 不一致，拒绝交付备份脚本"
+}
+
+$SafeBackupStage = Join-Path `
+  ([IO.Path]::GetTempPath()) `
+  "fitloop-safe-backup-$RemoteMainCommit"
+$SafeBackupArchive = "$SafeBackupStage.zip"
+if ((Test-Path -LiteralPath $SafeBackupStage) -or
+    (Test-Path -LiteralPath $SafeBackupArchive)) {
+  throw "临时交付路径已存在，拒绝覆盖: $SafeBackupStage"
+}
+
+try {
+  New-Item -ItemType Directory -Path $SafeBackupStage `
+    -ErrorAction Stop | Out-Null
+  git `
+    -c core.autocrlf=false `
+    archive `
+    --format=zip `
+    "--output=$SafeBackupArchive" `
+    $RemoteMainCommit `
+    deploy/backup.sh
+  if ($LASTEXITCODE -ne 0) {
+    throw '无法从已验证的 origin/main Git 对象导出 backup.sh'
+  }
+  Expand-Archive `
+    -LiteralPath $SafeBackupArchive `
+    -DestinationPath $SafeBackupStage `
+    -ErrorAction Stop
+
+  $SafeBackupScript = Join-Path `
+    $SafeBackupStage `
+    'deploy\backup.sh'
+  if (-not (Test-Path -LiteralPath $SafeBackupScript -PathType Leaf)) {
+    throw '导出的 backup.sh 不存在'
+  }
+  $SafeBackupScriptSha256 = (
+    Get-FileHash -Algorithm SHA256 $SafeBackupScript
+  ).Hash.ToLowerInvariant()
+  $RemoteSafeBackupScript =
+    "/tmp/fitloop-backup-$SafeBackupScriptSha256.sh"
+
+  scp $SafeBackupScript `
+    "${SshTarget}:$RemoteSafeBackupScript"
+  if ($LASTEXITCODE -ne 0) {
+    throw '上传安全 backup.sh 失败'
+  }
+
+  Write-Host "Safe backup script: $RemoteSafeBackupScript"
+  Write-Host "Safe backup script SHA-256: $SafeBackupScriptSha256"
+}
+finally {
+  if (Test-Path -LiteralPath $SafeBackupArchive) {
+    Remove-Item -LiteralPath $SafeBackupArchive -Force
+  }
+  if (Test-Path -LiteralPath $SafeBackupStage) {
+    Remove-Item -LiteralPath $SafeBackupStage -Recurse -Force
+  }
+}
+```
+
+`git archive` 必须从已验证的 `origin/main` 提交导出脚本，并显式关闭
+`core.autocrlf`，避免 Windows 工作树或归档过滤把 CRLF 换行带入 Linux
+服务器。记录两个输出值。服务器必须在执行脚本前重新计算并匹配 SHA-256；
+不要从服务器旧工作树复制或运行同名脚本。
+
 登录服务器：
 
 ```powershell
@@ -188,7 +274,11 @@ sudo -i
 
 ```bash
 LEGACY_APPROVED_SHA256='<粘贴第 0 节记录的旧版 APK SHA-256>'
+SAFE_BACKUP_SCRIPT='<粘贴本节本地输出的 /tmp 路径>'
+SAFE_BACKUP_SCRIPT_SHA256='<粘贴本节本地输出的脚本 SHA-256>'
 export LEGACY_APPROVED_SHA256
+export SAFE_BACKUP_SCRIPT
+export SAFE_BACKUP_SCRIPT_SHA256
 
 bash -euo pipefail <<'FITLOOP'
 cd /root/FitLoop
@@ -196,8 +286,27 @@ cd /root/FitLoop
 BACKUP_DIR="/root/backups/fitloop-pre-016-$(date +%Y%m%d_%H%M%S)"
 mkdir -p "${BACKUP_DIR}"
 chmod 0700 "${BACKUP_DIR}"
+install -d -m 0700 \
+    "${BACKUP_DIR}/database" \
+    "${BACKUP_DIR}/flat" \
+    "${BACKUP_DIR}/config" \
+    "${BACKUP_DIR}/history"
 
 [[ "${LEGACY_APPROVED_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+[[ "${SAFE_BACKUP_SCRIPT_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+test -f "${SAFE_BACKUP_SCRIPT}"
+test "$(
+    sha256sum "${SAFE_BACKUP_SCRIPT}" |
+        awk '{ print $1 }'
+)" = "${SAFE_BACKUP_SCRIPT_SHA256}"
+SAFE_BACKUP_RUNNER="${BACKUP_DIR}/config/backup.sh"
+install -m 0700 -- \
+    "${SAFE_BACKUP_SCRIPT}" \
+    "${SAFE_BACKUP_RUNNER}"
+test "$(
+    sha256sum "${SAFE_BACKUP_RUNNER}" |
+        awk '{ print $1 }'
+)" = "${SAFE_BACKUP_SCRIPT_SHA256}"
 
 APK_SOURCE=deploy/apk
 if [ -d deploy/apk/active/current ]; then
@@ -213,34 +322,137 @@ test -f "${APK_SOURCE}/version.json"
 python3 -c \
   'import json,pathlib,sys; json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8-sig"))' \
   "${APK_SOURCE}/version.json"
-if [ ! -f "${APK_SOURCE}/app-release.apk.sha256" ]; then
-    test "${APK_SOURCE}" = "deploy/apk"
-    (
-        cd "${APK_SOURCE}"
-        sha256sum app-release.apk
-    ) > "${APK_SOURCE}/app-release.apk.sha256"
-fi
+
+cp --preserve=mode,timestamps -- \
+    "${APK_SOURCE}/app-release.apk" \
+    "${APK_SOURCE}/version.json" \
+    "${BACKUP_DIR}/flat/"
 (
-    cd "${APK_SOURCE}"
+    cd "${BACKUP_DIR}/flat"
+    sha256sum app-release.apk > app-release.apk.sha256
     sha256sum -c app-release.apk.sha256
 )
-cp --preserve=mode,timestamps \
-    "${APK_SOURCE}/app-release.apk" \
-    "${APK_SOURCE}/app-release.apk.sha256" \
-    "${APK_SOURCE}/version.json" \
-    "${BACKUP_DIR}/"
+if [ -f deploy/apk/fitloop-release.apk ]; then
+    cp --preserve=mode,timestamps -- \
+        deploy/apk/fitloop-release.apk \
+        "${BACKUP_DIR}/flat/"
+fi
+test -f .env
+install -m 0600 .env "${BACKUP_DIR}/config/.env"
+
+mapfile -d '' -t HISTORY_FILES < <(
+    find deploy \
+        -type f \
+        -name '*.bak.*' \
+        -print0 |
+      sort -z
+)
+for history_source in "${HISTORY_FILES[@]}"; do
+    history_relative="${history_source#deploy/}"
+    if ! [[ "${history_relative}" =~ ^(apk/(app-release|fitloop-release)\.apk|docker-compose\.yml|download\.html|nginx\.conf|\.env)\.bak\.([0-9]{14}|[0-9]{8}_[0-9]{6})$ ]]; then
+        printf 'ERROR: unexpected historical backup path: %s\n' \
+            "${history_source}" >&2
+        exit 1
+    fi
+    history_real="$(realpath -- "${history_source}")"
+    case "${history_real}" in
+        /root/FitLoop/deploy/*) ;;
+        *)
+            printf 'ERROR: historical backup escaped deploy/: %s\n' \
+                "${history_real}" >&2
+            exit 1
+            ;;
+    esac
+    history_destination="${BACKUP_DIR}/history/${history_relative}"
+    install -D -m 0600 -- \
+        "${history_source}" \
+        "${history_destination}"
+    cmp -s -- "${history_source}" "${history_destination}"
+done
+
+FITLOOP_BACKUP_DIR="${BACKUP_DIR}/database" \
+FITLOOP_BACKUP_RETENTION_DAYS=36500 \
+FITLOOP_ENV_FILE=/root/FitLoop/.env \
+FITLOOP_MYSQL_CONTAINER=fitloop-mysql \
+bash "${SAFE_BACKUP_RUNNER}"
+
+mapfile -d '' -t DB_BACKUPS < <(
+    find "${BACKUP_DIR}/database" \
+        -maxdepth 1 \
+        -type f \
+        -name 'fitloop_*.sql.gz' \
+        -print0
+)
+test "${#DB_BACKUPS[@]}" -eq 1
+gzip -t "${DB_BACKUPS[0]}"
+test -s "${DB_BACKUPS[0]}"
+
+find "${BACKUP_DIR}" -type d -exec chmod 0700 -- {} +
+find "${BACKUP_DIR}" -type f -exec chmod 0600 -- {} +
 (
     cd "${BACKUP_DIR}"
-    sha256sum -c app-release.apk.sha256
+    find flat config database history \
+        -type f \
+        ! -name SHA256SUMS \
+        -print0 |
+      sort -z |
+      xargs -0 sha256sum > SHA256SUMS
+    sha256sum -c SHA256SUMS
 )
-printf 'Legacy backup: %s\n' "${BACKUP_DIR}"
 
-bash deploy/backup.sh
+for history_source in "${HISTORY_FILES[@]}"; do
+    history_relative="${history_source#deploy/}"
+    history_destination="${BACKUP_DIR}/history/${history_relative}"
+    cmp -s -- "${history_source}" "${history_destination}"
+    rm -- "${history_source}"
+done
+
+printf 'Pre-upgrade backup: %s\n' "${BACKUP_DIR}"
+
 if [ -n "$(git status --porcelain)" ]; then
     git status --short
-    echo 'ERROR: tracked or untracked repository changes must be reviewed before update' >&2
+    echo 'ERROR: tracked or untracked repository changes must be reviewed and archived outside the repository before update' >&2
     exit 1
 fi
+printf '%s\n' \
+    'Protection phase complete.' \
+    'STOP here until the code-update and deployment phase has separate approval.'
+FITLOOP
+```
+
+上面的归档只接受列出的 APK、Nginx、Compose、下载页和 `.env` 历史备份命名，
+并在安全目录中逐文件 `cmp`、生成并验证 `SHA256SUMS` 后，才从仓库迁出原文件。
+恢复时按 `history/` 下的相对路径复制回 `/root/FitLoop/deploy/`。记录输出的
+`Pre-upgrade backup` 绝对路径、数据库备份文件名和 `SHA256SUMS`；这就是
+预升级保护阶段的停止点。没有单独的代码更新与部署批准时，不要执行下一块。
+
+获得单独批准后，把上一块输出的绝对路径填入 `BACKUP_DIR`，再执行：
+
+```bash
+LEGACY_APPROVED_SHA256='<粘贴第 0 节记录的旧版 APK SHA-256>'
+BACKUP_DIR='<粘贴上一块输出的 Pre-upgrade backup 绝对路径>'
+export LEGACY_APPROVED_SHA256
+export BACKUP_DIR
+
+bash -euo pipefail <<'FITLOOP'
+cd /root/FitLoop
+
+[[ "${LEGACY_APPROVED_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+case "${BACKUP_DIR}" in
+    /root/backups/fitloop-pre-016-*) ;;
+    *)
+        printf 'ERROR: unexpected pre-upgrade backup path: %s\n' \
+            "${BACKUP_DIR}" >&2
+        exit 1
+        ;;
+esac
+test -d "${BACKUP_DIR}"
+test ! -L "${BACKUP_DIR}"
+(
+    cd "${BACKUP_DIR}"
+    sha256sum -c SHA256SUMS
+)
+
 git fetch origin
 git switch main
 git pull --ff-only origin main
@@ -248,7 +460,20 @@ test -z "$(git status --porcelain)"
 git log -1 --oneline
 
 if [ ! -L deploy/apk/active ]; then
-    test "${APK_SOURCE}" = "deploy/apk"
+    install -d -m 0755 deploy/apk
+    install -m 0644 \
+        "${BACKUP_DIR}/flat/app-release.apk" \
+        deploy/apk/app-release.apk
+    install -m 0644 \
+        "${BACKUP_DIR}/flat/app-release.apk.sha256" \
+        deploy/apk/app-release.apk.sha256
+    install -m 0644 \
+        "${BACKUP_DIR}/flat/version.json" \
+        deploy/apk/version.json
+    (
+        cd deploy/apk
+        sha256sum -c app-release.apk.sha256
+    )
     bash deploy/install-apk.sh \
       --import-legacy "${LEGACY_APPROVED_SHA256}"
 fi
@@ -265,9 +490,12 @@ test "$(
 FITLOOP
 ```
 
-如果 `APK_SOURCE=deploy/apk`，这是首次迁移。必须在首次执行第 5 节新版
-Nginx 部署前完成 `--import-legacy`：脚本用第 0 节的可信 SHA-256 校验旧
-flat 三件套，创建只有旧版 `current` 的 managed active。导入失败或
+如果保护阶段检测不到 `deploy/apk/active/current` 而使用旧 flat 目录，
+这就是首次迁移。必须在首次执行第 5 节新版 Nginx 部署前完成
+`--import-legacy`。旧提交中的 flat 文件会被 pull 删除，
+所以代码块先把它们备份到仓库外，再在 pull 后恢复为被新 `.gitignore`
+忽略的 flat 三件套，然后执行可信导入。脚本用第 0 节的可信 SHA-256
+校验旧 flat 三件套，创建只有旧版 `current` 的 managed active。导入失败或
 `active/current` 哈希不匹配时立即停止，不得继续部署。此处先保留已备份
 的 flat 三件套，让仍运行旧 root 配置的 Nginx 继续服务，避免下载中断；
 第 5 节确认新版 Nginx 已从 managed active 提供同一旧版后再移走它们。
