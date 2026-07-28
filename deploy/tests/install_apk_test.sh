@@ -723,6 +723,47 @@ run_install "${reserved_api_dir}" \
 assert_failure_unchanged \
     "reserved-api-domain" "${reserved_api_dir}" "${reserved_api_before}"
 
+private_ip_api_dir="${TEST_ROOT}/private-ip-api"
+make_existing_case "${private_ip_api_dir}"
+private_ip_api_sha="$(cat "${private_ip_api_dir}/new.sha256")"
+write_metadata \
+    "${private_ip_api_dir}/source/version.json" \
+    "${private_ip_api_sha}" \
+    "https://192.168.1.10"
+private_ip_api_before="$(active_snapshot "${private_ip_api_dir}")"
+run_install "${private_ip_api_dir}" \
+    "file://${private_ip_api_dir}/source/app-release.apk" \
+    "${private_ip_api_sha}" \
+    "file://${private_ip_api_dir}/source/version.json" || true
+assert_failure_unchanged \
+    "private-ip-api" "${private_ip_api_dir}" "${private_ip_api_before}"
+
+public_ip_api_dir="${TEST_ROOT}/public-ip-api"
+make_existing_case "${public_ip_api_dir}"
+public_ip_api_sha="$(cat "${public_ip_api_dir}/new.sha256")"
+write_metadata \
+    "${public_ip_api_dir}/source/version.json" \
+    "${public_ip_api_sha}" \
+    "https://43.139.72.25"
+public_ip_api_before="$(
+    publication_tree_snapshot "${public_ip_api_dir}"
+)"
+if ! run_install "${public_ip_api_dir}" \
+    --verify-only \
+    "file://${public_ip_api_dir}/source/app-release.apk" \
+    "${public_ip_api_sha}" \
+    "file://${public_ip_api_dir}/source/version.json"; then
+    cat "${public_ip_api_dir}/output.log" >&2
+    fail "public-ip-api: valid public IP endpoint was rejected"
+fi
+public_ip_api_after="$(
+    publication_tree_snapshot "${public_ip_api_dir}"
+)"
+if [ "${public_ip_api_after}" != "${public_ip_api_before}" ]; then
+    fail "public-ip-api: verify-only changed publication state"
+fi
+pass "public-ip-api-accepted"
+
 wrong_signer_dir="${TEST_ROOT}/wrong-signer"
 make_existing_case "${wrong_signer_dir}"
 wrong_signer_sha="$(cat "${wrong_signer_dir}/new.sha256")"

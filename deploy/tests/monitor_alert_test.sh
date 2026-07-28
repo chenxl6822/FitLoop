@@ -114,7 +114,7 @@ case "${url}" in
     *localhost:8080*)
         state="${FAKE_BACKEND_STATE:-up}"
         ;;
-    *public.test*)
+    *public.test*|*43.139.72.25*)
         state="${FAKE_PUBLIC_STATE:-up}"
         ;;
     *127.0.0.1:8090*)
@@ -131,14 +131,50 @@ fi
 exit 22
 SCRIPT
 
+cat > "${FAKE_BIN}/openssl" <<'SCRIPT'
+#!/bin/bash
+case "${1:-}" in
+    s_client)
+        printf '%s\n' 'FAKE CERTIFICATE'
+        ;;
+    x509)
+        checkend=''
+        previous=''
+        for argument in "$@"; do
+            if [ "${previous}" = "-checkend" ]; then
+                checkend="${argument}"
+            fi
+            previous="${argument}"
+        done
+        if [ -n "${checkend}" ]; then
+            printf '%s\n' "${checkend}" >> "${FAKE_OPENSSL_LOG}"
+        fi
+        if [ "${FAKE_TLS_CERT_STATE:-valid}" != "valid" ]; then
+            exit 1
+        fi
+        ;;
+    *)
+        exit 99
+        ;;
+esac
+SCRIPT
+
 chmod +x "${FAKE_BIN}"/*
 
 write_env() {
     local env_file="$1"
     local agent_enabled="$2"
-    printf '%s\n' \
-        "FITLOOP_AGENT_ENABLED=${agent_enabled}" \
-        'FITLOOP_PUBLIC_BASE_URL=http://public.test' > "${env_file}"
+    local public_base_url="${3:-http://public.test}"
+    local tls_min_valid_seconds="${4:-}"
+    {
+        printf '%s\n' \
+            "FITLOOP_AGENT_ENABLED=${agent_enabled}" \
+            "FITLOOP_PUBLIC_BASE_URL=${public_base_url}"
+        if [ -n "${tls_min_valid_seconds}" ]; then
+            printf '%s\n' \
+                "FITLOOP_TLS_CERT_MIN_VALID_SECONDS=${tls_min_valid_seconds}"
+        fi
+    } > "${env_file}"
 }
 
 run_monitor() {
@@ -153,10 +189,18 @@ run_monitor() {
     local unhealthy_service="${9:-}"
     local starting_service="${10:-}"
     local paused_service="${11:-}"
+    local public_base_url="${12:-http://public.test}"
+    local tls_cert_state="${13:-valid}"
+    local tls_min_valid_seconds="${14:-}"
 
     mkdir -p "${case_dir}"
-    write_env "${case_dir}/fitloop.env" "${agent_enabled}"
+    write_env \
+        "${case_dir}/fitloop.env" \
+        "${agent_enabled}" \
+        "${public_base_url}" \
+        "${tls_min_valid_seconds}"
     : > "${case_dir}/docker.log"
+    : > "${case_dir}/openssl.log"
     set +e
     PATH="${FAKE_BIN}:${PATH}" \
         FAKE_BACKEND_STATE="${backend_state}" \
@@ -169,6 +213,8 @@ run_monitor() {
         FAKE_STARTING_SERVICE="${starting_service}" \
         FAKE_PAUSED_SERVICE="${paused_service}" \
         FAKE_DOCKER_LOG="${case_dir}/docker.log" \
+        FAKE_OPENSSL_LOG="${case_dir}/openssl.log" \
+        FAKE_TLS_CERT_STATE="${tls_cert_state}" \
         FITLOOP_ENV_FILE="${case_dir}/fitloop.env" \
         bash "${MONITOR_SCRIPT}" --alert >"${case_dir}/output.log" 2>&1
     local result=$?
@@ -288,5 +334,59 @@ if ! grep -F 'DOCKER:UNAVAILABLE' \
     fail "docker-unavailable: missing Docker alert"
 fi
 echo "[PASS] docker-unavailable"
+
+tls_default_dir="${TEST_ROOT}/tls-default-threshold"
+if ! run_monitor "${tls_default_dir}" \
+    "false" "up" "up" "up" "true" "" "" "" "" "" \
+    "https://public.test" "valid"; then
+    cat "${tls_default_dir}/output.log" >&2
+    fail "tls-default-threshold: valid TLS certificate triggered an alert"
+fi
+if ! grep -Fx '1209600' "${tls_default_dir}/openssl.log" >/dev/null; then
+    fail "tls-default-threshold: default 14-day threshold was not checked"
+fi
+echo "[PASS] tls-default-threshold"
+
+tls_ip_dir="${TEST_ROOT}/tls-ip-short-lived"
+if ! run_monitor "${tls_ip_dir}" \
+    "false" "up" "up" "up" "true" "" "" "" "" "" \
+    "https://43.139.72.25" "valid" "172800"; then
+    cat "${tls_ip_dir}/output.log" >&2
+    fail "tls-ip-short-lived: valid IP certificate triggered an alert"
+fi
+if ! grep -Fx '172800' "${tls_ip_dir}/openssl.log" >/dev/null; then
+    fail "tls-ip-short-lived: configured 48-hour threshold was not checked"
+fi
+if ! grep -F '48 小时' "${tls_ip_dir}/output.log" >/dev/null; then
+    fail "tls-ip-short-lived: output did not describe the configured threshold"
+fi
+echo "[PASS] tls-ip-short-lived"
+
+tls_expiring_dir="${TEST_ROOT}/tls-expiring"
+if run_monitor "${tls_expiring_dir}" \
+    "false" "up" "up" "up" "true" "" "" "" "" "" \
+    "https://43.139.72.25" "expiring" "172800"; then
+    fail "tls-expiring: expiring certificate unexpectedly passed"
+fi
+assert_alert_exit "tls-expiring"
+if ! grep -F 'TLS:CERT' "${tls_expiring_dir}/output.log" >/dev/null; then
+    fail "tls-expiring: missing TLS certificate alert"
+fi
+echo "[PASS] tls-expiring"
+
+tls_invalid_threshold_dir="${TEST_ROOT}/tls-invalid-threshold"
+if run_monitor "${tls_invalid_threshold_dir}" \
+    "false" "up" "up" "up" "true" "" "" "" "" "" \
+    "https://43.139.72.25" "valid" "invalid"; then
+    fail "tls-invalid-threshold: invalid threshold unexpectedly passed"
+fi
+if [ "${MONITOR_EXIT}" -ne 1 ]; then
+    fail "tls-invalid-threshold: expected exit 1, got ${MONITOR_EXIT}"
+fi
+if ! grep -F 'FITLOOP_TLS_CERT_MIN_VALID_SECONDS' \
+    "${tls_invalid_threshold_dir}/output.log" >/dev/null; then
+    fail "tls-invalid-threshold: missing configuration error"
+fi
+echo "[PASS] tls-invalid-threshold"
 
 echo "All monitoring alert gate tests passed."

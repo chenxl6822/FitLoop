@@ -18,12 +18,26 @@ read_env_value() {
 if [ -f "${ENV_FILE}" ]; then
     FITLOOP_AGENT_ENABLED="${FITLOOP_AGENT_ENABLED:-$(read_env_value FITLOOP_AGENT_ENABLED)}"
     FITLOOP_PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-$(read_env_value FITLOOP_PUBLIC_BASE_URL)}"
+    ENV_TLS_CERT_MIN_VALID_SECONDS="$(
+        read_env_value FITLOOP_TLS_CERT_MIN_VALID_SECONDS
+    )"
+    if [ -z "${FITLOOP_TLS_CERT_MIN_VALID_SECONDS:-}" ]; then
+        FITLOOP_TLS_CERT_MIN_VALID_SECONDS="${ENV_TLS_CERT_MIN_VALID_SECONDS}"
+    fi
 fi
 
 # --- 阈值 ---
 CPU_THRESHOLD=80       # CPU 使用率 %
 MEM_THRESHOLD=85       # 内存使用率 %
 DISK_THRESHOLD=90      # 磁盘使用率 %
+TLS_CERT_MIN_VALID_SECONDS="${FITLOOP_TLS_CERT_MIN_VALID_SECONDS:-1209600}"
+if ! [[ "${TLS_CERT_MIN_VALID_SECONDS}" =~ ^[0-9]{1,8}$ ]] ||
+   [ "${TLS_CERT_MIN_VALID_SECONDS}" -lt 1 ] ||
+   [ "${TLS_CERT_MIN_VALID_SECONDS}" -gt 31536000 ]; then
+    echo "[ERROR] FITLOOP_TLS_CERT_MIN_VALID_SECONDS 必须是 1 到 31536000 的整数秒数" >&2
+    exit 1
+fi
+TLS_CERT_MIN_VALID_HOURS=$(( (TLS_CERT_MIN_VALID_SECONDS + 3599) / 3600 ))
 
 ALERT_MODE=false
 if [ "${1:-}" = "--alert" ]; then
@@ -142,11 +156,16 @@ if [[ "${PUBLIC_BASE_URL}" == https://* ]] && command -v openssl &> /dev/null; t
     PUBLIC_HOST="${PUBLIC_HOST%%:*}"
     if echo | openssl s_client -servername "${PUBLIC_HOST}" \
         -connect "${PUBLIC_HOST}:443" 2>/dev/null |
-        openssl x509 -noout -checkend 1209600 > /dev/null 2>&1; then
-        printf "  %-20s ✅ %s\n" "TLS 证书:" "有效期超过 14 天"
+        openssl x509 -noout \
+            -checkend "${TLS_CERT_MIN_VALID_SECONDS}" > /dev/null 2>&1; then
+        printf "  %-20s ✅ %s\n" \
+            "TLS 证书:" \
+            "有效期超过 ${TLS_CERT_MIN_VALID_HOURS} 小时"
     else
         TLS_CERT_OK=false
-        printf "  %-20s ❌ %s\n" "TLS 证书:" "连接失败或将在 14 天内到期"
+        printf "  %-20s ❌ %s\n" \
+            "TLS 证书:" \
+            "连接失败或将在 ${TLS_CERT_MIN_VALID_HOURS} 小时内到期"
     fi
 fi
 
