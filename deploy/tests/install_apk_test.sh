@@ -2587,15 +2587,24 @@ run_build_policy_case() {
     set -e
 }
 
+normalize_build_policy_output() {
+    printf '%s' "${BUILD_POLICY_OUTPUT}" |
+        sed $'s/\033\\[[0-9;]*m//g' |
+        tr '\r\n\t' '   ' |
+        sed 's/[[:space:]][[:space:]]*/ /g'
+}
+
 assert_build_policy_rejection() {
     local case_name="$1"
     local expected_message="$2"
+    local normalized_output
 
     if [ "${BUILD_POLICY_EXIT}" -eq 0 ]; then
         printf '%s\n' "${BUILD_POLICY_OUTPUT}" >&2
         fail "${case_name}: build policy unexpectedly succeeded"
     fi
-    if ! grep -Fq "${expected_message}" <<<"${BUILD_POLICY_OUTPUT}"; then
+    normalized_output="$(normalize_build_policy_output)"
+    if ! grep -Fq "${expected_message}" <<<"${normalized_output}"; then
         printf '%s\n' "${BUILD_POLICY_OUTPUT}" >&2
         fail "${case_name}: expected policy message was not emitted"
     fi
@@ -2683,11 +2692,7 @@ if command -v pwsh >/dev/null 2>&1; then
         printf '%s\n' "${BUILD_POLICY_OUTPUT}" >&2
         fail "build-http-transition-exact-policy: policy did not reach the post-policy SDK gate"
     fi
-    normalized_build_policy_output="$(
-        printf '%s' "${BUILD_POLICY_OUTPUT}" |
-            tr '\r\n\t' '   ' |
-            sed 's/[[:space:]][[:space:]]*/ /g'
-    )"
+    normalized_build_policy_output="$(normalize_build_policy_output)"
     if ! grep -Fq \
         "API traffic is not encrypted." \
         <<<"${normalized_build_policy_output}"
