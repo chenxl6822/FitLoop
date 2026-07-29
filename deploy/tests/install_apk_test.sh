@@ -2591,7 +2591,9 @@ normalize_build_policy_output() {
     printf '%s' "${BUILD_POLICY_OUTPUT}" |
         sed $'s/\033\\[[0-9;]*m//g' |
         tr '\r\n\t' '   ' |
-        sed 's/[[:space:]][[:space:]]*/ /g'
+        sed \
+            -e 's/[[:space:]][[:space:]]*/ /g' \
+            -e 's/[[:space:]]*|[[:space:]]*/ /g'
 }
 
 assert_build_policy_rejection() {
