@@ -23,6 +23,8 @@ SYNC_FAIL_CALLS=""
 SYNC_COUNTER_FILE=""
 SYNC_LOG_FILE=""
 MV_FAIL_PARENT=""
+BUILD_POLICY_EXIT=0
+BUILD_POLICY_OUTPUT=""
 
 COMPATIBILITY_SIGNER="69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
 WRONG_SIGNER="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -81,6 +83,8 @@ write_metadata() {
     local signer_sha256="${4:-${COMPATIBILITY_SIGNER}}"
     local signing_mode="${5:-Compatibility}"
     local apk_path="${6:-$(dirname "${target}")/app-release.apk}"
+    local version="${7:-0.1.6}"
+    local version_code="${8:-7}"
     local apk_size
     apk_size="$(
         python3 - "${apk_path}" <<'PY'
@@ -94,8 +98,8 @@ PY
 
     cat > "${target}" <<JSON
 {
-  "version": "0.1.6",
-  "versionCode": 7,
+  "version": "${version}",
+  "versionCode": ${version_code},
   "size": "${apk_size}",
   "buildDate": "2026-07-26",
   "minSdkVersion": "Android 8.0 (API 26)",
@@ -707,6 +711,284 @@ assert_failure_unchanged \
     "api-base-url-requires-https" \
     "${insecure_api_dir}" \
     "${insecure_api_before}"
+
+transition_without_approval_dir="${TEST_ROOT}/transition-without-approval"
+make_existing_case "${transition_without_approval_dir}"
+transition_without_approval_sha="$(
+    cat "${transition_without_approval_dir}/new.sha256"
+)"
+write_metadata \
+    "${transition_without_approval_dir}/source/version.json" \
+    "${transition_without_approval_sha}" \
+    "http://43.139.72.25"
+transition_without_approval_before="$(
+    active_snapshot "${transition_without_approval_dir}"
+)"
+run_install "${transition_without_approval_dir}" \
+    "file://${transition_without_approval_dir}/source/app-release.apk" \
+    "${transition_without_approval_sha}" \
+    "file://${transition_without_approval_dir}/source/version.json" || true
+assert_failure_unchanged \
+    "http-transition-requires-explicit-approval" \
+    "${transition_without_approval_dir}" \
+    "${transition_without_approval_before}"
+
+transition_verify_dir="${TEST_ROOT}/transition-verify"
+make_existing_case "${transition_verify_dir}"
+transition_verify_sha="$(cat "${transition_verify_dir}/new.sha256")"
+write_metadata \
+    "${transition_verify_dir}/source/version.json" \
+    "${transition_verify_sha}" \
+    "http://43.139.72.25"
+transition_verify_before="$(
+    publication_tree_snapshot "${transition_verify_dir}"
+)"
+if ! run_install "${transition_verify_dir}" \
+    --verify-only \
+    --allow-insecure-http-transition-release \
+    "file://${transition_verify_dir}/source/app-release.apk" \
+    "${transition_verify_sha}" \
+    "file://${transition_verify_dir}/source/version.json"
+then
+    cat "${transition_verify_dir}/output.log" >&2
+    fail "http-transition-verify: exact approved endpoint was rejected"
+fi
+transition_verify_after="$(
+    publication_tree_snapshot "${transition_verify_dir}"
+)"
+if [ "${transition_verify_after}" != "${transition_verify_before}" ]; then
+    fail "http-transition-verify: verify-only changed publication state"
+fi
+pass "http-transition-verify-only-exact-endpoint"
+
+transition_activate_dir="${TEST_ROOT}/transition-activate"
+make_existing_case "${transition_activate_dir}"
+transition_activate_sha="$(cat "${transition_activate_dir}/new.sha256")"
+transition_activate_previous_sha="$(
+    cat "${transition_activate_dir}/current.sha256"
+)"
+write_metadata \
+    "${transition_activate_dir}/source/version.json" \
+    "${transition_activate_sha}" \
+    "http://43.139.72.25"
+if ! run_install "${transition_activate_dir}" \
+    --allow-insecure-http-transition-release \
+    "file://${transition_activate_dir}/source/app-release.apk" \
+    "${transition_activate_sha}" \
+    "file://${transition_activate_dir}/source/version.json"
+then
+    cat "${transition_activate_dir}/output.log" >&2
+    fail "http-transition-activate: exact approved endpoint was rejected"
+fi
+assert_active_layout \
+    "http-transition-activate" \
+    "${transition_activate_dir}" \
+    "${transition_activate_sha}" \
+    "${transition_activate_previous_sha}"
+assert_published_bytes \
+    "http-transition-activate" \
+    "${transition_activate_dir}" \
+    "${transition_activate_sha}"
+pass "http-transition-activate-exact-endpoint"
+
+transition_policy_version_index=0
+while IFS='|' read -r transition_policy_name version version_code; do
+    transition_policy_version_index=$((transition_policy_version_index + 1))
+    transition_policy_version_dir="$(
+        printf '%s/http-transition-policy-version-%02d' \
+            "${TEST_ROOT}" "${transition_policy_version_index}"
+    )"
+    make_existing_case "${transition_policy_version_dir}"
+    transition_policy_version_sha="$(
+        cat "${transition_policy_version_dir}/new.sha256"
+    )"
+    write_metadata \
+        "${transition_policy_version_dir}/source/version.json" \
+        "${transition_policy_version_sha}" \
+        "http://43.139.72.25" \
+        "${COMPATIBILITY_SIGNER}" \
+        "Compatibility" \
+        "${transition_policy_version_dir}/source/app-release.apk" \
+        "${version}" \
+        "${version_code}"
+    transition_policy_version_before="$(
+        active_snapshot "${transition_policy_version_dir}"
+    )"
+    run_install "${transition_policy_version_dir}" \
+        --allow-insecure-http-transition-release \
+        "file://${transition_policy_version_dir}/source/app-release.apk" \
+        "${transition_policy_version_sha}" \
+        "file://${transition_policy_version_dir}/source/version.json" || true
+    assert_failure_unchanged \
+        "http-transition-self-expires-${transition_policy_name}" \
+        "${transition_policy_version_dir}" \
+        "${transition_policy_version_before}"
+done <<'TRANSITION_POLICY_VERSIONS'
+version|0.1.7|7
+version-code|0.1.6|8
+TRANSITION_POLICY_VERSIONS
+
+transition_http_download_index=0
+while IFS='|' read -r transition_download_name apk_url version_url; do
+    transition_http_download_index=$((transition_http_download_index + 1))
+    transition_http_download_dir="$(
+        printf '%s/http-transition-download-%02d' \
+            "${TEST_ROOT}" "${transition_http_download_index}"
+    )"
+    make_existing_case "${transition_http_download_dir}"
+    transition_http_download_sha="$(
+        cat "${transition_http_download_dir}/new.sha256"
+    )"
+    write_metadata \
+        "${transition_http_download_dir}/source/version.json" \
+        "${transition_http_download_sha}" \
+        "http://43.139.72.25"
+    transition_http_download_before="$(
+        active_snapshot "${transition_http_download_dir}"
+    )"
+    apk_url="${apk_url//CASE_DIR/${transition_http_download_dir}}"
+    version_url="${version_url//CASE_DIR/${transition_http_download_dir}}"
+    run_install "${transition_http_download_dir}" \
+        --allow-insecure-http-transition-release \
+        "${apk_url}" \
+        "${transition_http_download_sha}" \
+        "${version_url}" || true
+    assert_failure_unchanged \
+        "http-transition-rejects-${transition_download_name}" \
+        "${transition_http_download_dir}" \
+        "${transition_http_download_before}"
+done <<'TRANSITION_HTTP_DOWNLOADS'
+http-apk-download|http://43.139.72.25/apk/app-release.apk|file://CASE_DIR/source/version.json
+http-metadata-download|file://CASE_DIR/source/app-release.apk|http://43.139.72.25/apk/version.json
+TRANSITION_HTTP_DOWNLOADS
+
+transition_variant_index=0
+while IFS='|' read -r transition_variant_name transition_variant_url; do
+    transition_variant_index=$((transition_variant_index + 1))
+    transition_variant_dir="$(
+        printf '%s/http-transition-variant-%02d' \
+            "${TEST_ROOT}" "${transition_variant_index}"
+    )"
+    make_existing_case "${transition_variant_dir}"
+    transition_variant_sha="$(cat "${transition_variant_dir}/new.sha256")"
+    write_metadata \
+        "${transition_variant_dir}/source/version.json" \
+        "${transition_variant_sha}" \
+        "${transition_variant_url}"
+    transition_variant_before="$(
+        active_snapshot "${transition_variant_dir}"
+    )"
+    run_install "${transition_variant_dir}" \
+        --allow-insecure-http-transition-release \
+        "file://${transition_variant_dir}/source/app-release.apk" \
+        "${transition_variant_sha}" \
+        "file://${transition_variant_dir}/source/version.json" || true
+    assert_failure_unchanged \
+        "http-transition-rejects-${transition_variant_name}" \
+        "${transition_variant_dir}" \
+        "${transition_variant_before}"
+done <<'TRANSITION_VARIANTS'
+trailing-slash|http://43.139.72.25/
+explicit-port|http://43.139.72.25:80
+path|http://43.139.72.25/api
+query|http://43.139.72.25?source=test
+fragment|http://43.139.72.25#test
+credentials|http://user:password@43.139.72.25
+other-public-ip|http://43.139.72.26
+private-ip|http://192.168.1.10
+localhost|http://localhost
+hostname|http://app.fitloop-health.cn
+https-with-transition-flag|https://43.139.72.25
+TRANSITION_VARIANTS
+
+transition_reverse_order_dir="${TEST_ROOT}/transition-reverse-order"
+make_existing_case "${transition_reverse_order_dir}"
+transition_reverse_order_before="$(
+    active_snapshot "${transition_reverse_order_dir}"
+)"
+transition_reverse_order_sha="$(
+    cat "${transition_reverse_order_dir}/new.sha256"
+)"
+run_install "${transition_reverse_order_dir}" \
+    --allow-insecure-http-transition-release \
+    --verify-only \
+    "file://${transition_reverse_order_dir}/source/app-release.apk" \
+    "${transition_reverse_order_sha}" \
+    "file://${transition_reverse_order_dir}/source/version.json" || true
+if [ "${INSTALL_EXIT}" -ne 2 ]; then
+    cat "${transition_reverse_order_dir}/output.log" >&2
+    fail "http-transition-reverse-option-order: expected exit 2"
+fi
+assert_failure_unchanged \
+    "http-transition-reverse-option-order" \
+    "${transition_reverse_order_dir}" \
+    "${transition_reverse_order_before}"
+
+transition_duplicate_flag_dir="${TEST_ROOT}/transition-duplicate-flag"
+make_existing_case "${transition_duplicate_flag_dir}"
+transition_duplicate_flag_before="$(
+    active_snapshot "${transition_duplicate_flag_dir}"
+)"
+transition_duplicate_flag_sha="$(
+    cat "${transition_duplicate_flag_dir}/new.sha256"
+)"
+run_install "${transition_duplicate_flag_dir}" \
+    --verify-only \
+    --allow-insecure-http-transition-release \
+    --allow-insecure-http-transition-release \
+    "file://${transition_duplicate_flag_dir}/source/app-release.apk" \
+    "${transition_duplicate_flag_sha}" \
+    "file://${transition_duplicate_flag_dir}/source/version.json" || true
+if [ "${INSTALL_EXIT}" -ne 2 ]; then
+    cat "${transition_duplicate_flag_dir}/output.log" >&2
+    fail "http-transition-duplicate-flag: expected exit 2"
+fi
+assert_failure_unchanged \
+    "http-transition-duplicate-flag" \
+    "${transition_duplicate_flag_dir}" \
+    "${transition_duplicate_flag_before}"
+
+transition_rollback_flag_dir="${TEST_ROOT}/transition-rollback-flag"
+make_existing_case "${transition_rollback_flag_dir}"
+transition_rollback_flag_before="$(
+    active_snapshot "${transition_rollback_flag_dir}"
+)"
+transition_rollback_flag_sha="$(
+    cat "${transition_rollback_flag_dir}/previous.sha256"
+)"
+run_install "${transition_rollback_flag_dir}" \
+    --rollback \
+    --allow-insecure-http-transition-release \
+    "${transition_rollback_flag_sha}" || true
+if [ "${INSTALL_EXIT}" -ne 2 ]; then
+    cat "${transition_rollback_flag_dir}/output.log" >&2
+    fail "http-transition-rollback-flag: expected exit 2"
+fi
+assert_failure_unchanged \
+    "http-transition-rollback-flag" \
+    "${transition_rollback_flag_dir}" \
+    "${transition_rollback_flag_before}"
+
+transition_import_flag_dir="${TEST_ROOT}/transition-import-flag"
+make_existing_case "${transition_import_flag_dir}"
+transition_import_flag_before="$(
+    active_snapshot "${transition_import_flag_dir}"
+)"
+transition_import_flag_sha="$(
+    cat "${transition_import_flag_dir}/previous.sha256"
+)"
+run_install "${transition_import_flag_dir}" \
+    --import-legacy \
+    --allow-insecure-http-transition-release \
+    "${transition_import_flag_sha}" || true
+if [ "${INSTALL_EXIT}" -ne 2 ]; then
+    cat "${transition_import_flag_dir}/output.log" >&2
+    fail "http-transition-import-flag: expected exit 2"
+fi
+assert_failure_unchanged \
+    "http-transition-import-flag" \
+    "${transition_import_flag_dir}" \
+    "${transition_import_flag_before}"
 
 reserved_api_dir="${TEST_ROOT}/reserved-api"
 make_existing_case "${reserved_api_dir}"
@@ -2290,5 +2572,136 @@ if ! grep -Fq '$canonicalChecksum = "$sha256  app-release.apk`n"' "${BUILD_APK_S
     fail "build-apk-canonical-checksum"
 fi
 pass "build-apk-canonical-checksum"
+
+run_build_policy_case() {
+    local script_path="$1"
+    shift
+
+    set +e
+    BUILD_POLICY_OUTPUT="$(
+        ANDROID_SDK_ROOT= \
+        ANDROID_HOME= \
+        pwsh -NoLogo -NoProfile -File "${script_path}" "$@" 2>&1
+    )"
+    BUILD_POLICY_EXIT=$?
+    set -e
+}
+
+assert_build_policy_rejection() {
+    local case_name="$1"
+    local expected_message="$2"
+
+    if [ "${BUILD_POLICY_EXIT}" -eq 0 ]; then
+        printf '%s\n' "${BUILD_POLICY_OUTPUT}" >&2
+        fail "${case_name}: build policy unexpectedly succeeded"
+    fi
+    if ! grep -Fq "${expected_message}" <<<"${BUILD_POLICY_OUTPUT}"; then
+        printf '%s\n' "${BUILD_POLICY_OUTPUT}" >&2
+        fail "${case_name}: expected policy message was not emitted"
+    fi
+    pass "${case_name}"
+}
+
+if command -v pwsh >/dev/null 2>&1; then
+    run_build_policy_case \
+        "${BUILD_APK_SCRIPT}" \
+        -ApiBaseUrl "http://43.139.72.25" \
+        -SigningMode Compatibility
+    assert_build_policy_rejection \
+        "build-http-transition-requires-explicit-switch" \
+        "Release APK API base URL must use HTTPS."
+
+    run_build_policy_case \
+        "${BUILD_APK_SCRIPT}" \
+        -ApiBaseUrl "http://43.139.72.25/" \
+        -SigningMode Compatibility \
+        -AllowInsecureHttpTransitionRelease
+    assert_build_policy_rejection \
+        "build-http-transition-rejects-url-variant" \
+        "The HTTP transition release only accepts API base URL http://43.139.72.25."
+
+    run_build_policy_case \
+        "${BUILD_APK_SCRIPT}" \
+        -ApiBaseUrl "http://43.139.72.25" \
+        -SigningMode Compatibility \
+        -AllowInsecureApiForDevelopment \
+        -AllowInsecureHttpTransitionRelease
+    assert_build_policy_rejection \
+        "build-http-transition-rejects-ambiguous-switches" \
+        "cannot be combined."
+
+    run_build_policy_case \
+        "${BUILD_APK_SCRIPT}" \
+        -ApiBaseUrl "http://43.139.72.25" \
+        -SigningMode Official \
+        -AllowInsecureHttpTransitionRelease
+    assert_build_policy_rejection \
+        "build-http-transition-requires-compatibility-signing" \
+        "The HTTP transition release requires Compatibility signing."
+
+    run_build_policy_case \
+        "${BUILD_APK_SCRIPT}" \
+        -ApiBaseUrl "http://43.139.72.25" \
+        -SigningMode Compatibility \
+        -ExpectedSignerSha256 \
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" \
+        -AllowInsecureHttpTransitionRelease
+    assert_build_policy_rejection \
+        "build-http-transition-requires-approved-signer" \
+        "The HTTP transition release requires the approved compatibility signer."
+
+    build_version_fixture="${TEST_ROOT}/build-version-fixture"
+    mkdir -p \
+        "${build_version_fixture}/deploy" \
+        "${build_version_fixture}/mobile"
+    cp "${BUILD_APK_SCRIPT}" \
+        "${build_version_fixture}/deploy/build-apk.ps1"
+    printf 'name: fitloop\nversion: 0.1.7+8\n' \
+        > "${build_version_fixture}/mobile/pubspec.yaml"
+    run_build_policy_case \
+        "${build_version_fixture}/deploy/build-apk.ps1" \
+        -ApiBaseUrl "http://43.139.72.25" \
+        -SigningMode Compatibility \
+        -AllowInsecureHttpTransitionRelease
+    assert_build_policy_rejection \
+        "build-http-transition-self-expires-after-approved-version" \
+        "The HTTP transition release is restricted to version 0.1.6+7."
+
+    run_build_policy_case \
+        "${BUILD_APK_SCRIPT}" \
+        -ApiBaseUrl "http://43.139.72.25" \
+        -SigningMode Compatibility \
+        -AllowInsecureHttpTransitionRelease
+    if [ "${BUILD_POLICY_EXIT}" -eq 0 ]; then
+        printf '%s\n' "${BUILD_POLICY_OUTPUT}" >&2
+        fail "build-http-transition-exact-policy: build unexpectedly completed"
+    fi
+    if ! grep -Fq \
+        "Android apksigner.bat was not found." \
+        <<<"${BUILD_POLICY_OUTPUT}"
+    then
+        printf '%s\n' "${BUILD_POLICY_OUTPUT}" >&2
+        fail "build-http-transition-exact-policy: policy did not reach the post-policy SDK gate"
+    fi
+    normalized_build_policy_output="$(
+        printf '%s' "${BUILD_POLICY_OUTPUT}" |
+            tr '\r\n\t' '   ' |
+            sed 's/[[:space:]][[:space:]]*/ /g'
+    )"
+    if ! grep -Fq \
+        "API traffic is not encrypted." \
+        <<<"${normalized_build_policy_output}"
+    then
+        printf '%s\n' "${BUILD_POLICY_OUTPUT}" >&2
+        fail "build-http-transition-exact-policy: warning was not emitted"
+    fi
+    pass "build-http-transition-exact-policy"
+elif [ "${CI:-}" = "true" ]; then
+    fail "build HTTP transition policy tests require pwsh in CI"
+else
+    printf '%s\n' \
+        "[SKIP] build HTTP transition policy tests require pwsh; CI must run them." \
+        >&2
+fi
 
 echo "All APK bundle installation tests passed."

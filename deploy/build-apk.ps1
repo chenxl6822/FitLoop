@@ -7,14 +7,12 @@ param(
 
     [string]$ExpectedSignerSha256 = "69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a",
 
-    [switch]$AllowInsecureApiForDevelopment
+    [switch]$AllowInsecureApiForDevelopment,
+
+    [switch]$AllowInsecureHttpTransitionRelease
 )
 
 $ErrorActionPreference = "Stop"
-
-if (-not $AllowInsecureApiForDevelopment -and -not $ApiBaseUrl.StartsWith("https://")) {
-    throw "Release APK API base URL must use HTTPS. Use -AllowInsecureApiForDevelopment only for a non-published build."
-}
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $mobileDir = Join-Path $repoRoot "mobile"
@@ -28,6 +26,31 @@ $pubspecVersion = Select-String -Path (Join-Path $mobileDir "pubspec.yaml") -Pat
     ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
 $versionName = ($pubspecVersion -split "\+")[0]
 $versionCode = if ($pubspecVersion -match "\+(\d+)$") { [int]$Matches[1] } else { 1 }
+$approvedTransitionApiBaseUrl = "http://43.139.72.25"
+$approvedTransitionVersion = "0.1.6+7"
+$approvedTransitionSignerSha256 = "69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
+
+if ($AllowInsecureApiForDevelopment -and $AllowInsecureHttpTransitionRelease) {
+    throw "-AllowInsecureApiForDevelopment and -AllowInsecureHttpTransitionRelease cannot be combined."
+}
+
+if ($AllowInsecureHttpTransitionRelease) {
+    if ($ApiBaseUrl -cne $approvedTransitionApiBaseUrl) {
+        throw "The HTTP transition release only accepts API base URL $approvedTransitionApiBaseUrl."
+    }
+    if ($pubspecVersion -cne $approvedTransitionVersion) {
+        throw "The HTTP transition release is restricted to version $approvedTransitionVersion."
+    }
+    if ($SigningMode -cne "Compatibility") {
+        throw "The HTTP transition release requires Compatibility signing."
+    }
+    if ($ExpectedSignerSha256.ToLowerInvariant() -cne $approvedTransitionSignerSha256) {
+        throw "The HTTP transition release requires the approved compatibility signer."
+    }
+    Write-Warning "Building the authorized short-term HTTP transition release for controlled testers. API traffic is not encrypted."
+} elseif (-not $AllowInsecureApiForDevelopment -and -not $ApiBaseUrl.StartsWith("https://")) {
+    throw "Release APK API base URL must use HTTPS. Use -AllowInsecureApiForDevelopment only for a non-published build."
+}
 
 function Find-ApkSigner {
     $sdkRoots = @($env:ANDROID_SDK_ROOT, $env:ANDROID_HOME) |

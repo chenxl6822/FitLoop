@@ -2,7 +2,9 @@
 # Verify and atomically activate a trusted FitLoop APK release bundle.
 # Usage:
 #   bash deploy/install-apk.sh <apk-url> <sha256> <version-json-url>
+#   bash deploy/install-apk.sh --allow-insecure-http-transition-release <apk-url> <sha256> <version-json-url>
 #   bash deploy/install-apk.sh --verify-only <apk-url> <sha256> <version-json-url>
+#   bash deploy/install-apk.sh --verify-only --allow-insecure-http-transition-release <apk-url> <sha256> <version-json-url>
 #   bash deploy/install-apk.sh --import-legacy <trusted-legacy-sha256>
 #   bash deploy/install-apk.sh --rollback <expected-previous-sha256>
 
@@ -12,6 +14,7 @@ readonly APPROVED_VERSION="0.1.6"
 readonly APPROVED_VERSION_CODE="7"
 readonly APPROVED_SIGNING_MODE="Compatibility"
 readonly APPROVED_SIGNER_SHA256="69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
+readonly APPROVED_HTTP_TRANSITION_API_BASE_URL="http://43.139.72.25"
 readonly MAX_APK_BYTES="536870912"
 readonly MAX_METADATA_BYTES="1048576"
 
@@ -19,7 +22,9 @@ usage() {
     cat >&2 <<USAGE
 Usage:
   $0 <apk-url> <sha256> <version-json-url>
+  $0 --allow-insecure-http-transition-release <apk-url> <sha256> <version-json-url>
   $0 --verify-only <apk-url> <sha256> <version-json-url>
+  $0 --verify-only --allow-insecure-http-transition-release <apk-url> <sha256> <version-json-url>
   $0 --import-legacy <trusted-legacy-sha256>
   $0 --rollback <expected-previous-sha256>
 USAGE
@@ -46,6 +51,18 @@ elif [ "${1:-}" = "--rollback" ]; then
     shift
 elif [ "${1:-}" = "--import-legacy" ]; then
     INSTALL_MODE="import-legacy"
+    shift
+fi
+
+ALLOW_INSECURE_HTTP_TRANSITION_RELEASE=false
+if [ "${1:-}" = "--allow-insecure-http-transition-release" ]; then
+    if [ "${INSTALL_MODE}" != "activate" ] &&
+       [ "${INSTALL_MODE}" != "verify" ]
+    then
+        echo "--allow-insecure-http-transition-release is valid only for activate or verify-only" >&2
+        exit 2
+    fi
+    ALLOW_INSECURE_HTTP_TRANSITION_RELEASE=true
     shift
 fi
 
@@ -377,7 +394,9 @@ validate_metadata() {
         "${APPROVED_VERSION}" \
         "${APPROVED_VERSION_CODE}" \
         "${APPROVED_SIGNING_MODE}" \
-        "${APPROVED_SIGNER_SHA256}" <<'PY'
+        "${APPROVED_SIGNER_SHA256}" \
+        "${ALLOW_INSECURE_HTTP_TRANSITION_RELEASE}" \
+        "${APPROVED_HTTP_TRANSITION_API_BASE_URL}" <<'PY'
 import datetime
 import ipaddress
 import json
@@ -395,6 +414,8 @@ from urllib.parse import urlsplit
     approved_version_code,
     approved_signing_mode,
     approved_signer_sha256,
+    allow_insecure_http_transition_release,
+    approved_http_transition_api_base_url,
 ) = sys.argv[1:]
 
 
@@ -423,7 +444,12 @@ def require_string(metadata, field):
     return value
 
 
-def validate_api_base_url(value, strict):
+def validate_api_base_url(
+    value,
+    strict,
+    allow_insecure_http_transition,
+    approved_http_transition_url,
+):
     if any(character.isspace() for character in value):
         raise ValueError("apiBaseUrl must not contain whitespace")
     try:
@@ -431,7 +457,16 @@ def validate_api_base_url(value, strict):
         port = parsed.port
     except ValueError as error:
         raise ValueError("apiBaseUrl is invalid") from error
-    allowed_schemes = ("https",) if strict else ("http", "https")
+    if allow_insecure_http_transition not in ("true", "false"):
+        raise ValueError("invalid HTTP transition policy flag")
+    if strict and allow_insecure_http_transition == "true":
+        if value != approved_http_transition_url:
+            raise ValueError(
+                "apiBaseUrl must exactly match the approved HTTP transition URL"
+            )
+        allowed_schemes = ("http",)
+    else:
+        allowed_schemes = ("https",) if strict else ("http", "https")
     if (
         parsed.scheme not in allowed_schemes
         or not parsed.netloc
@@ -600,6 +635,12 @@ try:
     validate_api_base_url(
         require_string(metadata, "apiBaseUrl"),
         strict=validation_mode == "policy",
+        allow_insecure_http_transition=(
+            allow_insecure_http_transition_release
+        ),
+        approved_http_transition_url=(
+            approved_http_transition_api_base_url
+        ),
     )
 
     if validation_mode == "policy":

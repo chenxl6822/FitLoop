@@ -9,6 +9,158 @@
 [固定公网 IP HTTPS 发布补充手册](IP_HTTPS_RELEASE_RUNBOOK.md)，并继续
 执行本文中与备份、签名、三件套、真机、批准和回滚有关的全部门禁。
 
+## 本次 `0.1.6+7` HTTP 过渡测试覆盖规则
+
+本节是仅用于短期、少量受控用户的显式例外。项目负责人已接受登录、会话
+令牌和 API 数据通过明文 HTTP 传输的风险。本节不把该版本定义为安全生产
+发布，也不降低以后版本的 HTTPS 要求。
+
+例外只在以下值全部精确匹配时有效：
+
+```text
+version = 0.1.6
+versionCode = 7
+apiBaseUrl = http://43.139.72.25
+signingMode = Compatibility
+signerSha256 = 69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a
+```
+
+禁止尾斜杠、显式 `:80`、路径、查询参数、片段、凭据、其他 IP、主机名或私网
+地址。APK 和 `version.json` 的安装器下载来源仍必须是 `https://` 或
+`file://`；HTTP 例外只适用于候选元数据中的 `apiBaseUrl`。
+
+本次执行本文时采用以下覆盖：
+
+- 第 2 节不配置域名；只确认固定 IP `43.139.72.25` 和 TCP `22`、`80`。
+- 第 3 节数据库备份、恢复证据、可信旧 APK 和代码更新门禁保持不变。
+- 第 4 节使用下列 HTTP 环境值。
+- 第 5 节只执行 HTTP 核心服务、managed APK、三件套和健康检查；不创建
+  ACME challenge。
+- 第 6 节全部跳过，不申请或配置证书，不开放 TLS Compose 覆盖。
+- 第 7、8 节 SMTP、Agent 和降级检查使用服务器 Bash 变量
+  `${API_BASE_URL}`，其值必须精确为 `http://43.139.72.25`。
+- 第 9 节签名验证保持不变。
+- 第 10 至 14 节使用下面给出的构建、校验、激活和公网检查覆盖命令。
+- 第 15 节不执行；测试结束后必须另行批准迁移到 HTTPS 或停止受控服务。
+
+本地非秘密变量：
+
+```powershell
+$Repo = 'D:\AIWorkspace\projects\FitLoop'
+$ServerIp = '43.139.72.25'
+$ApiBaseUrl = 'http://43.139.72.25'
+$SshUser = Read-Host '输入 SSH 用户名，例如 ubuntu'
+$TestEmail = Read-Host '输入验证码测试邮箱'
+$SshTarget = "$SshUser@$ServerIp"
+```
+
+服务器 `.env` 的过渡值：
+
+```dotenv
+FITLOOP_TLS_ENABLED=false
+FITLOOP_HTTP_COMPAT_ENABLED=true
+FITLOOP_TLS_CERT_FILE=
+FITLOOP_TLS_KEY_FILE=
+FITLOOP_PUBLIC_BASE_URL=http://43.139.72.25
+```
+
+部署前 Compose 验证不得加载 TLS 覆盖：
+
+```bash
+cd /root/FitLoop
+docker compose --env-file .env \
+  -f deploy/docker-compose.yml \
+  -f deploy/docker-compose.cn.yml \
+  config --quiet
+```
+
+候选构建必须使用独立的正式过渡开关；不得使用开发开关：
+
+```powershell
+cd $Repo
+powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1 `
+  -ApiBaseUrl $ApiBaseUrl `
+  -SigningMode Compatibility `
+  -AllowInsecureHttpTransitionRelease
+```
+
+构建后除原有三件套和签名检查外，必须精确核对：
+
+```powershell
+$MetadataText =
+  Get-Content -LiteralPath deploy\apk\version.json -Raw -Encoding UTF8
+$Metadata = $MetadataText.TrimStart([char]0xFEFF) | ConvertFrom-Json
+if ([string]$Metadata.apiBaseUrl -cne $ApiBaseUrl) {
+  throw 'HTTP transition API base URL does not match the approved exact IP'
+}
+if ([string]$Metadata.version -cne '0.1.6' -or
+    [int]$Metadata.versionCode -ne 7) {
+  throw 'HTTP transition version is outside the approved release'
+}
+if ([string]$Metadata.signingMode -cne 'Compatibility' -or
+    [string]$Metadata.signerSha256 -cne
+      '69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a') {
+  throw 'HTTP transition signer does not match the compatibility trust anchor'
+}
+```
+
+第 11 节暂存后，`--verify-only` 必须显式携带同一过渡开关：
+
+```bash
+cd /root/FitLoop
+bash deploy/install-apk.sh \
+  --verify-only \
+  --allow-insecure-http-transition-release \
+  file:///tmp/fitloop-0.1.6-build.7/app-release.apk \
+  '<发布记录中的候选 APK SHA-256>' \
+  file:///tmp/fitloop-0.1.6-build.7/version.json
+```
+
+`--verify-only` 前后 `active`、`releases/` 和 `states/` 必须完全不变。完成
+真机清单中 31 项激活前检查后，Draft Release 说明必须明确写为：
+
+```text
+FitLoop 0.1.6+7 短期受控 HTTP 测试版。
+API 固定为 http://43.139.72.25，明文传输风险已由项目负责人接受。
+不得用于长期公开生产环境；继续使用兼容签名。
+```
+
+Draft 三件套仍通过 GitHub HTTPS 上传、回下载并核验。取得独立激活批准
+后，候选激活命令同样必须显式携带过渡开关：
+
+```bash
+cd /root/FitLoop
+bash deploy/install-apk.sh \
+  --allow-insecure-http-transition-release \
+  file:///tmp/fitloop-0.1.6-build.7/app-release.apk \
+  '<发布记录中的候选 APK SHA-256>' \
+  file:///tmp/fitloop-0.1.6-build.7/version.json
+```
+
+激活后的公网三件套核验使用精确 HTTP 端点：
+
+```bash
+curl -fsS 'http://43.139.72.25/apk/version.json' |
+  python3 -c \
+    'import json,sys; json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))'
+curl -fsS 'http://43.139.72.25/apk/app-release.apk.sha256'
+curl -fsS 'http://43.139.72.25/apk/app-release.apk' |
+  sha256sum
+curl -fsS 'http://43.139.72.25/actuator/health'
+```
+
+`--rollback` 仍只接受发布前记录的可信 previous SHA，不需要 HTTP 过渡
+开关。回滚演练后重新激活候选时，必须再次使用
+`--allow-insecure-http-transition-release`，并重复公网三件套核验。
+
+该例外不允许：
+
+- 把现有 `-AllowInsecureApiForDevelopment` 用于可发布产物。
+- 修改 Android 信任库、关闭安装器签名或哈希校验。
+- 通过 HTTP 下载候选到安装器。
+- 宣称 TLS、证书身份、机密性或抗中间人攻击已经验证。
+- 在后续版本继续沿用过渡开关；版本变化会自动拒绝该模式。
+
 ## 0. 先准备这些信息
 
 | 变量 | 示例 | 获取位置 |
@@ -641,7 +793,7 @@ grep -q '^FITLOOP_OTP_DEBUG_RETURN=false$' .env
 test "$(stat -c '%a' .env)" = '600'
 ```
 
-## 5. 先启动 HTTP 核心服务，验证 ACME webroot
+## 5. 先启动 HTTP 核心服务，验证 managed 下载
 
 首次迁移必须在切换新版 Nginx **之前**再次确认 managed active 就是第 0 节
 记录的可信旧版；新版 Nginx 启动后，再证明公网三件套来自 managed active，
@@ -650,14 +802,13 @@ fail-fast 子 Shell：
 
 ```bash
 cd /root/FitLoop
-read -r -p '正式域名: ' DOMAIN
+API_BASE_URL='http://43.139.72.25'
 read -r -p '第 0 节记录的旧版 APK SHA-256: ' LEGACY_APPROVED_SHA256
-export DOMAIN LEGACY_APPROVED_SHA256
+export API_BASE_URL LEGACY_APPROVED_SHA256
 
 bash -euo pipefail <<'FITLOOP'
 cd /root/FitLoop
-[[ "${DOMAIN}" =~ ^[A-Za-z0-9.-]+$ ]]
-[[ "${DOMAIN}" == *.* ]]
+test "${API_BASE_URL}" = 'http://43.139.72.25'
 [[ "${LEGACY_APPROVED_SHA256}" =~ ^[0-9a-f]{64}$ ]]
 test -L deploy/apk/active
 test -d deploy/apk/active/current
@@ -701,18 +852,18 @@ do
 done
 '
 curl -fsS http://localhost:8080/actuator/health
-curl -fsS "http://${DOMAIN}/actuator/health"
+curl -fsS "${API_BASE_URL}/actuator/health"
 
-curl -fsS "http://${DOMAIN}/apk/version.json" |
+curl -fsS "${API_BASE_URL}/apk/version.json" |
   python3 -c \
     'import json,sys; json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))'
 PUBLIC_CHECKSUM="$(
-    curl -fsS "http://${DOMAIN}/apk/app-release.apk.sha256"
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk.sha256"
 )"
 test "${PUBLIC_CHECKSUM}" = \
   "${LEGACY_APPROVED_SHA256}  app-release.apk"
 PUBLIC_SHA256="$(
-    curl -fsS "http://${DOMAIN}/apk/app-release.apk" |
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk" |
         sha256sum |
         awk '{ print $1 }'
 )"
@@ -737,14 +888,14 @@ then
     printf 'Retired flat bundle backup: %s\n' "${BACKUP_DIR}"
 fi
 
-curl -fsS "http://${DOMAIN}/apk/version.json" |
+curl -fsS "${API_BASE_URL}/apk/version.json" |
   python3 -c \
     'import json,sys; json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))'
 test "$(
-    curl -fsS "http://${DOMAIN}/apk/app-release.apk.sha256"
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk.sha256"
 )" = "${LEGACY_APPROVED_SHA256}  app-release.apk"
 test "$(
-    curl -fsS "http://${DOMAIN}/apk/app-release.apk" |
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk" |
         sha256sum |
         awk '{ print $1 }'
 )" = "${LEGACY_APPROVED_SHA256}"
@@ -754,17 +905,8 @@ FITLOOP
 移走 flat 三件套后，三个 URL 必须仍为 200 且哈希保持不变；否则立即停止
 后续步骤并保留本节 `BACKUP_DIR`，不要继续签发证书或安装新候选。
 
-验证 ACME challenge：
-
-```bash
-CHALLENGE_DIR=/root/FitLoop/deploy/certbot-www/.well-known/acme-challenge
-mkdir -p "${CHALLENGE_DIR}"
-printf 'fitloop-acme-ok' > "${CHALLENGE_DIR}/healthcheck"
-curl -fsS "http://${DOMAIN}/.well-known/acme-challenge/healthcheck"
-rm -f -- "${CHALLENGE_DIR}/healthcheck"
-```
-
-返回 `fitloop-acme-ok` 后才能签发证书。
+本次 HTTP 过渡流程到此即停止 ACME 准备；不得创建 challenge 或继续第 6 节
+证书命令。
 
 ## 6. 签发证书、启用 HTTPS 和自动续期
 
@@ -852,8 +994,10 @@ bash deploy/deploy.sh cn
 触发一封注册验证码邮件：
 
 ```bash
+API_BASE_URL='http://43.139.72.25'
+test "${API_BASE_URL}" = 'http://43.139.72.25'
 read -r -p '接收验证码的测试邮箱: ' TEST_EMAIL
-curl -fsS -X POST "https://${DOMAIN}/api/verification/send" \
+curl -fsS -X POST "${API_BASE_URL}/api/verification/send" \
   -H 'Content-Type: application/json' \
   --data "{\"channel\":\"email\",\"target\":\"${TEST_EMAIL}\",\"purpose\":\"register\"}"
 ```
@@ -882,9 +1026,11 @@ curl -fsS http://127.0.0.1:8090/metrics | head
 降级演练：
 
 ```bash
+API_BASE_URL='http://43.139.72.25'
+test "${API_BASE_URL}" = 'http://43.139.72.25'
 docker stop fitloop-agent-service
-curl -fsS "https://${DOMAIN}/actuator/health"
-curl -I "https://${DOMAIN}/"
+curl -fsS "${API_BASE_URL}/actuator/health"
+curl -I "${API_BASE_URL}/"
 docker start fitloop-agent-service
 ```
 
@@ -925,7 +1071,8 @@ Get-FileHash -Algorithm SHA256 $Keystore
 Get-FileHash -Algorithm SHA256 (Join-Path $OfflineBackupDir 'fitloop-release.p12')
 ```
 
-两份 SHA-256 必须一致。然后只做正式签名构建验证：
+两份 SHA-256 必须一致。然后只用不可发布的 HTTPS 占位地址做正式签名构建
+验证；该验证产物会在第 10 节被兼容签名候选覆盖：
 
 ```powershell
 $StoreSecret = Read-Host '输入 keystore 密码' -AsSecureString
@@ -939,7 +1086,7 @@ try {
 
   cd $Repo
   powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1 `
-    -ApiBaseUrl "https://$Domain" `
+    -ApiBaseUrl 'https://example.invalid' `
     -SigningMode Official
 
   Copy-Item deploy\apk\app-release.apk `
@@ -963,7 +1110,7 @@ finally {
 
 这份正式签名验证 APK 不得上传或公开。下一步兼容构建会覆盖 `deploy/apk/` 中的验证产物。
 
-## 10. 构建本周期兼容签名 APK
+## 10. 构建本周期 HTTP 过渡兼容签名 APK
 
 ```powershell
 cd $Repo
@@ -972,9 +1119,13 @@ git switch main
 git pull --ff-only origin main
 git status --short
 
+if ($ApiBaseUrl -cne 'http://43.139.72.25') {
+  throw '本次发布只允许精确 HTTP 过渡地址'
+}
 powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1 `
-  -ApiBaseUrl "https://$Domain" `
-  -SigningMode Compatibility
+  -ApiBaseUrl $ApiBaseUrl `
+  -SigningMode Compatibility `
+  -AllowInsecureHttpTransitionRelease
 
 $Apk = Join-Path $Repo 'deploy\apk\app-release.apk'
 $Checksum = Join-Path $Repo 'deploy\apk\app-release.apk.sha256'
@@ -993,8 +1144,8 @@ if ([string]$Metadata.sha256 -cne $Sha256) {
 if ([string]$Metadata.version -cne '0.1.6' -or [int]$Metadata.versionCode -ne 7) {
   throw 'Unexpected version or versionCode'
 }
-if ([string]$Metadata.apiBaseUrl -cne "https://$Domain") {
-  throw 'version.json API base URL does not match the approved HTTPS domain'
+if ([string]$Metadata.apiBaseUrl -cne 'http://43.139.72.25') {
+  throw 'version.json API base URL does not match the approved HTTP transition endpoint'
 }
 if ([string]$Metadata.signingMode -cne 'Compatibility') {
   throw 'Unexpected signing mode'
@@ -1012,7 +1163,7 @@ $Metadata | ConvertTo-Json
 ```text
 version = 0.1.6
 versionCode = 7
-apiBaseUrl = https://<DOMAIN>
+apiBaseUrl = http://43.139.72.25
 signingMode = Compatibility
 signerSha256 = 69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a
 ```
@@ -1079,7 +1230,9 @@ python3 -c \
   "${REMOTE_STAGE}/version.json"
 
 ACTIVE_BEFORE="$(readlink deploy/apk/active 2>/dev/null || true)"
-bash deploy/install-apk.sh --verify-only \
+bash deploy/install-apk.sh \
+  --verify-only \
+  --allow-insecure-http-transition-release \
   "file://${REMOTE_STAGE}/app-release.apk" \
   "${EXPECTED_SHA256}" \
   "file://${REMOTE_STAGE}/version.json"
@@ -1186,7 +1339,7 @@ gh release create $Tag `
   --draft `
   --target main `
   --title 'FitLoop 0.1.6+7' `
-  --notes '生产稳定过渡版：认证续期、HTTPS、Agent 降级与发布治理。继续使用兼容签名。'
+  --notes '短期受控 HTTP 测试版：API 固定为 http://43.139.72.25，登录、会话和 API 数据明文传输风险已获批准。不得用于长期公开生产；继续使用兼容签名。'
 if ($LASTEXITCODE -ne 0) {
   throw 'Draft Release creation or asset upload failed'
 }
@@ -1229,22 +1382,21 @@ if ((Get-FileHash -Algorithm SHA256 (
 Write-Host "Draft Release assets verified in $ReleaseVerifyDir"
 ```
 
-Draft 三件套校验通过并再次取得单独发布批准后，在服务器正式安装：
+Draft 三件套校验通过并再次取得单独 **APK 激活批准** 后，在服务器正式安装：
 
 ```bash
 sudo -i
 ```
 
 ```bash
-DOMAIN='<正式域名>'
+API_BASE_URL='http://43.139.72.25'
 REMOTE_STAGE=/tmp/fitloop-0.1.6-build.7
 EXPECTED_SHA256='<粘贴第 10 节本地验证并写入发布记录的 APK SHA-256>'
-export DOMAIN REMOTE_STAGE EXPECTED_SHA256
+export API_BASE_URL REMOTE_STAGE EXPECTED_SHA256
 
 bash -euo pipefail <<'FITLOOP'
 cd /root/FitLoop
-[[ "${DOMAIN}" =~ ^[A-Za-z0-9.-]+$ ]]
-[[ "${DOMAIN}" == *.* ]]
+test "${API_BASE_URL}" = 'http://43.139.72.25'
 [[ "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]
 printf '%s  app-release.apk\n' "${EXPECTED_SHA256}" |
   cmp -s - "${REMOTE_STAGE}/app-release.apk.sha256"
@@ -1254,6 +1406,7 @@ test "$(
 )" = "${EXPECTED_SHA256}"
 
 bash deploy/install-apk.sh \
+  --allow-insecure-http-transition-release \
   "file://${REMOTE_STAGE}/app-release.apk" \
   "${EXPECTED_SHA256}" \
   "file://${REMOTE_STAGE}/version.json"
@@ -1274,15 +1427,15 @@ test "$(
 
 readlink deploy/apk/active
 readlink deploy/apk/active/current
-curl -fsS "https://${DOMAIN}/apk/version.json" |
+curl -fsS "${API_BASE_URL}/apk/version.json" |
   python3 -c \
     'import json,sys; json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))'
 PUBLIC_CHECKSUM="$(
-    curl -fsS "https://${DOMAIN}/apk/app-release.apk.sha256"
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk.sha256"
 )"
 test "${PUBLIC_CHECKSUM}" = "${EXPECTED_SHA256}  app-release.apk"
 PUBLIC_SHA256="$(
-    curl -fsS "https://${DOMAIN}/apk/app-release.apk" |
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk" |
         sha256sum |
         awk '{ print $1 }'
 )"
@@ -1311,6 +1464,7 @@ ACTIVE_SHA256="$(
 test "${ACTIVE_SHA256}" = "${EXPECTED_SHA256}"
 
 bash deploy/install-apk.sh \
+  --allow-insecure-http-transition-release \
   "file://${REMOTE_STAGE}/app-release.apk" \
   "${EXPECTED_SHA256}" \
   "file://${REMOTE_STAGE}/version.json"
@@ -1340,6 +1494,7 @@ test "$(
         awk '{ print $1 }'
 )" = "${EXPECTED_SHA256}"
 bash deploy/install-apk.sh \
+  --allow-insecure-http-transition-release \
   "file://${REMOTE_STAGE}/app-release.apk" \
   "${EXPECTED_SHA256}" \
   "file://${REMOTE_STAGE}/version.json"
@@ -1351,14 +1506,14 @@ test "$(
     sha256sum deploy/apk/active/current/app-release.apk |
         awk '{ print $1 }'
 )" = "${EXPECTED_SHA256}"
-curl -fsS "https://${DOMAIN}/apk/version.json" |
+curl -fsS "${API_BASE_URL}/apk/version.json" |
   python3 -c \
     'import json,sys; json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))'
 test "$(
-    curl -fsS "https://${DOMAIN}/apk/app-release.apk.sha256"
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk.sha256"
 )" = "${EXPECTED_SHA256}  app-release.apk"
 test "$(
-    curl -fsS "https://${DOMAIN}/apk/app-release.apk" |
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk" |
         sha256sum |
         awk '{ print $1 }'
 )" = "${EXPECTED_SHA256}"
@@ -1379,7 +1534,9 @@ release 硬链接和未知 metadata 字段。Nginx 只精确公开三件套 URL�
 路径也全部返回 404。第 5 节确认新版 Nginx 从 managed active 提供旧版后，
 flat 根三件套已经备份并移出站点目录，不能作为回滚路径。
 
-服务器全部验证通过后，回到本地 PowerShell 发布已经核验的 Draft：
+服务器全部验证通过后，必须另行取得单独的 **公开 Release 批准**；APK
+激活批准不能代替公开发布批准。批准记录完成后，才回到本地 PowerShell
+发布已经核验的 Draft：
 
 ```powershell
 gh release edit $Tag --draft=false
@@ -1420,15 +1577,14 @@ curl -fsS http://127.0.0.1:8090/metrics \
 失败，必须保留证据并进入人工恢复，不能继续重装候选。
 
 ```bash
-DOMAIN='<正式域名>'
+API_BASE_URL='http://43.139.72.25'
 EXPECTED_PREVIOUS_SHA256='<粘贴发布记录中目标回滚版本的 SHA-256>'
-export DOMAIN EXPECTED_PREVIOUS_SHA256
+export API_BASE_URL EXPECTED_PREVIOUS_SHA256
 
 bash -euo pipefail <<'FITLOOP'
 cd /root/FitLoop
 CURRENT_DIR=deploy/apk/active/current
-[[ "${DOMAIN}" =~ ^[A-Za-z0-9.-]+$ ]]
-[[ "${DOMAIN}" == *.* ]]
+test "${API_BASE_URL}" = 'http://43.139.72.25'
 [[ "${EXPECTED_PREVIOUS_SHA256}" =~ ^[0-9a-f]{64}$ ]]
 
 ROLLBACK_BACKUP="/root/backups/fitloop-apk-failed-$(date +%Y%m%d_%H%M%S)"
@@ -1462,15 +1618,15 @@ ROLLED_BACK_SHA256="$(
 )"
 test "${ROLLED_BACK_SHA256}" = "${EXPECTED_PREVIOUS_SHA256}"
 
-curl -fsS "https://${DOMAIN}/apk/version.json" |
+curl -fsS "${API_BASE_URL}/apk/version.json" |
   python3 -c \
     'import json,sys; json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))'
 PUBLIC_CHECKSUM="$(
-    curl -fsS "https://${DOMAIN}/apk/app-release.apk.sha256"
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk.sha256"
 )"
 test "${PUBLIC_CHECKSUM}" = "${ROLLED_BACK_SHA256}  app-release.apk"
 PUBLIC_SHA256="$(
-    curl -fsS "https://${DOMAIN}/apk/app-release.apk" |
+    curl -fsS "${API_BASE_URL}/apk/app-release.apk" |
         sha256sum |
         awk '{ print $1 }'
 )"
