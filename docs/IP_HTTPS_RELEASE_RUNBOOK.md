@@ -102,6 +102,30 @@ IP 是否重新分配或主机密钥是否轮换前执行 `ssh-keygen -R`。
 
 记录服务器 IP、SSH 用户、ED25519 SHA-256、核验来源、日期和核验人。
 
+如果后续从 Windows PowerShell 脚本化执行只读 SSH 验收，必须让原生命令
+直接把标准输出和标准错误显示到控制台，并只按进程退出码判定成功。Nginx
+语法检查成功时也会把诊断写到标准错误流；不要捕获并据此制造
+`NativeCommandError` 失败：
+
+```powershell
+$SshPath = (Get-Command ssh.exe -ErrorAction Stop).Source
+$SshArgs = @(
+  '-o', 'StrictHostKeyChecking=yes',
+  '-o', 'HostKeyAlgorithms=ssh-ed25519',
+  $SshTarget,
+  'docker exec fitloop-nginx nginx -t'
+)
+
+& $SshPath @SshArgs
+$SshExitCode = $LASTEXITCODE
+if ($SshExitCode -ne 0) {
+  throw "SSH verification failed with exit code $SshExitCode"
+}
+```
+
+需要解析远端输出时，应让远端脚本自己做断言并通过退出码汇总结果；不要把
+PowerShell 错误流对象是否存在当作业务验收门禁。
+
 ## 3. 可信旧版 APK 和兼容签名
 
 优先使用此前留存且来源已核验的 `0.1.5+6` APK。不得把当前公网重新下载的
@@ -364,8 +388,15 @@ rm -f -- "${RESTORE_ENV}" "${RESTORE_CLIENT_CONFIG}"
 
 - pull 前的数据库备份必须使用从已验证本地 `main` 上传并按 SHA-256
   复核的安全 `backup.sh`；不得运行服务器旧提交中的同名脚本。
-- 拉取前 `git status --porcelain` 必须为空。
+- 首次创建迁移 guard 前 `git status --porcelain` 必须为空；创建或安全
+  复用后，状态只允许为空（已有 ignore 规则）或精确等于
+  `?? deploy/apk/.install.migration-guard`（旧基线）。
 - 只允许 `git pull --ff-only origin main`。
+- pull 前必须按主手册创建临时
+  `deploy/apk/.install.migration-guard`，新提交必须包含跟踪的
+  `deploy/apk/.gitkeep`；pull 前后 `stat -Lc '%d:%i' deploy/apk` 必须
+  完全相同，且运行中 Nginx 必须看到同一个 inode，防止它继续绑定已删除
+  的旧目录。
 - 首次迁移时，pull 会删除旧提交跟踪的 flat 三件套；必须从仓库外的安全
   备份恢复三件套后，才执行 `--import-legacy`。
 - 新版 Nginx 启动前必须完成 `--import-legacy`。
@@ -387,7 +418,40 @@ test "$(
   sha256sum deploy/apk/active/current/app-release.apk |
     awk '{ print $1 }'
 )" = "${LEGACY_APPROVED_SHA256}"
+
+HOST_APK_DIR_INODE="$(stat -Lc '%d:%i' deploy/apk)"
+CONTAINER_APK_DIR_INODE="$(
+  docker exec fitloop-nginx \
+    stat -c '%d:%i' /usr/share/nginx/html/apk
+)"
+test "${CONTAINER_APK_DIR_INODE}" = "${HOST_APK_DIR_INODE}"
+docker exec fitloop-nginx sh -eu -c '
+root=/usr/share/nginx/html/apk
+for path in \
+  "$root" \
+  "$root/active" \
+  "$root/active/current" \
+  "$root/active/current/app-release.apk" \
+  "$root/active/current/app-release.apk.sha256" \
+  "$root/active/current/version.json"
+do
+  if [ -L "$path" ]; then
+    printf "l %s -> %s\n" "$path" "$(readlink "$path")"
+  elif [ -d "$path" ]; then
+    printf "d %s\n" "$path"
+  elif [ -f "$path" ]; then
+    printf "f %s\n" "$path"
+  else
+    printf "ERROR: missing APK path: %s\n" "$path" >&2
+    exit 1
+  fi
+done
+'
 ```
+
+容器内命令只使用 BusyBox 支持的 `stat`、`test`、`readlink`、`printf`
+和显式成员循环；不要依赖 GNU `find` 的格式化扩展。任一 inode 或成员
+断言失败都表示 bind mount 尚未恢复，必须停止证书和部署阶段。
 
 ## 6. 申请固定公网 IP 短证书
 
@@ -617,7 +681,8 @@ $CandidateSha256 = (
 $ChecksumText = (
   Get-Content $Checksum -Raw -Encoding ASCII
 ).Trim()
-$Metadata = Get-Content $VersionJson -Raw -Encoding UTF8 |
+$MetadataText = Get-Content -LiteralPath $VersionJson -Raw -Encoding UTF8
+$Metadata = $MetadataText.TrimStart([char]0xFEFF) |
   ConvertFrom-Json
 
 if ($ChecksumText -cne "$CandidateSha256  app-release.apk") {
@@ -827,7 +892,9 @@ bash deploy/install-apk.sh \
 立即完成 #3：
 
 ```bash
-curl -fsS 'https://43.139.72.25/apk/version.json'
+curl -fsS 'https://43.139.72.25/apk/version.json' |
+  python3 -c \
+    'import json,sys; json.loads(sys.stdin.buffer.read().decode("utf-8-sig"))'
 curl -fsS 'https://43.139.72.25/apk/app-release.apk.sha256'
 curl -fsS 'https://43.139.72.25/apk/app-release.apk' |
   sha256sum

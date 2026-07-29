@@ -266,6 +266,13 @@ finally {
 ssh $SshTarget
 ```
 
+Windows PowerShell 5.1 会把原生命令写入标准错误流的文本包装成
+`NativeCommandError`。Nginx 的成功语法检查也会把诊断写到这个流，因此
+脚本化 SSH 验收不得把“出现错误流文本”当作失败；不要合并捕获 SSH 的
+标准输出和标准错误，必须在调用后立即保存并检查 `$LASTEXITCODE`。固定
+公网 IP 场景的完整示例见
+[IP HTTPS 手册第 2 节](IP_HTTPS_RELEASE_RUNBOOK.md#2-可信-ssh-主机指纹)。
+
 先提升到 root；看到 root 提示符后，再完整执行下一段 fail-fast 代码块，不要逐行跳过失败：
 
 ```bash
@@ -455,10 +462,62 @@ test ! -L "${BACKUP_DIR}"
     sha256sum -c SHA256SUMS
 )
 
+test "$(git branch --show-current)" = 'main'
+test -d deploy/apk
+test ! -L deploy/apk
+APK_DIR_INODE_CURRENT="$(stat -Lc '%d:%i' deploy/apk)"
+APK_MIGRATION_GUARD=deploy/apk/.install.migration-guard
+if [ -e "${APK_MIGRATION_GUARD}" ] ||
+   [ -L "${APK_MIGRATION_GUARD}" ]
+then
+    test -f "${APK_MIGRATION_GUARD}"
+    test ! -L "${APK_MIGRATION_GUARD}"
+    test "$(stat -c '%u' "${APK_MIGRATION_GUARD}")" = "$(id -u)"
+    test "$(stat -c '%a' "${APK_MIGRATION_GUARD}")" = '600'
+    test "$(stat -c '%h' "${APK_MIGRATION_GUARD}")" = '1'
+    APK_DIR_INODE_BEFORE="$(cat "${APK_MIGRATION_GUARD}")"
+    [[ "${APK_DIR_INODE_BEFORE}" =~ ^[0-9]+:[0-9]+$ ]]
+    test "${APK_DIR_INODE_BEFORE}" = "${APK_DIR_INODE_CURRENT}"
+else
+    test -z "$(git status --porcelain --untracked-files=all)"
+    APK_DIR_INODE_BEFORE="${APK_DIR_INODE_CURRENT}"
+    (
+        umask 077
+        printf '%s\n' "${APK_DIR_INODE_BEFORE}" \
+            > "${APK_MIGRATION_GUARD}"
+    )
+    test -f "${APK_MIGRATION_GUARD}"
+    test ! -L "${APK_MIGRATION_GUARD}"
+    test "$(stat -c '%a' "${APK_MIGRATION_GUARD}")" = '600'
+fi
+GUARD_STATUS="$(
+    git status --porcelain --untracked-files=all
+)"
+case "${GUARD_STATUS}" in
+    ''|'?? deploy/apk/.install.migration-guard') ;;
+    *)
+        git status --short
+        echo 'ERROR: only the deliberate APK migration guard may be untracked before pull' >&2
+        exit 1
+        ;;
+esac
+
 git fetch origin
-git switch main
 git pull --ff-only origin main
 test -z "$(git status --porcelain)"
+test -f deploy/apk/.gitkeep
+test ! -L deploy/apk/.gitkeep
+test -f "${APK_MIGRATION_GUARD}"
+test ! -L "${APK_MIGRATION_GUARD}"
+git check-ignore -q -- "${APK_MIGRATION_GUARD}"
+test "$(cat "${APK_MIGRATION_GUARD}")" = "${APK_DIR_INODE_BEFORE}"
+APK_DIR_INODE_AFTER="$(stat -Lc '%d:%i' deploy/apk)"
+if [ "${APK_DIR_INODE_AFTER}" != "${APK_DIR_INODE_BEFORE}" ]; then
+    printf 'ERROR: deploy/apk inode changed across fast-forward: %s -> %s\n' \
+        "${APK_DIR_INODE_BEFORE}" \
+        "${APK_DIR_INODE_AFTER}" >&2
+    exit 1
+fi
 git log -1 --oneline
 
 if [ ! -L deploy/apk/active ]; then
@@ -476,9 +535,9 @@ if [ ! -L deploy/apk/active ]; then
         cd deploy/apk
         sha256sum -c app-release.apk.sha256
     )
-    bash deploy/install-apk.sh \
-      --import-legacy "${LEGACY_APPROVED_SHA256}"
 fi
+bash deploy/install-apk.sh \
+  --import-legacy "${LEGACY_APPROVED_SHA256}"
 test -L deploy/apk/active
 test -d deploy/apk/active/current
 (
@@ -489,18 +548,40 @@ test "$(
     sha256sum deploy/apk/active/current/app-release.apk |
         awk '{ print $1 }'
 )" = "${LEGACY_APPROVED_SHA256}"
+CONTAINER_APK_DIR_INODE="$(
+    docker exec fitloop-nginx \
+        stat -c '%d:%i' /usr/share/nginx/html/apk
+)"
+test "${CONTAINER_APK_DIR_INODE}" = "${APK_DIR_INODE_AFTER}"
+rm -- "${APK_MIGRATION_GUARD}"
+test ! -e "${APK_MIGRATION_GUARD}"
+test ! -L "${APK_MIGRATION_GUARD}"
 FITLOOP
 ```
 
 如果保护阶段检测不到 `deploy/apk/active/current` 而使用旧 flat 目录，
 这就是首次迁移。必须在首次执行第 5 节新版 Nginx 部署前完成
-`--import-legacy`。旧提交中的 flat 文件会被 pull 删除，
+`--import-legacy`。由于旧提交还没有新的 ignore 规则，代码块在完全
+干净的工作树中创建或安全复用唯一允许的未跟踪文件
+`deploy/apk/.install.migration-guard`，用它阻止 Git 删除空目录；新提交
+跟踪的 `deploy/apk/.gitkeep` 则作为后续更新的长期目录锚点。pull 后临时
+guard 必须被新 `.gitignore` 覆盖，且 pull 前后必须用设备号和 inode 证明
+`deploy/apk` 没有被替换。只有运行中 Nginx 看到同一个 inode、managed
+旧版导入完成后才能删除临时 guard。旧提交中的 flat 文件仍会被 pull 删除，
 所以代码块先把它们备份到仓库外，再在 pull 后恢复为被新 `.gitignore`
 忽略的 flat 三件套，然后执行可信导入。脚本用第 0 节的可信 SHA-256
 校验旧 flat 三件套，创建只有旧版 `current` 的 managed active。导入失败或
 `active/current` 哈希不匹配时立即停止，不得继续部署。此处先保留已备份
-的 flat 三件套，让仍运行旧 root 配置的 Nginx 继续服务，避免下载中断；
-第 5 节确认新版 Nginx 已从 managed active 提供同一旧版后再移走它们。
+的 flat 三件套，让仍运行旧 root 配置的 Nginx 在恢复完成后继续服务。
+pull 删除旧路径与恢复三件套之间仍可能出现短暂下载 404，必须安排发布
+窗口并尽快完成恢复；目录锚点防止该 404 因容器继续绑定已删除 inode 而
+持续存在。第 5 节确认新版 Nginx 已从 managed active 提供同一旧版后再
+移走 flat 三件套。
+
+该代码块可在 fetch、pull、恢复、导入或容器 inode 检查失败后原样重跑。
+已存在的 guard 只有在它是当前用户拥有的 `0600` 普通单硬链接文件，且内容
+严格等于当前 `deploy/apk` 设备号和 inode 时才会被复用；其他情况一律停止。
+不要为了重跑而手工删除、覆盖或放宽 guard 校验。
 
 如果 `--import-legacy` 在 `active` rename 后收到 TERM 并返回 143，保留
 本节原始 `LEGACY_APPROVED_SHA256`，不要生成新参数或手工改指针；观察
@@ -590,6 +671,35 @@ test "$(
 )" = "${LEGACY_APPROVED_SHA256}"
 
 bash deploy/deploy.sh cn
+
+HOST_APK_DIR_INODE="$(stat -Lc '%d:%i' deploy/apk)"
+CONTAINER_APK_DIR_INODE="$(
+    docker exec fitloop-nginx \
+        stat -c '%d:%i' /usr/share/nginx/html/apk
+)"
+test "${CONTAINER_APK_DIR_INODE}" = "${HOST_APK_DIR_INODE}"
+docker exec fitloop-nginx sh -eu -c '
+root=/usr/share/nginx/html/apk
+for path in \
+    "$root" \
+    "$root/active" \
+    "$root/active/current" \
+    "$root/active/current/app-release.apk" \
+    "$root/active/current/app-release.apk.sha256" \
+    "$root/active/current/version.json"
+do
+    if [ -L "$path" ]; then
+        printf "l %s -> %s\n" "$path" "$(readlink "$path")"
+    elif [ -d "$path" ]; then
+        printf "d %s\n" "$path"
+    elif [ -f "$path" ]; then
+        printf "f %s\n" "$path"
+    else
+        printf "ERROR: missing APK path: %s\n" "$path" >&2
+        exit 1
+    fi
+done
+'
 curl -fsS http://localhost:8080/actuator/health
 curl -fsS "http://${DOMAIN}/actuator/health"
 
@@ -871,7 +981,8 @@ $Checksum = Join-Path $Repo 'deploy\apk\app-release.apk.sha256'
 $VersionJson = Join-Path $Repo 'deploy\apk\version.json'
 $Sha256 = (Get-FileHash -Algorithm SHA256 $Apk).Hash.ToLowerInvariant()
 $ChecksumLine = (Get-Content $Checksum -Raw -Encoding ASCII).Trim()
-$Metadata = Get-Content $VersionJson -Raw -Encoding UTF8 | ConvertFrom-Json
+$MetadataText = Get-Content -LiteralPath $VersionJson -Raw -Encoding UTF8
+$Metadata = $MetadataText.TrimStart([char]0xFEFF) | ConvertFrom-Json
 
 if ($ChecksumLine -cne "$Sha256  app-release.apk") {
   throw 'Checksum file does not match the APK'
@@ -1054,7 +1165,8 @@ $ActualChecksumText = [System.IO.File]::ReadAllText(
 if ($ActualChecksumText -cne $ExpectedChecksumText) {
   throw '本地 checksum 不是可信 SHA-256 的 canonical LF 记录'
 }
-$Metadata = Get-Content $VersionJson -Raw -Encoding UTF8 |
+$MetadataText = Get-Content -LiteralPath $VersionJson -Raw -Encoding UTF8
+$Metadata = $MetadataText.TrimStart([char]0xFEFF) |
   ConvertFrom-Json
 if ([string]$Metadata.sha256 -cne $ApprovedCandidateSha256) {
   throw '本地 version.json sha256 与发布记录不一致'
