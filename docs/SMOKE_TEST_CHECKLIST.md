@@ -1,9 +1,10 @@
 # FitLoop Android 真机冒烟清单
 
-适用于 `0.1.6+7` 发布候选。自动化门禁通过后，使用受信的正式 HTTPS
-端点（域名或公网 IP）、真实服务器和至少一台 Android 真机执行；任何
-阻塞项都不得标记为通过。第 3、6 项是 APK 原子激活后的发布验证，其余
-31 项必须在激活前通过。
+适用于 `0.1.6+7` 短期受控 HTTP 测试候选。项目负责人必须事先接受登录、
+会话令牌和 API 数据通过 `http://43.139.72.25` 明文传输的风险。自动化
+门禁通过后，使用该精确端点、真实服务器和至少一台 Android 真机执行；
+任何阻塞项都不得标记为通过。第 3、6 项是 APK 原子激活后的发布验证，
+其余 31 项必须在激活前通过。本清单不构成 HTTPS 或安全生产验收。
 
 ## 发布记录
 
@@ -13,7 +14,9 @@
 | Git commit | |
 | APK SHA-256 | |
 | APK 签名证书 SHA-256 | |
-| HTTPS API 地址 | |
+| API 地址与传输模式 | `http://43.139.72.25` / 临时明文 HTTP |
+| HTTP 风险批准人 / 时间 | |
+| 受控测试开始 / 结束时间 | |
 | 旧版安装包版本 | `0.1.5+6` |
 | 测试设备 / Android 版本 | |
 | 测试人 / 日期 | |
@@ -32,18 +35,21 @@ python -m pytest
 cd ../mobile
 flutter analyze
 flutter test
-$env:FITLOOP_COMPAT_SIGNING="true"
-flutter build apk --release --no-pub --dart-define=FITLOOP_API_BASE_URL=https://app.example.com
+cd ..
+powershell -ExecutionPolicy Bypass -File deploy\build-apk.ps1 `
+  -ApiBaseUrl 'http://43.139.72.25' `
+  -SigningMode Compatibility `
+  -AllowInsecureHttpTransitionRelease
 ```
 
 具备 Docker 的 CI 还必须通过 Testcontainers 集成测试和基础/TLS Compose 配置校验。
 
-## 服务、TLS 与安装
+## 服务、传输决策与安装
 
 | # | 检查项 | 预期结果 | 结果 |
 | --- | --- | --- | --- |
-| 1 | HTTPS 证书链、端点身份和 TLS 版本 | 证书可信，域名或 IP SAN 与发布端点匹配，只接受 TLS 1.2/1.3 | |
-| 2 | HTTPS `/actuator/health` | 返回 `{"status":"UP"}` | |
+| 1 | HTTP 过渡风险批准和端点精确性 | 已记录批准人、测试期限和明文风险；APK 与 `version.json` 只使用 `http://43.139.72.25` | |
+| 2 | HTTP `/actuator/health` | `http://43.139.72.25/actuator/health` 返回 `{"status":"UP"}` | |
 | 3 | 激活后的 `/apk/version.json` 与 APK SHA-256 | 公网版本、versionCode、哈希与发布记录一致 | |
 | 4 | 全新安装 `0.1.6+7` | 安装成功并正常启动 | |
 | 5 | 从线上 `0.1.5+6` 覆盖升级 | 无签名冲突，登录数据和用户数据保留 | |
@@ -94,7 +100,7 @@ flutter build apk --release --no-pub --dart-define=FITLOOP_API_BASE_URL=https://
 | 30 | 弱网上传头像或运动照片 | 超时有提示，页面不锁死 | |
 | 31 | 停止 Agent 或使 DeepSeek 不可用 | 登录、运动、管理核心接口和 APK 下载仍正常；仅 Agent 告警 | |
 | 32 | 服务端返回 401/403/500 | 刷新规则正确，最终错误可理解且无无限重试 | |
-| 33 | 新 APK 使用 HTTPS，旧 APK 走 HTTP 兼容 API | 新版无明文 API；旧版 POST 在兼容窗口内不因重定向失败 | |
+| 33 | 新 APK 使用获批的精确 HTTP 过渡端点 | APK 与 `version.json` 只指向 `http://43.139.72.25`；尾斜杠、端口、路径、查询、片段、其他 HTTP 地址及无开关构建均被拒绝 | |
 
 ## 发布结论
 
@@ -106,4 +112,8 @@ flutter build apk --release --no-pub --dart-define=FITLOOP_API_BASE_URL=https://
 | 未执行项目及原因 | |
 | 是否允许公开 Release | 是 / 否 |
 
-激活前 31 项全部通过后才能申请 APK 激活批准。激活后立即执行第 3、6 项；任一失败都必须回滚且不得公开 Draft Release。只有 33 项全部通过，且邮件验证码、升级签名、回滚和 Agent 降级无阻塞问题时，才允许公开 Release。
+激活前 31 项全部通过后才能申请 APK 激活批准。激活后立即执行第 3、6 项；
+任一失败都必须回滚且不得公开 Draft Release。只有 33 项全部通过，且邮件
+验证码、升级签名、回滚和 Agent 降级无阻塞问题时，才允许向受控测试用户
+公开 Release。发布记录必须明确注明“短期 HTTP 测试版”，不得宣称 HTTPS
+或安全生产验收已经完成。
