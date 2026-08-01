@@ -1,6 +1,6 @@
 # FitLoop 固定公网 IP HTTPS 发布补充手册
 
-本手册适用于把固定公网 IP `43.139.72.25` 作为 FitLoop `0.1.6+7`
+本手册适用于把固定公网 IP `43.139.72.25` 作为 FitLoop `0.1.7+8`
 的 HTTPS API、下载页和 APK 发布端点。它只替代
 [人工发布执行手册](MANUAL_RELEASE_RUNBOOK.md) 中与域名、DNS 和域名证书
 相关的步骤；备份、可信旧 APK、三件套、真机、原子激活和回滚门禁仍须
@@ -691,8 +691,8 @@ if ($ChecksumText -cne "$CandidateSha256  app-release.apk") {
 if ([string]$Metadata.sha256 -cne $CandidateSha256) {
   throw 'version.json sha256 与 APK 不一致'
 }
-if ([string]$Metadata.version -cne '0.1.6' -or
-    [int]$Metadata.versionCode -ne 7) {
+if ([string]$Metadata.version -cne '0.1.7' -or
+    [int]$Metadata.versionCode -ne 8) {
   throw '版本号错误'
 }
 if ([string]$Metadata.apiBaseUrl -cne $ApiBaseUrl) {
@@ -717,7 +717,7 @@ $Metadata | ConvertTo-Json
 本地 PowerShell：
 
 ```powershell
-$RemoteStage = '/tmp/fitloop-0.1.6-build.7'
+$RemoteStage = '/tmp/fitloop-0.1.7-build.8'
 ssh $SshTarget "install -d -m 700 $RemoteStage"
 scp "$Repo\deploy\apk\app-release.apk" `
   "${SshTarget}:$RemoteStage/app-release.apk"
@@ -733,16 +733,16 @@ scp "$Repo\deploy\apk\version.json" `
 cd /root/FitLoop
 ACTIVE_BEFORE="$(readlink deploy/apk/active)"
 bash deploy/install-apk.sh --verify-only \
-  file:///tmp/fitloop-0.1.6-build.7/app-release.apk \
+  file:///tmp/fitloop-0.1.7-build.8/app-release.apk \
   '<本地发布记录中的候选 APK SHA-256>' \
-  file:///tmp/fitloop-0.1.6-build.7/version.json
+  file:///tmp/fitloop-0.1.7-build.8/version.json
 ACTIVE_AFTER="$(readlink deploy/apk/active)"
 test "${ACTIVE_AFTER}" = "${ACTIVE_BEFORE}"
 ```
 
 `--verify-only` 必须返回 0，且不得改变公网 active。
 
-## 11. 激活前 31 项真机验证
+## 11. AI 教练专项 3 项与激活前 31 项真机验证
 
 使用 [Android 真机冒烟清单](SMOKE_TEST_CHECKLIST.md)。第 1 项按 IP 端点
 验证：证书链可信、IP SAN 匹配 `43.139.72.25`，只接受 TLS 1.2/1.3。
@@ -767,7 +767,7 @@ adb install "$Repo\deploy\apk\app-release.apk"
 `adb uninstall` 会删除该测试设备上的 App 数据。不要在个人主设备或含真实
 用户数据的设备执行。
 
-除激活后的公网三件套核验 #3 和 managed rollback #6 外，其余 31 项必须
+除激活后的公网三件套核验 #3 和 managed rollback #6 外，其余 31 项和 AI 教练专项 3 项必须
 全部通过并记录实际结果。任一失败都不得创建标签、激活 APK 或公开 Release。
 
 ## 12. 四个独立批准点
@@ -775,22 +775,22 @@ adb install "$Repo\deploy\apk\app-release.apk"
 ### A. 构建和非公开验证
 
 ```text
-允许从远端 main 构建 0.1.6+7 Compatibility APK 三件套，上传至服务器
-/tmp/fitloop-0.1.6-build.7 并执行 --verify-only；禁止切换 active、创建
+允许从远端 main 构建 0.1.7+8 Compatibility APK 三件套，上传至服务器
+/tmp/fitloop-0.1.7-build.8 并执行 --verify-only；禁止切换 active、创建
 标签或公开发布。
 ```
 
 ### B. Draft Release 和标签
 
 ```text
-31 项激活前检查全部通过。允许创建标签 v0.1.6-build.7 和 Draft GitHub
+AI 教练专项 3 项和 31 项激活前检查全部通过。允许创建标签 v0.1.7-build.8 和 Draft GitHub
 Release，上传并回下载核验三件套；禁止激活服务器 APK 或公开 Release。
 ```
 
 取得批准 B 后，本地 PowerShell：
 
 ```powershell
-$Tag = 'v0.1.6-build.7'
+$Tag = 'v0.1.7-build.8'
 $AssetNames = @(
   'app-release.apk',
   'app-release.apk.sha256',
@@ -804,7 +804,7 @@ $AssetNames = @(
   --repo chenxl6822/FitLoop `
   --draft `
   --target $MainCommit `
-  --title 'FitLoop 0.1.6+7' `
+  --title 'FitLoop 0.1.7+8' `
   --notes '固定公网 IP HTTPS 过渡版；继续使用兼容签名。'
 if ($LASTEXITCODE -ne 0) {
   throw 'Draft Release 创建或资产上传失败'
@@ -871,7 +871,7 @@ rollback 演练。任一失败立即回滚，禁止公开 Release。
 
 ```text
 公网三件套 #3 和 managed rollback #6 均通过，候选已恢复为
-active/current。允许将 v0.1.6-build.7 Draft Release 转为公开；禁止执行
+active/current。允许将 v0.1.7-build.8 Draft Release 转为公开；禁止执行
 其他服务器、数据库或代码变更。
 ```
 
@@ -884,9 +884,9 @@ active/current。允许将 v0.1.6-build.7 Draft Release 转为公开；禁止执
 ```bash
 cd /root/FitLoop
 bash deploy/install-apk.sh \
-  file:///tmp/fitloop-0.1.6-build.7/app-release.apk \
+  file:///tmp/fitloop-0.1.7-build.8/app-release.apk \
   '<本地发布记录中的候选 APK SHA-256>' \
-  file:///tmp/fitloop-0.1.6-build.7/version.json
+  file:///tmp/fitloop-0.1.7-build.8/version.json
 ```
 
 立即完成 #3：
@@ -911,12 +911,12 @@ bash deploy/install-apk.sh \
 ```
 
 确认旧版恢复后，再使用同一个 `/tmp` 候选三件套重新执行 forward 安装，
-恢复 `0.1.6+7`。#3 或 #6 任一失败都停止并保持 Draft 未公开。
+恢复 `0.1.7+8`。#3 或 #6 任一失败都停止并保持 Draft 未公开。
 
 两项都通过并取得批准 D 后，本地 PowerShell：
 
 ```powershell
-$Tag = 'v0.1.6-build.7'
+$Tag = 'v0.1.7-build.8'
 & $Gh release edit $Tag `
   --repo chenxl6822/FitLoop `
   --draft=false
@@ -965,7 +965,7 @@ bash deploy/install-apk.sh \
 - IP 证书 SAN、有效期、Certbot 版本、renew dry-run 和 reload hook 结果。
 - 候选 APK、checksum、metadata、签名指纹和发布记录 SHA-256。
 - `--verify-only` 前后 active 不变的证据。
-- 31 项激活前和 2 项激活后真机记录。
+- AI 教练专项 3 项、31 项激活前和 2 项激活后真机记录（共 36 项）。
 - Draft 资产回下载哈希。
 - 四个独立批准记录。
 - 激活、回滚、候选恢复、监控和最终 Release URL。

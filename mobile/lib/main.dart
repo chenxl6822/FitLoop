@@ -30,11 +30,11 @@ part 'shared/shared_ui.dart';
 const _kOnboardingDoneKey = 'onboarding_done';
 const _appVersion = String.fromEnvironment(
   'FITLOOP_APP_VERSION',
-  defaultValue: '0.1.6',
+  defaultValue: '0.1.7',
 );
 const _appBuildNumber = String.fromEnvironment(
   'FITLOOP_BUILD_NUMBER',
-  defaultValue: '7',
+  defaultValue: '8',
 );
 
 void main() {
