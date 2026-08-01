@@ -8,6 +8,7 @@ import com.fitloop.agent.AgentDtos.ProposalResponse;
 import com.fitloop.agent.AgentDtos.RunResponse;
 import com.fitloop.agent.AgentDtos.RunResultRequest;
 import com.fitloop.agent.AgentDtos.ToolAuditRequest;
+import com.fitloop.agent.AgentDtos.TrainingPlanResponse;
 import com.fitloop.appeal.Appeal;
 import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
 import com.fitloop.appeal.AppealRepository;
@@ -95,6 +96,13 @@ public class AgentGatewayService {
     public List<AgentMessage> messages(String runId, Long actorId, boolean admin) {
         requireVisible(runId, actorId, admin);
         return messages.findByRunIdOrderByMessageIdAsc(runId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TrainingPlanResponse> listTrainingPlans(Long userId) {
+        return trainingPlans.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .map(TrainingPlanResponse::from)
+                .toList();
     }
 
     @Transactional

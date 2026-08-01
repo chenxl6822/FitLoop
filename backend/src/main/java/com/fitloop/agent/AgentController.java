@@ -6,6 +6,7 @@ import com.fitloop.agent.AgentDtos.MessageResponse;
 import com.fitloop.agent.AgentDtos.RunCreatedResponse;
 import com.fitloop.agent.AgentDtos.RunResponse;
 import com.fitloop.agent.AgentDtos.RejectProposalRequest;
+import com.fitloop.agent.AgentDtos.TrainingPlanResponse;
 import com.fitloop.common.ApiResponse;
 import com.fitloop.security.AuthSupport;
 import jakarta.validation.Valid;
@@ -43,6 +44,11 @@ public class AgentController {
                 .map(message -> new MessageResponse(message.getMessageId(), message.getRole(),
                         message.getContent(), message.getCreatedAt()))
                 .toList());
+    }
+
+    @GetMapping("/training-plans")
+    public ApiResponse<List<TrainingPlanResponse>> trainingPlans() {
+        return ApiResponse.ok(gateway.listTrainingPlans(AuthSupport.currentUserId()));
     }
 
     @PostMapping("/actions/{proposalId}/confirm")

@@ -23,6 +23,13 @@ public final class AgentDtos {
                                    boolean requiresAdmin, Instant expiresAt, Long decidedByUserId,
                                    Instant decidedAt, String decisionNote) { }
     public record ConfirmResponse(Long proposalId, String status, Long affectedResourceId) { }
+    public record TrainingPlanResponse(Long planId, String title, String planJson,
+                                       String status, Instant createdAt) {
+        static TrainingPlanResponse from(TrainingPlan plan) {
+            return new TrainingPlanResponse(plan.getPlanId(), plan.getTitle(), plan.getPlanJson(),
+                    plan.getStatus(), plan.getCreatedAt());
+        }
+    }
     public record RejectProposalRequest(@Size(max = 500) String reason) { }
     public record DelegationTokenResponse(String accessToken, long expiresIn) { }
     public record ClaimResponse(String runId, AgentRunType type, String inputJson, Long subjectUserId,
