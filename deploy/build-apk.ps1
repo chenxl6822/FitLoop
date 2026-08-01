@@ -27,7 +27,7 @@ $pubspecVersion = Select-String -Path (Join-Path $mobileDir "pubspec.yaml") -Pat
 $versionName = ($pubspecVersion -split "\+")[0]
 $versionCode = if ($pubspecVersion -match "\+(\d+)$") { [int]$Matches[1] } else { 1 }
 $approvedTransitionApiBaseUrl = "http://43.139.72.25"
-$approvedTransitionVersion = "0.1.6+7"
+$approvedTransitionVersion = "0.1.7+8"
 $approvedTransitionSignerSha256 = "69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
 
 if ($AllowInsecureApiForDevelopment -and $AllowInsecureHttpTransitionRelease) {

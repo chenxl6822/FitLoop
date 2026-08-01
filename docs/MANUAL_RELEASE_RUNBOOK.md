@@ -1,4 +1,4 @@
-# FitLoop `0.1.6+7` 人工发布执行手册
+# FitLoop `0.1.7+8` 人工发布执行手册
 
 本手册列出代码之外必须由项目负责人亲自完成的操作。按顺序执行，不要跳过备份、签名核对、真机冒烟或回滚准备。涉及密码、授权码、API Key 的位置只在交互提示、密码管理器或未跟踪的 `.env` 中填写，不要粘贴到 Git、聊天或终端命令历史。
 
@@ -9,7 +9,7 @@
 [固定公网 IP HTTPS 发布补充手册](IP_HTTPS_RELEASE_RUNBOOK.md)，并继续
 执行本文中与备份、签名、三件套、真机、批准和回滚有关的全部门禁。
 
-## 本次 `0.1.6+7` HTTP 过渡测试覆盖规则
+## 本次 `0.1.7+8` HTTP 过渡测试覆盖规则
 
 本节是仅用于短期、少量受控用户的显式例外。项目负责人已接受登录、会话
 令牌和 API 数据通过明文 HTTP 传输的风险。本节不把该版本定义为安全生产
@@ -18,8 +18,8 @@
 例外只在以下值全部精确匹配时有效：
 
 ```text
-version = 0.1.6
-versionCode = 7
+version = 0.1.7
+versionCode = 8
 apiBaseUrl = http://43.139.72.25
 signingMode = Compatibility
 signerSha256 = 69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a
@@ -93,8 +93,8 @@ $Metadata = $MetadataText.TrimStart([char]0xFEFF) | ConvertFrom-Json
 if ([string]$Metadata.apiBaseUrl -cne $ApiBaseUrl) {
   throw 'HTTP transition API base URL does not match the approved exact IP'
 }
-if ([string]$Metadata.version -cne '0.1.6' -or
-    [int]$Metadata.versionCode -ne 7) {
+if ([string]$Metadata.version -cne '0.1.7' -or
+    [int]$Metadata.versionCode -ne 8) {
   throw 'HTTP transition version is outside the approved release'
 }
 if ([string]$Metadata.signingMode -cne 'Compatibility' -or
@@ -111,16 +111,16 @@ cd /root/FitLoop
 bash deploy/install-apk.sh \
   --verify-only \
   --allow-insecure-http-transition-release \
-  file:///tmp/fitloop-0.1.6-build.7/app-release.apk \
+  file:///tmp/fitloop-0.1.7-build.8/app-release.apk \
   '<发布记录中的候选 APK SHA-256>' \
-  file:///tmp/fitloop-0.1.6-build.7/version.json
+  file:///tmp/fitloop-0.1.7-build.8/version.json
 ```
 
 `--verify-only` 前后 `active`、`releases/` 和 `states/` 必须完全不变。完成
-真机清单中 31 项激活前检查后，Draft Release 说明必须明确写为：
+真机清单中的 AI 教练专项 3 项和 31 项激活前检查全部完成后，Draft Release 说明必须明确写为：
 
 ```text
-FitLoop 0.1.6+7 短期受控 HTTP 测试版。
+FitLoop 0.1.7+8 短期受控 HTTP 测试版。
 API 固定为 http://43.139.72.25，明文传输风险已由项目负责人接受。
 不得用于长期公开生产环境；继续使用兼容签名。
 ```
@@ -132,9 +132,9 @@ Draft 三件套仍通过 GitHub HTTPS 上传、回下载并核验。取得独立
 cd /root/FitLoop
 bash deploy/install-apk.sh \
   --allow-insecure-http-transition-release \
-  file:///tmp/fitloop-0.1.6-build.7/app-release.apk \
+  file:///tmp/fitloop-0.1.7-build.8/app-release.apk \
   '<发布记录中的候选 APK SHA-256>' \
-  file:///tmp/fitloop-0.1.6-build.7/version.json
+  file:///tmp/fitloop-0.1.7-build.8/version.json
 ```
 
 激活后的公网三件套核验使用精确 HTTP 端点：
@@ -281,8 +281,8 @@ gh pr create `
   --draft `
   --base main `
   --head $ReleaseBranch `
-  --title 'release: prepare FitLoop 0.1.6+7 production stability' `
-  --body '认证续期、TLS/Agent 降级、APK 发布治理、移动端模块化、CI 和发布文档。不得在真机与生产验证前发布 APK。'
+  --title 'release: prepare FitLoop 0.1.7+8 HTTP transition' `
+  --body '将已合并的训练计划库纳入 0.1.7+8，更新版本门禁、真机验收和短期受控 HTTP 发布手册。不得在真机验收和单独发布批准前部署或发布 APK。'
 ```
 
 等待所有 CI：
@@ -1090,11 +1090,11 @@ try {
     -SigningMode Official
 
   Copy-Item deploy\apk\app-release.apk `
-    (Join-Path $KeyDir 'fitloop-0.1.6-official-signing-validation.apk')
+    (Join-Path $KeyDir 'fitloop-0.1.7-official-signing-validation.apk')
   Copy-Item deploy\apk\app-release.apk.sha256 `
-    (Join-Path $KeyDir 'fitloop-0.1.6-official-signing-validation.apk.sha256')
+    (Join-Path $KeyDir 'fitloop-0.1.7-official-signing-validation.apk.sha256')
   Copy-Item deploy\apk\version.json `
-    (Join-Path $KeyDir 'fitloop-0.1.6-official-signing-validation.json')
+    (Join-Path $KeyDir 'fitloop-0.1.7-official-signing-validation.json')
 }
 finally {
   'FITLOOP_RELEASE_STORE_FILE',
@@ -1141,7 +1141,7 @@ if ($ChecksumLine -cne "$Sha256  app-release.apk") {
 if ([string]$Metadata.sha256 -cne $Sha256) {
   throw 'version.json sha256 does not match the APK'
 }
-if ([string]$Metadata.version -cne '0.1.6' -or [int]$Metadata.versionCode -ne 7) {
+if ([string]$Metadata.version -cne '0.1.7' -or [int]$Metadata.versionCode -ne 8) {
   throw 'Unexpected version or versionCode'
 }
 if ([string]$Metadata.apiBaseUrl -cne 'http://43.139.72.25') {
@@ -1161,8 +1161,8 @@ $Metadata | ConvertTo-Json
 上述命令必须无异常完成，并确认：
 
 ```text
-version = 0.1.6
-versionCode = 7
+version = 0.1.7
+versionCode = 8
 apiBaseUrl = http://43.139.72.25
 signingMode = Compatibility
 signerSha256 = 69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a
@@ -1173,7 +1173,7 @@ signerSha256 = 69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a
 本地 PowerShell：
 
 ```powershell
-$RemoteStage = '/tmp/fitloop-0.1.6-build.7'
+$RemoteStage = '/tmp/fitloop-0.1.7-build.8'
 $ApprovedCandidateSha256 = (
   Read-Host '粘贴第 10 节本地验证并写入发布记录的 APK SHA-256'
 ).Trim().ToLowerInvariant()
@@ -1209,7 +1209,7 @@ export EXPECTED_SHA256
 
 bash -euo pipefail <<'FITLOOP'
 cd /root/FitLoop
-REMOTE_STAGE=/tmp/fitloop-0.1.6-build.7
+REMOTE_STAGE=/tmp/fitloop-0.1.7-build.8
 
 [[ "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]
 test -f "${REMOTE_STAGE}/app-release.apk"
@@ -1250,7 +1250,7 @@ legacy 导入，绝不能依赖 flat 根文件。除此之外的 `/apk/` 路径�
 ## 12. 真机升级、认证和降级冒烟
 
 完整记录使用 [SMOKE_TEST_CHECKLIST.md](SMOKE_TEST_CHECKLIST.md)。激活候选
-前先完成除公网三件套核验（#3）和 APK 回滚演练（#6）外的 31 项，并填写
+前先完成 AI 教练专项 3 项，以及除公网三件套核验（#3）和 APK 回滚演练（#6）外的 31 项，并填写
 实际结果。第 3 节已把可信旧版导入 managed current，所以候选激活后 #6
 统一演练 managed previous；不再存在 legacy fallback 回滚路径。连接测试
 手机后，本地 PowerShell 可执行：
@@ -1261,7 +1261,7 @@ adb install -r "$Repo\deploy\apk\app-release.apk"
 adb shell dumpsys package com.fitloop.fitloop | Select-String 'versionName|versionCode'
 ```
 
-先完成 `0.1.5+6 → 0.1.6+7` 覆盖升级测试。全新安装会删除本地数据，只能在升级测试完成后使用测试设备执行：
+必须先完成线上可信 `0.1.5+6 → 0.1.7+8` 覆盖升级测试；只有确有已分发且已核验的 `0.1.6+7` APK 或受控用户时，才补做 `0.1.6+7 → 0.1.7+8` 升级测试。确认 AI 教练计划后立即打开“查看计划”，再退出并重新进入，通过“我的计划”重新打开同一计划。全新安装会删除本地数据，只能在升级测试完成后使用测试设备执行：
 
 ```powershell
 adb uninstall com.fitloop.fitloop
@@ -1283,10 +1283,10 @@ adb logcat -c
 adb logcat | Select-String 'FitLoop|AndroidRuntime|FATAL EXCEPTION'
 ```
 
-这 31 项中任何一项未通过都必须停止；不要安装服务器候选、切换
+AI 教练专项 3 项或这 31 项中任何一项未通过都必须停止；不要安装服务器候选、切换
 `deploy/apk/active` 或发布 GitHub Release。
 
-## 13. 31 项通过后创建 Draft、安装并完成最后两项
+## 13. AI 教练专项 3 项和 31 项通过后创建 Draft、安装并完成最后两项
 
 先在本地把三件套附加到 Draft GitHub Release。创建命令在上传全部资产前
 不会公开 Release：
@@ -1325,7 +1325,7 @@ if ([string]$Metadata.sha256 -cne $ApprovedCandidateSha256) {
   throw '本地 version.json sha256 与发布记录不一致'
 }
 
-$Tag = 'v0.1.6-build.7'
+$Tag = 'v0.1.7-build.8'
 $AssetNames = @(
   'app-release.apk',
   'app-release.apk.sha256',
@@ -1338,7 +1338,7 @@ gh release create $Tag `
   deploy\apk\version.json `
   --draft `
   --target main `
-  --title 'FitLoop 0.1.6+7' `
+  --title 'FitLoop 0.1.7+8' `
   --notes '短期受控 HTTP 测试版：API 固定为 http://43.139.72.25，登录、会话和 API 数据明文传输风险已获批准。不得用于长期公开生产；继续使用兼容签名。'
 if ($LASTEXITCODE -ne 0) {
   throw 'Draft Release creation or asset upload failed'
@@ -1390,7 +1390,7 @@ sudo -i
 
 ```bash
 API_BASE_URL='http://43.139.72.25'
-REMOTE_STAGE=/tmp/fitloop-0.1.6-build.7
+REMOTE_STAGE=/tmp/fitloop-0.1.7-build.8
 EXPECTED_SHA256='<粘贴第 10 节本地验证并写入发布记录的 APK SHA-256>'
 export API_BASE_URL REMOTE_STAGE EXPECTED_SHA256
 
@@ -1639,7 +1639,7 @@ FITLOOP
 previous 实际 APK 哈希与命令行信任锚一致，严格校验三件套后原子建立
 回滚 state。若不存在 managed previous，命令必须失败并保持 `active`
 不变；不会撤下 `active`，也不会读取已移出站点目录的 flat 三件套。回滚
-schema 校验不受面向新安装的 `0.1.6+7` policy 限制。不要在故障发生后从
+schema 校验不受面向新安装的 `0.1.7+8` policy 限制。不要在故障发生后从
 待回滚目录临时计算信任锚。
 
 不要用 `git reset --hard` 回滚代码。代码回滚应在新分支执行 `git revert <merge-commit>`、重新走 PR/CI，并先评估 Flyway 向前迁移兼容性。

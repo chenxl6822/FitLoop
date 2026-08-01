@@ -79,8 +79,8 @@ jobs:
         run: >-
           flutter build apk --release --no-pub
           --dart-define=FITLOOP_API_BASE_URL=https://example.invalid
-          --dart-define=FITLOOP_APP_VERSION=0.1.6
-          --dart-define=FITLOOP_BUILD_NUMBER=7
+          --dart-define=FITLOOP_APP_VERSION=0.1.7
+          --dart-define=FITLOOP_BUILD_NUMBER=8
 
   deployment-config:
     runs-on: ubuntu-latest

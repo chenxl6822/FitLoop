@@ -1,6 +1,6 @@
 # FitLoop 部署与运维指南
 
-本文适用于生产稳定过渡版 `0.1.6+7`。任何 push、证书切换、生产部署或 APK 发布都必须在执行前单独确认。
+本文适用于短期受控 HTTP 过渡版 `0.1.7+8`。任何 push、证书切换、服务器部署或 APK 发布都必须在执行前单独确认。
 
 需要从 PR、域名、密钥、证书一路执行到真机、发布和回滚时，直接使用 [人工发布执行手册](MANUAL_RELEASE_RUNBOOK.md)。
 
@@ -125,7 +125,7 @@ Agent readiness 失败应单独告警，但不得判定核心 API 发布失败�
 
 ## 5. Android 构建与签名
 
-版本固定为 `0.1.6+7`。本周期延续已发布 APK 的兼容证书，已知 SHA-256 指纹为：
+版本固定为 `0.1.7+8`。本周期延续已发布 APK 的兼容证书，已知 SHA-256 指纹为：
 
 ```text
 69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a
@@ -224,14 +224,14 @@ test "$(
 ```bash
 cd /root/FitLoop
 bash deploy/install-apk.sh --verify-only \
-  https://artifacts.example.com/fitloop/0.1.6/app-release.apk \
+  https://artifacts.example.com/fitloop/0.1.7/app-release.apk \
   <EXPECTED_SHA256> \
-  https://artifacts.example.com/fitloop/0.1.6/version.json
+  https://artifacts.example.com/fitloop/0.1.7/version.json
 ```
 
 `--verify-only` 可能创建安装锁和受管工作目录，但不会创建 release、
 state 或切换 `active`，因此不会改变公网下载内容。先完成
-`docs/SMOKE_TEST_CHECKLIST.md` 中除公网三件套核验（#3）和 APK 回滚演练
+`docs/SMOKE_TEST_CHECKLIST.md` 中的 AI 教练专项 3 项，以及除公网三件套核验（#3）和 APK 回滚演练
 （#6）外的 31 项。由于首次迁移已先导入旧版，候选激活后 #6 统一演练
 managed previous。取得单独发布批准后，才使用同样的三个必填参数执行
 正式安装。正式安装会校验候选三件套，写入
@@ -254,7 +254,7 @@ schema；只有重跑返回 0 才确认耐久收敛。重跑的 `sync` 或任一
 哈希必须来自迁移前或发布时已经核验的发布记录，不能在故障发生后从待
 回滚目录临时计算。脚本不依赖可能损坏的 current，要求 managed previous
 实际 APK 哈希与信任锚一致，严格校验三件套后原子建立回滚 state；回滚
-完整性校验不受面向新版本的 `0.1.6+7` forward policy 限制。若不存在
+完整性校验不受面向新版本的 `0.1.7+8` forward policy 限制。若不存在
 managed previous，回滚必须失败且保持 `active` 不变；不会撤下 `active`
 或回退到 flat 根文件。不要直接改写 `active` 或单独移动其中一个文件。
 回滚只改变下载产物，不会回滚数据库或服务代码。
@@ -287,7 +287,7 @@ curl -I https://app.example.com/apk/app-release.apk
 4. 验证 Backend、HTTPS、邮件验证码和 Agent 独立降级。
 5. 构建兼容签名 APK，把三件套放入非公开候选目录并执行
    `--verify-only`。
-6. 使用本地候选 APK 完成检查清单中除 #3 和 #6 外的 31 项；首次迁移
+6. 使用本地候选 APK 完成 AI 教练专项 3 项及检查清单中除 #3 和 #6 外的 31 项；首次迁移
    必须已经用 `--import-legacy` 建立旧版 managed current。
 7. 创建包含三件套的 Draft GitHub Release 并核对资产和哈希，但不发布。
 8. 取得单独发布批准后，正式安装候选并原子切换 `active`。
