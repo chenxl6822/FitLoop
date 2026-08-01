@@ -170,6 +170,8 @@ abstract class FitLoopApi {
     required String runId,
   });
 
+  Future<List<SavedTrainingPlan>> listTrainingPlans({required String token});
+
   Future<AdminStats> adminGetStats({required String token});
 
   Future<AdminUserListResponse> adminListUsers({

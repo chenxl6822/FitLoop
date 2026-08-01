@@ -81,6 +81,17 @@ class _CoachPageState extends State<CoachPage> {
     super.dispose();
   }
 
+  void _openSavedPlans() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _SavedTrainingPlansPage(
+          api: widget.api,
+          session: widget.session,
+        ),
+      ),
+    );
+  }
+
   Future<void> _createRun() async {
     final objective = _objectiveController.text.trim();
     if (objective.isEmpty) {
@@ -381,7 +392,17 @@ class _CoachPageState extends State<CoachPage> {
     final canConfirmPlan = canRejectPlan && planPreview != null;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('AI 教练')),
+      appBar: AppBar(
+        title: const Text('AI 教练'),
+        actions: [
+          TextButton.icon(
+            key: const Key('coach-open-saved-plans'),
+            onPressed: _openSavedPlans,
+            icon: const Icon(Icons.event_note_outlined),
+            label: const Text('我的计划'),
+          ),
+        ],
+      ),
       body: ListView(
         key: const Key('coach-list'),
         padding: const EdgeInsets.all(20),
@@ -455,6 +476,10 @@ class _CoachPageState extends State<CoachPage> {
               icon: Icons.check_circle_outline,
               title: '操作结果',
               message: _decisionReceipt!,
+              actionKey: const Key('coach-view-saved-plans'),
+              actionLabel: _decisionReceipt!.startsWith('训练计划') ? '查看计划' : null,
+              onAction:
+                  _decisionReceipt!.startsWith('训练计划') ? _openSavedPlans : null,
             ),
           ],
           if (waitingForPlanApproval && planProposal != null) ...[
@@ -526,6 +551,259 @@ class _CoachIntroCard extends StatelessWidget {
                 '它不会直接修改训练计划，生成内容仅供参考。'),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _SavedTrainingPlansPage extends StatefulWidget {
+  const _SavedTrainingPlansPage({
+    required this.api,
+    required this.session,
+  });
+
+  final FitLoopApi api;
+  final UserSession session;
+
+  @override
+  State<_SavedTrainingPlansPage> createState() =>
+      _SavedTrainingPlansPageState();
+}
+
+class _SavedTrainingPlansPageState extends State<_SavedTrainingPlansPage> {
+  static const _requestTimeout = Duration(seconds: 15);
+
+  List<SavedTrainingPlan> _plans = const [];
+  String? _error;
+  bool _loading = true;
+  int _request = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    final request = ++_request;
+    if (!_loading || _error != null) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      final plans = await widget.api
+          .listTrainingPlans(token: widget.session.token)
+          .timeout(_requestTimeout);
+      if (!mounted || request != _request) return;
+      setState(() {
+        _plans = plans;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted || request != _request) return;
+      setState(() {
+        _loading = false;
+        _error = '训练计划暂时无法加载，请稍后重试。';
+      });
+    }
+  }
+
+  void _openPlan(SavedTrainingPlan plan) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _SavedTrainingPlanPage(plan: plan),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: const Key('coach-saved-plans-page'),
+      appBar: AppBar(title: const Text('我的训练计划')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          _SavedTrainingPlansCard(
+            plans: _plans,
+            loading: _loading,
+            error: _error,
+            onRefresh: _load,
+            onOpen: _openPlan,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SavedTrainingPlansCard extends StatelessWidget {
+  const _SavedTrainingPlansCard({
+    required this.plans,
+    required this.loading,
+    required this.error,
+    required this.onRefresh,
+    required this.onOpen,
+  });
+
+  final List<SavedTrainingPlan> plans;
+  final bool loading;
+  final String? error;
+  final VoidCallback onRefresh;
+  final ValueChanged<SavedTrainingPlan> onOpen;
+
+  String _dateLabel(SavedTrainingPlan plan) {
+    final date = plan.createdAtUtc?.toLocal();
+    if (date == null) return '创建时间未知';
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    return '${date.year}-${twoDigits(date.month)}-${twoDigits(date.day)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('coach-saved-plans'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.event_note_outlined,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '我的训练计划',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                IconButton(
+                  key: const Key('coach-refresh-saved-plans'),
+                  tooltip: '刷新训练计划',
+                  onPressed: loading ? null : onRefresh,
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+            if (loading) const LinearProgressIndicator(),
+            if (error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                error!,
+                key: const Key('coach-saved-plans-error'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+            if (!loading && error == null && plans.isEmpty) ...[
+              const SizedBox(height: 8),
+              const Text('暂无已保存的训练计划。确认 AI 教练草案后会显示在这里。'),
+            ],
+            for (var index = 0; index < plans.length; index++) ...[
+              if (index > 0) const Divider(height: 1),
+              ListTile(
+                key: Key('coach-saved-plan-${plans[index].planId}'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(plans[index].title),
+                subtitle: Text(
+                  '${plans[index].status == 'ACTIVE' ? '进行中' : plans[index].status}'
+                  ' · ${_dateLabel(plans[index])}',
+                ),
+                trailing: TextButton(
+                  key: Key('coach-view-plan-${plans[index].planId}'),
+                  onPressed: () => onOpen(plans[index]),
+                  child: const Text('查看'),
+                ),
+                onTap: () => onOpen(plans[index]),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SavedTrainingPlanPage extends StatelessWidget {
+  const _SavedTrainingPlanPage({required this.plan});
+
+  final SavedTrainingPlan plan;
+
+  String _intensityLabel(String intensity) {
+    return switch (intensity) {
+      'LOW' => '低强度',
+      'MODERATE' => '中等强度',
+      'HIGH' => '高强度',
+      _ => '未知强度',
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = plan.preview;
+    return Scaffold(
+      key: Key('coach-plan-detail-${plan.planId}'),
+      appBar: AppBar(title: const Text('训练计划详情')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            plan.title,
+            style: Theme.of(context)
+                .textTheme
+                .headlineSmall
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Text(plan.status == 'ACTIVE' ? '状态：进行中' : '状态：${plan.status}'),
+          const SizedBox(height: 20),
+          if (preview == null)
+            const _CoachInfoCard(
+              icon: Icons.warning_amber_outlined,
+              title: '计划内容暂时无法展示',
+              message: '已保存的计划结构与当前版本不兼容，请稍后刷新或联系管理员。',
+            )
+          else ...[
+            Text(
+              '目标',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(preview.goal),
+            const SizedBox(height: 20),
+            Text(
+              '每日安排',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            for (final day in preview.days)
+              Card(
+                key: Key('coach-plan-${plan.planId}-day-${day.day}'),
+                child: ListTile(
+                  title: Text('第 ${day.day} 天 · ${day.sessionType}'),
+                  subtitle: Text([
+                    '${day.durationMinutes} 分钟 · ${_intensityLabel(day.intensity)}',
+                    if (day.notes != null && day.notes!.trim().isNotEmpty)
+                      day.notes!,
+                  ].join('\n')),
+                ),
+              ),
+          ],
+        ],
       ),
     );
   }
@@ -908,11 +1186,17 @@ class _CoachInfoCard extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.message,
+    this.actionKey,
+    this.actionLabel,
+    this.onAction,
   });
 
   final IconData icon;
   final String title;
   final String message;
+  final Key? actionKey;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -921,6 +1205,13 @@ class _CoachInfoCard extends StatelessWidget {
         leading: Icon(icon),
         title: Text(title),
         subtitle: Text(message),
+        trailing: onAction == null
+            ? null
+            : TextButton(
+                key: actionKey,
+                onPressed: onAction,
+                child: Text(actionLabel!),
+              ),
       ),
     );
   }
