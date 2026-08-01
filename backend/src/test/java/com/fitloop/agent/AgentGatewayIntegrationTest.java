@@ -38,7 +38,9 @@ class AgentGatewayIntegrationTest {
         gateway.claim(run.getRunId());
         var proposal = gateway.propose(run.getRunId(), new ProposalRequest(
                 "CREATE_TRAINING_PLAN",
-                "{\"title\":\"Safe 5K starter\",\"days\":[{\"day\":1,\"minutes\":20}]}", false));
+                "{\"title\":\"Safe 5K starter\",\"goal\":\"Complete 5K safely\","
+                        + "\"days\":[{\"day\":1,\"session_type\":\"easy run\","
+                        + "\"duration_minutes\":20,\"intensity\":\"LOW\"}]}", false));
         gateway.complete(run.getRunId(), new RunResultRequest(AgentRunStatus.WAITING_APPROVAL,
                 "{\"summary\":\"plan ready\"}", "deepseek-v4-flash", "coach-v1",
                 120, 80, 20, 950, null, false));
@@ -51,6 +53,15 @@ class AgentGatewayIntegrationTest {
 
         assertThat(confirmed.status()).isEqualTo("CONFIRMED");
         assertThat(plans.findById(confirmed.affectedResourceId())).isPresent();
+        assertThat(gateway.listTrainingPlans(owner))
+                .singleElement()
+                .satisfies(plan -> {
+                    assertThat(plan.planId()).isEqualTo(confirmed.affectedResourceId());
+                    assertThat(plan.title()).isEqualTo("Safe 5K starter");
+                    assertThat(plan.planJson()).contains("Complete 5K safely");
+                    assertThat(plan.status()).isEqualTo("ACTIVE");
+                });
+        assertThat(gateway.listTrainingPlans(stranger)).isEmpty();
         assertThat(runs.findById(run.getRunId()).orElseThrow().getStatus()).isEqualTo(AgentRunStatus.SUCCEEDED);
     }
 

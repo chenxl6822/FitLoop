@@ -500,6 +500,39 @@ class TrainingPlanPreview {
   final List<TrainingPlanDayPreview> days;
 }
 
+class SavedTrainingPlan {
+  const SavedTrainingPlan({
+    required this.planId,
+    required this.title,
+    required this.planJson,
+    required this.status,
+    required this.createdAt,
+  });
+
+  factory SavedTrainingPlan.fromJson(Map<String, dynamic> json) {
+    return SavedTrainingPlan(
+      planId: json['planId'] as int,
+      title: json['title'] as String,
+      planJson: json['planJson'] as String,
+      status: json['status'] as String,
+      createdAt: json['createdAt'] as String,
+    );
+  }
+
+  final int planId;
+  final String title;
+  final String planJson;
+  final String status;
+  final String createdAt;
+
+  TrainingPlanPreview? get preview => TrainingPlanPreview.tryParse(planJson);
+
+  DateTime? get createdAtUtc {
+    if (!RegExp(r'(?:Z|[+-]\d{2}:\d{2})$').hasMatch(createdAt)) return null;
+    return DateTime.tryParse(createdAt)?.toUtc();
+  }
+}
+
 class AgentProposalItem {
   const AgentProposalItem({
     required this.proposalId,

@@ -190,6 +190,34 @@ void main() {
               },
             }));
           case 4:
+            expect(request.method, 'GET');
+            expect(request.uri.path, '/api/v1/agent/training-plans');
+            request.response.write(jsonEncode({
+              'code': 0,
+              'message': 'ok',
+              'data': [
+                {
+                  'planId': 42,
+                  'title': '下周跑步计划',
+                  'planJson': jsonEncode({
+                    'title': '下周跑步计划',
+                    'goal': '安全恢复跑步习惯',
+                    'days': [
+                      {
+                        'day': 1,
+                        'session_type': '轻松跑',
+                        'duration_minutes': 30,
+                        'intensity': 'LOW',
+                        'notes': '以能轻松交谈为准',
+                      },
+                    ],
+                  }),
+                  'status': 'ACTIVE',
+                  'createdAt': '2026-08-01T00:00:00Z',
+                },
+              ],
+            }));
+          case 5:
             expect(request.method, 'POST');
             expect(request.uri.path, '/api/v1/agent/actions/8/reject');
             expect(
@@ -214,7 +242,7 @@ void main() {
         }
       } finally {
         await request.response.close();
-        if (requestCount == 4 && !handled.isCompleted) handled.complete();
+        if (requestCount == 5 && !handled.isCompleted) handled.complete();
       }
     });
 
@@ -234,6 +262,7 @@ void main() {
       token: 'user-jwt',
       proposalId: 7,
     );
+    final plans = await api.listTrainingPlans(token: 'user-jwt');
     final rejected = await api.rejectAgentProposal(
       token: 'user-jwt',
       proposalId: 8,
@@ -252,6 +281,9 @@ void main() {
     );
     expect(confirmed.affectedResourceId, 42);
     expect(confirmed.status, 'CONFIRMED');
+    expect(plans.single.planId, 42);
+    expect(plans.single.preview?.goal, '安全恢复跑步习惯');
+    expect(plans.single.createdAtUtc, DateTime.utc(2026, 8, 1));
     expect(rejected.affectedResourceId, isNull);
     expect(rejected.status, 'REJECTED');
 
@@ -296,6 +328,10 @@ void main() {
       throwsA(unavailable),
     );
     await expectLater(
+      api.listTrainingPlans(token: 'user-jwt'),
+      throwsA(unavailable),
+    );
+    await expectLater(
       api.confirmAgentProposal(token: 'user-jwt', proposalId: 7),
       throwsA(unavailable),
     );
@@ -311,6 +347,7 @@ void main() {
     expect(requests, [
       'POST /api/v1/agent/coach/runs',
       'GET /api/v1/agent/runs/coach-run-1',
+      'GET /api/v1/agent/training-plans',
       'POST /api/v1/agent/actions/7/confirm',
       'POST /api/v1/agent/actions/8/reject',
     ]);

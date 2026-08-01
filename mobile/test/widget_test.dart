@@ -608,6 +608,26 @@ void main() {
     expect(api.confirmedCoachProposals, [7]);
     expect(find.text('训练计划 #42 已创建'), findsOneWidget);
     expect(find.byKey(const Key('coach-confirm-plan')), findsNothing);
+    expect(api.trainingPlanQueries, 0);
+    await tester.dragUntilVisible(
+      find.byKey(const Key('coach-view-saved-plans')),
+      find.byKey(const Key('coach-list')),
+      const Offset(0, 300),
+    );
+    await tester.tap(find.byKey(const Key('coach-view-saved-plans')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('coach-saved-plans-page')), findsOneWidget);
+    expect(api.trainingPlanQueries, 1);
+    await tester.tap(find.byKey(const Key('coach-view-plan-42')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('coach-plan-detail-42')), findsOneWidget);
+    expect(find.text('逐步恢复跑步习惯'), findsOneWidget);
+    expect(find.text('第 1 天 · 轻松跑'), findsOneWidget);
+    expect(find.textContaining('30 分钟 · 低强度'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await tester.dragUntilVisible(
       find.byKey(const Key('coach-submit')),
       find.byKey(const Key('coach-list')),
@@ -621,6 +641,28 @@ void main() {
           .onPressed,
       isNotNull,
     );
+  });
+
+  testWidgets('loads a saved training plan when the coach page is reopened',
+      (tester) async {
+    final api = _FakeApi(trainingPlans: [_savedTrainingPlan()]);
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+    await _openCoachPage(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.trainingPlanQueries, 0);
+    await tester.tap(find.byKey(const Key('coach-open-saved-plans')));
+    await tester.pumpAndSettle();
+    expect(api.trainingPlanQueries, 1);
+    expect(find.byKey(const Key('coach-saved-plan-42')), findsOneWidget);
+    expect(find.text('下周可执行跑步计划'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('coach-view-plan-42')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('coach-plan-detail-42')), findsOneWidget);
+    expect(find.text('逐步恢复跑步习惯'), findsOneWidget);
   });
 
   testWidgets(
@@ -1180,6 +1222,17 @@ AgentRunDetail _coachApprovalRun({String proposalStatus = 'PENDING'}) {
   );
 }
 
+SavedTrainingPlan _savedTrainingPlan() {
+  return const SavedTrainingPlan(
+    planId: 42,
+    title: '下周可执行跑步计划',
+    planJson:
+        '{"title":"下周可执行跑步计划","goal":"逐步恢复跑步习惯","days":[{"day":1,"session_type":"轻松跑","duration_minutes":30,"intensity":"LOW","notes":"以能轻松交谈为准"}]}',
+    status: 'ACTIVE',
+    createdAt: '2026-08-01T00:00:00Z',
+  );
+}
+
 class _FakeLocationService implements LocationService {
   _FakeLocationService({
     this.initialPermission = LocationPermission.always,
@@ -1317,11 +1370,13 @@ class _FakeApi implements FitLoopApi {
     this.coachRunFuture,
     this.coachConfirmFuture,
     List<AgentRunDetail> coachRuns = const <AgentRunDetail>[],
+    List<SavedTrainingPlan> trainingPlans = const <SavedTrainingPlan>[],
   })  : _targets = List.of(targets),
         _reminders = List.of(reminders),
         _sportRecords = List.of(sportRecords),
         _appeals = List.of(appeals),
-        _coachRuns = List.of(coachRuns);
+        _coachRuns = List.of(coachRuns),
+        _trainingPlans = List.of(trainingPlans);
 
   factory _FakeApi.withTarget() {
     return _FakeApi(
@@ -1346,6 +1401,7 @@ class _FakeApi implements FitLoopApi {
   final List<SportRecord> _sportRecords;
   final List<AppealResponse> _appeals;
   final List<AgentRunDetail> _coachRuns;
+  final List<SavedTrainingPlan> _trainingPlans;
   final Object? finishError;
   final Object? reminderUpsertError;
   final Object? coachCreateError;
@@ -1361,6 +1417,7 @@ class _FakeApi implements FitLoopApi {
   int createdAppeals = 0;
   int createdCoachRuns = 0;
   int coachRunQueries = 0;
+  int trainingPlanQueries = 0;
   int rankingCalls = 0;
   final List<int> confirmedCoachProposals = [];
   final List<int> rejectedCoachProposals = [];
@@ -1437,6 +1494,14 @@ class _FakeApi implements FitLoopApi {
         ),
       ],
     );
+  }
+
+  @override
+  Future<List<SavedTrainingPlan>> listTrainingPlans({
+    required String token,
+  }) async {
+    trainingPlanQueries += 1;
+    return List.unmodifiable(_trainingPlans);
   }
 
   @override
@@ -1956,12 +2021,30 @@ class _FakeApi implements FitLoopApi {
   }) async {
     confirmedCoachProposals.add(proposalId);
     final decisionFuture = coachConfirmFuture;
-    if (decisionFuture != null) return decisionFuture;
-    return AgentProposalDecision(
-      proposalId: proposalId,
-      status: 'CONFIRMED',
-      affectedResourceId: 42,
-    );
+    final decision = decisionFuture == null
+        ? AgentProposalDecision(
+            proposalId: proposalId,
+            status: 'CONFIRMED',
+            affectedResourceId: 42,
+          )
+        : await decisionFuture;
+    final planId = decision.affectedResourceId;
+    if (decision.status == 'CONFIRMED' &&
+        planId != null &&
+        !_trainingPlans.any((plan) => plan.planId == planId)) {
+      _trainingPlans.insert(
+        0,
+        SavedTrainingPlan(
+          planId: planId,
+          title: '下周可执行跑步计划',
+          planJson:
+              '{"title":"下周可执行跑步计划","goal":"逐步恢复跑步习惯","days":[{"day":1,"session_type":"轻松跑","duration_minutes":30,"intensity":"LOW","notes":"以能轻松交谈为准"}]}',
+          status: 'ACTIVE',
+          createdAt: '2026-08-01T00:00:00Z',
+        ),
+      );
+    }
+    return decision;
   }
 
   @override
