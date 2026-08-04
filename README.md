@@ -122,7 +122,7 @@ CI 执行以下门禁：
 - Shell 语法与基础/TLS/Agent E2E Compose 配置校验。
 - Pull Request 高危依赖审查。
 
-当前基线：后端 154 项单元/切片测试和 2 项 MySQL/Testcontainers 集成测试通过，JaCoCo 覆盖率门禁通过；Agent 18 项测试通过；Flutter 46 项测试和静态分析通过。教练与申诉审批已使用真实 DeepSeek V4 模型完成模型层演示，且两条完整应用链路已通过隔离容器 E2E。
+当前仓库基线：后端 155 项单元/切片测试和 2 项 MySQL/Testcontainers 集成测试，JaCoCo 覆盖率门禁通过；Agent 18 项测试；Flutter 47 项测试。教练与申诉审批已使用真实 DeepSeek V4 模型完成模型层演示，且两条完整应用链路已通过隔离容器 E2E。最新一次实际执行结果、环境阻塞和未验证边界见[项目全景、STAR 面试与实战手册](docs/PROJECT_STAR_INTERVIEW_PLAYBOOK.md)，避免把测试声明数量或历史基线误报为本次全部通过。
 
 ## 可选部署能力
 
@@ -144,6 +144,7 @@ APK 二进制不再进入 Git。发布产物必须附带 SHA-256，服务器通�
 
 ## 文档
 
+- [项目全景、STAR 面试与实战手册](docs/PROJECT_STAR_INTERVIEW_PLAYBOOK.md)
 - [系统架构与 Agent 时序](docs/ARCHITECTURE.md)
 - [部署与运维指南](docs/DEPLOYMENT.md)
 - [固定公网 IP HTTPS 发布补充手册](docs/IP_HTTPS_RELEASE_RUNBOOK.md)
