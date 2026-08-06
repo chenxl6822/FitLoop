@@ -10,6 +10,10 @@ docs/*_summary.md
 # Cross-project files
 docs/Table-Miku*
 
+# Local interview preparation documents
+docs/PROJECT_STAR_INTERVIEW_PLAYBOOK.md
+docs/INTERVIEW_GUIDE.md
+
 # Local course deliverables and source documents stay outside Git.
 *.docx
 *.pptx
