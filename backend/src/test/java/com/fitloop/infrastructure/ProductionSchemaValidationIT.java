@@ -60,6 +60,6 @@ class ProductionSchemaValidationIT {
                 "select version from flyway_schema_history "
                         + "where success = 1 order by installed_rank desc limit 1",
                 String.class))
-                .isEqualTo("5");
+                .isEqualTo("6");
     }
 }

@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -245,6 +247,45 @@ class AgentGatewayServiceTest {
         assertThatThrownBy(() -> gateway.confirm(5L, 9L, true)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void nextTrainingSkipsInactiveLegacyAndCompletedDays() {
+        TrainingPlan inactive = trainingPlan(10L, "ARCHIVED", "{}", "[]");
+        TrainingPlan legacy = trainingPlan(11L, "ACTIVE", "not-json", "[]");
+        TrainingPlan active = trainingPlan(12L, "ACTIVE",
+                "{\"title\":\"Starter\",\"goal\":\"Run safely\",\"days\":["
+                        + "{\"day\":2,\"session_type\":\"steady run\",\"duration_minutes\":30,\"intensity\":\"MODERATE\"},"
+                        + "{\"day\":1,\"session_type\":\"easy run\",\"duration_minutes\":20,\"intensity\":\"LOW\",\"notes\":\"relaxed\"}]}",
+                "[1]");
+        when(trainingPlans.findByUserIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(inactive, legacy, active));
+
+        var next = gateway.nextTrainingSession(1L);
+
+        assertThat(next.planId()).isEqualTo(12L);
+        assertThat(next.day()).isEqualTo(2);
+        assertThat(next.sessionType()).isEqualTo("steady run");
+        assertThat(next.notes()).isNull();
+        assertThat(next.completedSessions()).isEqualTo(1);
+        assertThat(next.totalSessions()).isEqualTo(2);
+    }
+
+    @Test
+    void trainingProgressRejectsMissingPlansAndUnknownDays() {
+        when(trainingPlans.findForUpdate(99L, 1L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> gateway.completeTrainingDay(1L, 99L, 1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("does not exist");
+
+        TrainingPlan plan = trainingPlan(12L, "ACTIVE",
+                "{\"title\":\"Starter\",\"goal\":\"Run safely\",\"days\":["
+                        + "{\"day\":1,\"session_type\":\"easy run\",\"duration_minutes\":20,\"intensity\":\"LOW\"}]}",
+                "[]");
+        when(trainingPlans.findForUpdate(12L, 1L)).thenReturn(Optional.of(plan));
+        assertThatThrownBy(() -> gateway.completeTrainingDay(1L, 12L, 2))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("day does not exist");
+    }
+
     private AgentRun running(AgentRunType type, Long resourceId) {
         AgentRun run = AgentRun.queued(type, type == AgentRunType.COACH ? 1L : 9L, 1L, resourceId, "{}");
         run.claim();
@@ -276,6 +317,16 @@ class AgentGatewayServiceTest {
         proposal.setRequiresAdmin(admin);
         proposal.prePersist();
         return proposal;
+    }
+
+    private TrainingPlan trainingPlan(Long id, String status, String planJson, String completedDaysJson) {
+        TrainingPlan plan = mock(TrainingPlan.class);
+        lenient().when(plan.getPlanId()).thenReturn(id);
+        lenient().when(plan.getTitle()).thenReturn("Starter");
+        lenient().when(plan.getStatus()).thenReturn(status);
+        lenient().when(plan.getPlanJson()).thenReturn(planJson);
+        lenient().when(plan.getCompletedDaysJson()).thenReturn(completedDaysJson);
+        return plan;
     }
 
     private Appeal appeal(String status) {

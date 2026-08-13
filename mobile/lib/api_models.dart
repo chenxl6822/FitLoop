@@ -507,6 +507,7 @@ class SavedTrainingPlan {
     required this.planJson,
     required this.status,
     required this.createdAt,
+    this.completedDays = const <int>[],
   });
 
   factory SavedTrainingPlan.fromJson(Map<String, dynamic> json) {
@@ -516,6 +517,9 @@ class SavedTrainingPlan {
       planJson: json['planJson'] as String,
       status: json['status'] as String,
       createdAt: json['createdAt'] as String,
+      completedDays: (json['completedDays'] as List<dynamic>? ?? const [])
+          .map((value) => value as int)
+          .toList(growable: false),
     );
   }
 
@@ -524,6 +528,7 @@ class SavedTrainingPlan {
   final String planJson;
   final String status;
   final String createdAt;
+  final List<int> completedDays;
 
   TrainingPlanPreview? get preview => TrainingPlanPreview.tryParse(planJson);
 
@@ -531,6 +536,44 @@ class SavedTrainingPlan {
     if (!RegExp(r'(?:Z|[+-]\d{2}:\d{2})$').hasMatch(createdAt)) return null;
     return DateTime.tryParse(createdAt)?.toUtc();
   }
+}
+
+class NextTrainingSession {
+  const NextTrainingSession({
+    required this.planId,
+    required this.planTitle,
+    required this.day,
+    required this.sessionType,
+    required this.durationMinutes,
+    required this.intensity,
+    this.notes,
+    required this.completedSessions,
+    required this.totalSessions,
+  });
+
+  factory NextTrainingSession.fromJson(Map<String, dynamic> json) {
+    return NextTrainingSession(
+      planId: json['planId'] as int,
+      planTitle: json['planTitle'] as String,
+      day: json['day'] as int,
+      sessionType: json['sessionType'] as String,
+      durationMinutes: json['durationMinutes'] as int,
+      intensity: json['intensity'] as String,
+      notes: json['notes'] as String?,
+      completedSessions: json['completedSessions'] as int,
+      totalSessions: json['totalSessions'] as int,
+    );
+  }
+
+  final int planId;
+  final String planTitle;
+  final int day;
+  final String sessionType;
+  final int durationMinutes;
+  final String intensity;
+  final String? notes;
+  final int completedSessions;
+  final int totalSessions;
 }
 
 class AgentProposalItem {

@@ -59,6 +59,42 @@ void main() {
     expect(find.byKey(const Key('local-track-preview')), findsOneWidget);
   });
 
+  testWidgets('shows and completes the next training from the dashboard',
+      (tester) async {
+    final api = _FakeApi(
+      nextTraining: const NextTrainingSession(
+        planId: 42,
+        planTitle: '5 公里入门计划',
+        day: 1,
+        sessionType: '轻松跑',
+        durationMinutes: 30,
+        intensity: 'LOW',
+        notes: '保持可以轻松交谈的速度',
+        completedSessions: 0,
+        totalSessions: 3,
+      ),
+    );
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+
+    expect(find.byKey(const Key('next-training-card')), findsOneWidget);
+    expect(find.text('5 公里入门计划'), findsOneWidget);
+    expect(find.textContaining('轻松跑'), findsOneWidget);
+    expect(find.text('进度 0/3'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('next-training-complete')));
+    await tester.pumpAndSettle();
+    expect(find.text('确认完成训练？'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('training-complete-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(api.completedTrainingDays, [(planId: 42, day: 1)]);
+    expect(find.text('训练已完成，下一项计划已更新'), findsOneWidget);
+    expect(find.textContaining('暂无待完成训练'), findsOneWidget);
+  });
+
   testWidgets('refreshes ranking on tab entry and switches scope',
       (tester) async {
     final api = _FakeApi();
@@ -1402,12 +1438,14 @@ class _FakeApi implements FitLoopApi {
     this.coachConfirmFuture,
     List<AgentRunDetail> coachRuns = const <AgentRunDetail>[],
     List<SavedTrainingPlan> trainingPlans = const <SavedTrainingPlan>[],
+    NextTrainingSession? nextTraining,
   })  : _targets = List.of(targets),
         _reminders = List.of(reminders),
         _sportRecords = List.of(sportRecords),
         _appeals = List.of(appeals),
         _coachRuns = List.of(coachRuns),
-        _trainingPlans = List.of(trainingPlans);
+        _trainingPlans = List.of(trainingPlans),
+        _nextTraining = nextTraining;
 
   factory _FakeApi.withTarget() {
     return _FakeApi(
@@ -1433,6 +1471,7 @@ class _FakeApi implements FitLoopApi {
   final List<AppealResponse> _appeals;
   final List<AgentRunDetail> _coachRuns;
   final List<SavedTrainingPlan> _trainingPlans;
+  NextTrainingSession? _nextTraining;
   final Object? reminderUpsertError;
   final Object? coachCreateError;
   final Future<AgentRunCreated>? coachCreateFuture;
@@ -1448,6 +1487,7 @@ class _FakeApi implements FitLoopApi {
   int createdCoachRuns = 0;
   int coachRunQueries = 0;
   int trainingPlanQueries = 0;
+  final List<({int planId, int day})> completedTrainingDays = [];
   int rankingCalls = 0;
   final List<int> confirmedCoachProposals = [];
   final List<int> rejectedCoachProposals = [];
@@ -1532,6 +1572,34 @@ class _FakeApi implements FitLoopApi {
   }) async {
     trainingPlanQueries += 1;
     return List.unmodifiable(_trainingPlans);
+  }
+
+  @override
+  Future<NextTrainingSession?> nextTrainingSession({
+    required String token,
+  }) async {
+    return _nextTraining;
+  }
+
+  @override
+  Future<SavedTrainingPlan> completeTrainingDay({
+    required String token,
+    required int planId,
+    required int day,
+  }) async {
+    completedTrainingDays.add((planId: planId, day: day));
+    _nextTraining = null;
+    final plan =
+        _trainingPlans.where((item) => item.planId == planId).firstOrNull;
+    return SavedTrainingPlan(
+      planId: planId,
+      title: plan?.title ?? '训练计划',
+      planJson: plan?.planJson ??
+          '{"title":"训练计划","goal":"完成训练","days":[{"day":$day,"session_type":"跑步","duration_minutes":30,"intensity":"LOW"}]}',
+      status: plan?.status ?? 'ACTIVE',
+      createdAt: plan?.createdAt ?? '2026-08-13T00:00:00Z',
+      completedDays: [day],
+    );
   }
 
   @override

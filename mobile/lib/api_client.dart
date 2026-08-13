@@ -907,6 +907,33 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   @override
+  Future<NextTrainingSession?> nextTrainingSession({
+    required String token,
+  }) async {
+    final body = await _get('/api/v1/agent/training-plans/next', token: token);
+    final data = body['data'];
+    if (data == null) return null;
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Invalid next training session response');
+    }
+    return NextTrainingSession.fromJson(data);
+  }
+
+  @override
+  Future<SavedTrainingPlan> completeTrainingDay({
+    required String token,
+    required int planId,
+    required int day,
+  }) async {
+    final body = await _post(
+      '/api/v1/agent/training-plans/$planId/days/$day/complete',
+      const <String, dynamic>{},
+      token: token,
+    );
+    return SavedTrainingPlan.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  @override
   Future<AdminStats> adminGetStats({required String token}) async {
     final body = await _get('/api/admin/stats', token: token);
     final data = body['data'] as Map<String, dynamic>;

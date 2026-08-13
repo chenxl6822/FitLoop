@@ -21,6 +21,8 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<TargetReminderListResponse>? _reminderFuture;
   Future<SportHistoryResponse>? _historyFuture;
   Future<SportStats>? _statsFuture;
+  Future<NextTrainingSession?>? _nextTrainingFuture;
+  bool _completingTraining = false;
 
   @override
   void initState() {
@@ -34,6 +36,8 @@ class _DashboardPageState extends State<DashboardPage> {
     _historyFuture =
         widget.api.sportHistory(token: widget.session.token, period: 'week');
     _statsFuture = widget.api.sportStats(token: widget.session.token);
+    _nextTrainingFuture =
+        widget.api.nextTrainingSession(token: widget.session.token);
   }
 
   void _refreshAll() {
@@ -57,6 +61,51 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _completeTraining(NextTrainingSession session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认完成训练？'),
+        content: Text('将“${session.sessionType}”标记为已完成，并推进到下一项训练。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('training-complete-confirm'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('确认完成'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _completingTraining = true);
+    try {
+      await widget.api.completeTrainingDay(
+        token: widget.session.token,
+        planId: session.planId,
+        day: session.day,
+      );
+      if (!mounted) return;
+      setState(() {
+        _completingTraining = false;
+        _nextTrainingFuture =
+            widget.api.nextTrainingSession(token: widget.session.token);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('训练已完成，下一项计划已更新')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _completingTraining = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(friendlyErrorMsg(error))),
+      );
+    }
   }
 
   Future<void> _deleteTarget(SportTarget target) async {
@@ -162,6 +211,21 @@ class _DashboardPageState extends State<DashboardPage> {
             label: '欢迎回来',
             value: widget.session.nickname,
             icon: Icons.waving_hand_outlined),
+        FutureBuilder<NextTrainingSession?>(
+          future: _nextTrainingFuture,
+          builder: (context, snapshot) => _NextTrainingCard(
+            loading: snapshot.connectionState == ConnectionState.waiting,
+            error: snapshot.error,
+            session: snapshot.data,
+            completing: _completingTraining,
+            onRetry: _refreshAll,
+            onStart: () => widget.onNavigateToTab?.call(1),
+            onComplete: snapshot.data == null
+                ? null
+                : () => _completeTraining(snapshot.data!),
+            onCreatePlan: _openCoach,
+          ),
+        ),
         // Reminder banners
         FutureBuilder<TargetReminderListResponse>(
           future: _reminderFuture,
@@ -421,6 +485,121 @@ class _DashboardPageState extends State<DashboardPage> {
           },
         ),
       ],
+    );
+  }
+}
+
+class _NextTrainingCard extends StatelessWidget {
+  const _NextTrainingCard({
+    required this.loading,
+    required this.error,
+    required this.session,
+    required this.completing,
+    required this.onRetry,
+    required this.onStart,
+    required this.onComplete,
+    required this.onCreatePlan,
+  });
+
+  final bool loading;
+  final Object? error;
+  final NextTrainingSession? session;
+  final bool completing;
+  final VoidCallback onRetry;
+  final VoidCallback onStart;
+  final VoidCallback? onComplete;
+  final VoidCallback onCreatePlan;
+
+  String _intensity(String value) => switch (value) {
+        'LOW' => '低强度',
+        'MODERATE' => '中等强度',
+        'HIGH' => '高强度',
+        _ => value,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('next-training-card'),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.event_available_outlined),
+                const SizedBox(width: 8),
+                Text('下一项训练',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            if (loading)
+              const LinearProgressIndicator()
+            else if (error != null) ...[
+              const Text('训练计划暂时无法加载，不影响其他功能。'),
+              TextButton(onPressed: onRetry, child: const Text('重试')),
+            ] else if (session == null) ...[
+              const Text('暂无待完成训练，可以让 AI 教练先生成一份可执行计划。'),
+              TextButton(
+                key: const Key('next-training-create-plan'),
+                onPressed: onCreatePlan,
+                child: const Text('创建训练计划'),
+              ),
+            ] else ...[
+              Text(session!.planTitle,
+                  style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              Text(
+                '第 ${session!.day} 项 · ${session!.sessionType} · '
+                '${session!.durationMinutes} 分钟 · ${_intensity(session!.intensity)}',
+              ),
+              if (session!.notes != null) ...[
+                const SizedBox(height: 4),
+                Text(session!.notes!,
+                    style: Theme.of(context).textTheme.bodySmall),
+              ],
+              const SizedBox(height: 6),
+              Text(
+                '进度 ${session!.completedSessions}/${session!.totalSessions}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      key: const Key('next-training-start'),
+                      onPressed: onStart,
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('开始运动'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const Key('next-training-complete'),
+                      onPressed: completing ? null : onComplete,
+                      icon: completing
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.check),
+                      label: const Text('完成此训练'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

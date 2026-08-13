@@ -24,12 +24,11 @@ public final class AgentDtos {
                                    Instant decidedAt, String decisionNote) { }
     public record ConfirmResponse(Long proposalId, String status, Long affectedResourceId) { }
     public record TrainingPlanResponse(Long planId, String title, String planJson,
-                                       String status, Instant createdAt) {
-        static TrainingPlanResponse from(TrainingPlan plan) {
-            return new TrainingPlanResponse(plan.getPlanId(), plan.getTitle(), plan.getPlanJson(),
-                    plan.getStatus(), plan.getCreatedAt());
-        }
-    }
+                                       String status, Instant createdAt, List<Integer> completedDays) { }
+    public record NextTrainingSessionResponse(Long planId, String planTitle, int day,
+                                              String sessionType, int durationMinutes,
+                                              String intensity, String notes,
+                                              int completedSessions, int totalSessions) { }
     public record RejectProposalRequest(@Size(max = 500) String reason) { }
     public record DelegationTokenResponse(String accessToken, long expiresIn) { }
     public record ClaimResponse(String runId, AgentRunType type, String inputJson, Long subjectUserId,

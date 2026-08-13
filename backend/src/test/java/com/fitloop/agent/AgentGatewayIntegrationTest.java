@@ -63,6 +63,22 @@ class AgentGatewayIntegrationTest {
                 });
         assertThat(gateway.listTrainingPlans(stranger)).isEmpty();
         assertThat(runs.findById(run.getRunId()).orElseThrow().getStatus()).isEqualTo(AgentRunStatus.SUCCEEDED);
+
+        var next = gateway.nextTrainingSession(owner);
+        assertThat(next.planId()).isEqualTo(confirmed.affectedResourceId());
+        assertThat(next.day()).isEqualTo(1);
+        assertThat(next.sessionType()).isEqualTo("easy run");
+        assertThat(next.completedSessions()).isZero();
+        assertThat(next.totalSessions()).isEqualTo(1);
+        assertThat(gateway.nextTrainingSession(stranger)).isNull();
+
+        var progressed = gateway.completeTrainingDay(owner, confirmed.affectedResourceId(), 1);
+        assertThat(progressed.completedDays()).containsExactly(1);
+        assertThat(gateway.completeTrainingDay(owner, confirmed.affectedResourceId(), 1).completedDays())
+                .containsExactly(1);
+        assertThat(gateway.nextTrainingSession(owner)).isNull();
+        assertThatThrownBy(() -> gateway.completeTrainingDay(stranger, confirmed.affectedResourceId(), 1))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
