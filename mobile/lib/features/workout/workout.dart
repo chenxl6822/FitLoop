@@ -120,6 +120,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
   Timer? _elapsedTimer;
   int _activeSeconds = 0;
   Future<_SportAppealSnapshot>? _appealFuture;
+  int _pendingSyncCount = 0;
+  bool _syncingPending = false;
 
   String _selectedSportType = 'running';
   String _selectedCheckinMode = 'gps';
@@ -132,6 +134,41 @@ class _SportSessionPageState extends State<SportSessionPage> {
     super.initState();
     _appealFuture = _loadAppealCenter();
     unawaited(_loadMapPrivacyChoice());
+    unawaited(_refreshPendingSyncCount());
+  }
+
+  Future<void> _refreshPendingSyncCount() async {
+    final count = await SyncQueue.length();
+    if (mounted) setState(() => _pendingSyncCount = count);
+  }
+
+  Future<void> _processPendingSync() async {
+    if (_syncingPending) return;
+    setState(() => _syncingPending = true);
+    try {
+      final result = await SyncProcessor(
+        widget.api,
+        token: widget.session.token,
+      ).processAll();
+      if (!mounted) return;
+      setState(() {
+        _pendingSyncCount = result.failed;
+        if (result.synced > 0) {
+          _status = result.failed == 0
+              ? '已同步 ${result.synced} 条离线运动记录'
+              : '已同步 ${result.synced} 条，${result.failed} 条仍待网络恢复';
+          _appealFuture = _loadAppealCenter();
+        } else if (result.failed > 0) {
+          _status = '${result.failed} 条记录同步失败，请检查网络后重试';
+        }
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _status = '同步暂时不可用：${friendlyErrorMsg(error)}');
+      }
+    } finally {
+      if (mounted) setState(() => _syncingPending = false);
+    }
   }
 
   Future<void> _loadMapPrivacyChoice() async {
@@ -469,13 +506,38 @@ class _SportSessionPageState extends State<SportSessionPage> {
         distanceKm = _stepCount * 0.7 / 1000.0;
       }
 
-      final record = await widget.api.finishSport(
+      final finishResult = await ReliableWorkoutFinisher(widget.api).finish(
         token: widget.session.token,
         sessionId: _sessionId!,
         durationSeconds: duration,
         weightKg: 60,
         distanceKm: distanceKm,
       );
+
+      if (finishResult.queued) {
+        final pendingCount = await SyncQueue.length();
+        if (!mounted) return;
+        _elapsedTimer?.cancel();
+        _elapsedTimer = null;
+        setState(() {
+          _sessionId = null;
+          _startedAt = null;
+          _trackPointCount = 0;
+          _stepCount = 0;
+          _isPaused = false;
+          _activeSeconds = 0;
+          _totalDistanceKm = 0;
+          _pendingSyncCount = pendingCount;
+          _currentLat = null;
+          _currentLng = null;
+          _currentSpeedMs = null;
+          _status = '网络暂时不可用，记录已安全保存，可联网后立即同步';
+        });
+        widget.onSportActiveChanged?.call(false);
+        return;
+      }
+
+      final record = finishResult.record!;
 
       var statusMsg = '已保存记录 #${record.recordId}';
       if (_selectedCheckinMode == 'gps') {
@@ -504,39 +566,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       });
       widget.onSportActiveChanged?.call(false);
     } catch (error) {
-      if (_sessionId != null) {
-        final duration = DateTime.now()
-            .difference(_startedAt ?? DateTime.now())
-            .inSeconds
-            .clamp(1, 24 * 3600)
-            .toInt();
-        final pending = PendingFinishRecord(
-          token: widget.session.token,
-          sessionId: _sessionId!,
-          durationSeconds: duration,
-          weightKg: 60,
-        );
-        await SyncQueue.enqueueFinish(pending);
-        if (!mounted) return;
-        _elapsedTimer?.cancel();
-        _elapsedTimer = null;
-        setState(() {
-          _sessionId = null;
-          _startedAt = null;
-          _trackPointCount = 0;
-          _stepCount = 0;
-          _isPaused = false;
-          _activeSeconds = 0;
-          _totalDistanceKm = 0;
-          _currentLat = null;
-          _currentLng = null;
-          _currentSpeedMs = null;
-          _status = '网络暂时不可用，已加入离线同步队列，联网后自动提交';
-        });
-        widget.onSportActiveChanged?.call(false);
-      } else {
-        setState(() => _status = friendlyErrorMsg(error));
-      }
+      setState(() => _status = friendlyErrorMsg(error));
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -889,6 +919,12 @@ class _SportSessionPageState extends State<SportSessionPage> {
     return _PageScaffold(
       title: '运动打卡',
       children: [
+        if (_pendingSyncCount > 0)
+          PendingSyncCard(
+            pendingCount: _pendingSyncCount,
+            syncing: _syncingPending,
+            onSync: _processPendingSync,
+          ),
         if (!running) ...[
           Card(
             margin: const EdgeInsets.only(bottom: 12),
@@ -1048,6 +1084,37 @@ class _SportSessionPageState extends State<SportSessionPage> {
           },
         ),
       ],
+    );
+  }
+}
+
+class PendingSyncCard extends StatelessWidget {
+  const PendingSyncCard({
+    super.key,
+    required this.pendingCount,
+    required this.syncing,
+    this.onSync,
+  });
+
+  final int pendingCount;
+  final bool syncing;
+  final VoidCallback? onSync;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('pending-sync-card'),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: const Icon(Icons.cloud_upload_outlined),
+        title: Text('$pendingCount 条运动记录待同步'),
+        subtitle: const Text('记录已安全保存在本机，联网后可再次上传。'),
+        trailing: FilledButton.tonal(
+          key: const Key('sync-pending-button'),
+          onPressed: syncing ? null : onSync,
+          child: Text(syncing ? '同步中…' : '立即同步'),
+        ),
+      ),
     );
   }
 }

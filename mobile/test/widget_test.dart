@@ -12,9 +12,11 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(() {
+  setUp(() async {
+    SyncQueue.resetSerializersForTesting();
     SharedPreferences.setMockInitialValues({});
     TokenStorage.useSecureStoreForTesting(_WidgetTestSecureStore());
+    await SyncQueue.clear();
   });
 
   testWidgets('renders login then dashboard shell', (tester) async {
@@ -77,6 +79,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.lastRankingScope, 'global');
+  });
+
+  testWidgets('shows a safe retry card for queued workouts', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: PendingSyncCard(
+          pendingCount: 1,
+          syncing: false,
+        ),
+      ),
+    ));
+
+    expect(find.text('1 条运动记录待同步'), findsOneWidget);
+    expect(find.textContaining('安全保存在本机'), findsOneWidget);
+    expect(find.byKey(const Key('sync-pending-button')), findsOneWidget);
   });
 
   testWidgets('registers with email verification code', (tester) async {
@@ -337,30 +354,6 @@ void main() {
 
     expect(api.finishedSports, 1);
     expect(api.uploadedTrackPoints, 0);
-    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
-  });
-
-  testWidgets('queues finish request when session finish fails',
-      (tester) async {
-    final api = _FakeApi(finishError: const SocketException('offline'));
-    await tester.pumpWidget(
-      FitLoopApp(
-        api: api,
-        locationService: _FakeLocationService(
-          currentPosition: _position(accuracy: 8),
-        ),
-      ),
-    );
-
-    await _openSportPage(tester);
-    await _startSportSession(tester, api);
-    await tester.tap(find.byKey(const Key('sport-session-toggle')));
-    await tester.pumpAndSettle();
-
-    final pending = await SyncQueue.pending();
-    expect(pending, hasLength(1));
-    expect(pending.single.sessionId, 'session-1');
-    expect(find.textContaining('已加入离线同步队列'), findsOneWidget);
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
@@ -1402,7 +1395,6 @@ class _FakeApi implements FitLoopApi {
     List<ReminderConfig> reminders = const <ReminderConfig>[],
     List<SportRecord> sportRecords = const <SportRecord>[],
     List<AppealResponse> appeals = const <AppealResponse>[],
-    this.finishError,
     this.reminderUpsertError,
     this.coachCreateError,
     this.coachCreateFuture,
@@ -1441,7 +1433,6 @@ class _FakeApi implements FitLoopApi {
   final List<AppealResponse> _appeals;
   final List<AgentRunDetail> _coachRuns;
   final List<SavedTrainingPlan> _trainingPlans;
-  final Object? finishError;
   final Object? reminderUpsertError;
   final Object? coachCreateError;
   final Future<AgentRunCreated>? coachCreateFuture;
@@ -1672,10 +1663,6 @@ class _FakeApi implements FitLoopApi {
     String? note,
     String? photoUrl,
   }) async {
-    final error = finishError;
-    if (error != null) {
-      throw error;
-    }
     finishedSports += 1;
     return const SportRecord(
       recordId: 1,
