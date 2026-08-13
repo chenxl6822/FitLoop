@@ -21,6 +21,8 @@ public class TrainingPlan {
     private String title;
     @Column(nullable = false, length = Length.LONG32)
     private String planJson;
+    @Column(nullable = false, length = Length.LONG32)
+    private String completedDaysJson = "[]";
     @Column(nullable = false, length = 24)
     private String status = "ACTIVE";
     private Instant createdAt;
@@ -31,10 +33,12 @@ public class TrainingPlan {
     public Long getSourceProposalId() { return sourceProposalId; }
     public String getTitle() { return title; }
     public String getPlanJson() { return planJson; }
+    public String getCompletedDaysJson() { return completedDaysJson; }
     public String getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public void setUserId(Long userId) { this.userId = userId; }
     public void setSourceProposalId(Long sourceProposalId) { this.sourceProposalId = sourceProposalId; }
     public void setTitle(String title) { this.title = title; }
     public void setPlanJson(String planJson) { this.planJson = planJson; }
+    public void setCompletedDaysJson(String completedDaysJson) { this.completedDaysJson = completedDaysJson; }
 }

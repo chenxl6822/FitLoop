@@ -9,6 +9,8 @@ import com.fitloop.sport.SportDtos.StartSessionResponse;
 import com.fitloop.sport.SportDtos.TrackBatchRequest;
 import com.fitloop.sport.SportDtos.TrackBatchResponse;
 import com.fitloop.sport.SportDtos.TrackPointInput;
+import com.fitloop.sport.SportDtos.TrackPointResponse;
+import com.fitloop.sport.SportDtos.WorkoutTrackResponse;
 import com.fitloop.sport.SportDtos.TrackPointRequest;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -202,6 +204,27 @@ public class SportService {
         List<SportRecord> visible = hasMore ? page.subList(0, size) : page;
         Long nextCursor = hasMore ? visible.getLast().getRecordId() : null;
         return new SportCursorPage(visible.stream().map(SportRecordResponse::from).toList(), nextCursor, hasMore);
+    }
+
+    @Transactional(readOnly = true)
+    public WorkoutTrackResponse track(Long userId, Long recordId) {
+        SportRecord record = records.findByRecordIdAndUserId(recordId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("运动记录不存在"));
+        List<SportTrackPoint> stored = trackPoints.findByRecordIdOrderBySequenceNoAsc(recordId);
+        if (!stored.isEmpty()) {
+            return new WorkoutTrackResponse(recordId, "WGS84", stored.stream()
+                    .map(point -> new TrackPointResponse(point.getSequenceNo(), point.getLatitude(),
+                            point.getLongitude(), point.getAccuracy(), point.getRecordedAt()))
+                    .toList());
+        }
+        List<TrackPoint> legacy = readLegacyTrack(record);
+        List<TrackPointResponse> response = new ArrayList<>(legacy.size());
+        for (int index = 0; index < legacy.size(); index++) {
+            TrackPoint point = legacy.get(index);
+            response.add(new TrackPointResponse(index, point.lat(), point.lng(),
+                    point.accuracy(), point.timestamp()));
+        }
+        return new WorkoutTrackResponse(recordId, "WGS84", response);
     }
 
     private SportRecord lockDraft(Long userId, String sessionId) {

@@ -100,6 +100,29 @@ class SportServiceTest {
                 new FinishSessionRequest(start.sessionId(), 1900L, null, null, 60.0, null, null),
                 "finish-key-001")).hasMessageContaining("不同请求");
     }
+
+    @Test
+    void returnsTrackOnlyToRecordOwnerInWgs84Order() {
+        var start = sportService.start(USER_ID, new StartSessionRequest("running", "gps"));
+        Instant now = Instant.now();
+        sportService.appendTrackBatch(USER_ID, start.sessionId(), new TrackBatchRequest(List.of(
+                new TrackPointInput(1, 31.2305, 121.4738, 6.0, now.plusSeconds(30)),
+                new TrackPointInput(0, 31.2304, 121.4737, 5.0, now))));
+        var record = sportService.finish(USER_ID, new FinishSessionRequest(
+                start.sessionId(), 1800L, null, null, 60.0, null, null));
+
+        var track = sportService.track(USER_ID, record.recordId());
+
+        assertThat(track.coordinateSystem()).isEqualTo("WGS84");
+        assertThat(track.points()).extracting(point -> point.sequenceNo())
+                .containsExactly(0, 1);
+        assertThat(track.points()).extracting(point -> point.lat())
+                .containsExactly(31.2304, 31.2305);
+        assertThatThrownBy(() -> sportService.track(999L, record.recordId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("不存在");
+    }
+
     @Test
     void photoUploadValidatesInputAndMapsSupportedExtensions() {
         assertThatThrownBy(() -> sportService.savePhoto(USER_ID,

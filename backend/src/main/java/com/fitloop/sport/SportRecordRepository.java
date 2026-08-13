@@ -11,6 +11,8 @@ import jakarta.persistence.LockModeType;
 import org.springframework.data.repository.query.Param;
 
 public interface SportRecordRepository extends JpaRepository<SportRecord, Long> {
+    Optional<SportRecord> findByRecordIdAndUserId(Long recordId, Long userId);
+
     Optional<SportRecord> findBySessionIdAndUserId(String sessionId, Long userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -507,6 +507,7 @@ class SavedTrainingPlan {
     required this.planJson,
     required this.status,
     required this.createdAt,
+    this.completedDays = const <int>[],
   });
 
   factory SavedTrainingPlan.fromJson(Map<String, dynamic> json) {
@@ -516,6 +517,9 @@ class SavedTrainingPlan {
       planJson: json['planJson'] as String,
       status: json['status'] as String,
       createdAt: json['createdAt'] as String,
+      completedDays: (json['completedDays'] as List<dynamic>? ?? const [])
+          .map((value) => value as int)
+          .toList(growable: false),
     );
   }
 
@@ -524,6 +528,7 @@ class SavedTrainingPlan {
   final String planJson;
   final String status;
   final String createdAt;
+  final List<int> completedDays;
 
   TrainingPlanPreview? get preview => TrainingPlanPreview.tryParse(planJson);
 
@@ -531,6 +536,44 @@ class SavedTrainingPlan {
     if (!RegExp(r'(?:Z|[+-]\d{2}:\d{2})$').hasMatch(createdAt)) return null;
     return DateTime.tryParse(createdAt)?.toUtc();
   }
+}
+
+class NextTrainingSession {
+  const NextTrainingSession({
+    required this.planId,
+    required this.planTitle,
+    required this.day,
+    required this.sessionType,
+    required this.durationMinutes,
+    required this.intensity,
+    this.notes,
+    required this.completedSessions,
+    required this.totalSessions,
+  });
+
+  factory NextTrainingSession.fromJson(Map<String, dynamic> json) {
+    return NextTrainingSession(
+      planId: json['planId'] as int,
+      planTitle: json['planTitle'] as String,
+      day: json['day'] as int,
+      sessionType: json['sessionType'] as String,
+      durationMinutes: json['durationMinutes'] as int,
+      intensity: json['intensity'] as String,
+      notes: json['notes'] as String?,
+      completedSessions: json['completedSessions'] as int,
+      totalSessions: json['totalSessions'] as int,
+    );
+  }
+
+  final int planId;
+  final String planTitle;
+  final int day;
+  final String sessionType;
+  final int durationMinutes;
+  final String intensity;
+  final String? notes;
+  final int completedSessions;
+  final int totalSessions;
 }
 
 class AgentProposalItem {
@@ -757,6 +800,55 @@ class TrackPoint {
   }
 }
 
+class WorkoutTrackPoint {
+  const WorkoutTrackPoint({
+    required this.sequenceNo,
+    required this.lat,
+    required this.lng,
+    required this.accuracy,
+    required this.timestamp,
+  });
+
+  factory WorkoutTrackPoint.fromJson(Map<String, dynamic> json) {
+    return WorkoutTrackPoint(
+      sequenceNo: json['sequenceNo'] as int,
+      lat: (json['lat'] as num).toDouble(),
+      lng: (json['lng'] as num).toDouble(),
+      accuracy: (json['accuracy'] as num).toDouble(),
+      timestamp: DateTime.parse(json['timestamp'] as String),
+    );
+  }
+
+  final int sequenceNo;
+  final double lat;
+  final double lng;
+  final double accuracy;
+  final DateTime timestamp;
+}
+
+class WorkoutTrack {
+  const WorkoutTrack({
+    required this.recordId,
+    required this.coordinateSystem,
+    required this.points,
+  });
+
+  factory WorkoutTrack.fromJson(Map<String, dynamic> json) {
+    final rawPoints = json['points'] as List<dynamic>? ?? const [];
+    return WorkoutTrack(
+      recordId: json['recordId'] as int,
+      coordinateSystem: json['coordinateSystem'] as String,
+      points: List.unmodifiable(rawPoints.map(
+        (point) => WorkoutTrackPoint.fromJson(point as Map<String, dynamic>),
+      )),
+    );
+  }
+
+  final int recordId;
+  final String coordinateSystem;
+  final List<WorkoutTrackPoint> points;
+}
+
 class SportRecord {
   const SportRecord({
     required this.recordId,
@@ -765,6 +857,7 @@ class SportRecord {
     required this.distanceKm,
     required this.calorie,
     this.sportType,
+    this.checkinMode,
     this.abnormalReason,
     this.startedAt,
   });
@@ -777,6 +870,7 @@ class SportRecord {
       distanceKm: (json['distanceKm'] as num).toDouble(),
       calorie: (json['calorie'] as num).toDouble(),
       sportType: json['sportType'] as String?,
+      checkinMode: json['checkinMode'] as String?,
       abnormalReason: json['abnormalReason'] as String?,
       startedAt: json['startedAt'] == null
           ? null
@@ -790,6 +884,7 @@ class SportRecord {
   final double distanceKm;
   final double calorie;
   final String? sportType;
+  final String? checkinMode;
   final String? abnormalReason;
   final DateTime? startedAt;
 }

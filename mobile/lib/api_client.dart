@@ -190,6 +190,18 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   @override
+  Future<WorkoutTrack> workoutTrack({
+    required String token,
+    required int recordId,
+  }) async {
+    final data = await _getDirect(
+      '/api/v1/workouts/$recordId/track-points',
+      token: token,
+    );
+    return WorkoutTrack.fromJson(data);
+  }
+
+  @override
   Future<List<SportTarget>> currentTargets({required String token}) async {
     final body = await _get('/api/targets/current', token: token);
     final data = body['data'] as Map<String, dynamic>;
@@ -576,6 +588,30 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
     );
   }
 
+  @override
+  Future<Map<String, dynamic>> exportAccountData(
+      {required String token}) async {
+    final body = await _get('/api/user/data-export', token: token);
+    final data = body['data'];
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Invalid account data export response');
+    }
+    return data;
+  }
+
+  @override
+  Future<void> deleteAccount({
+    required String token,
+    required String password,
+  }) async {
+    await _request(
+      'DELETE',
+      '/api/user/account',
+      payload: {'password': password},
+      token: token,
+    );
+  }
+
   Future<String> _safeFilePath(String imagePath) async {
     try {
       final file = File(imagePath);
@@ -619,6 +655,18 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
     return _request('GET', path, token: token);
+  }
+
+  Future<Map<String, dynamic>> _getDirect(String path,
+      {required String token}) async {
+    var accessToken = await _accessTokenForRequest(token);
+    var response = await _executeJson('GET', path, token: accessToken);
+    if (response.statusCode == HttpStatus.unauthorized && _session != null) {
+      final refreshed = await _refreshSession(rejectedToken: accessToken);
+      accessToken = refreshed.token;
+      response = await _executeJson('GET', path, token: accessToken);
+    }
+    return _expectDirect(response);
   }
 
   Future<Map<String, dynamic>> _post(
@@ -880,6 +928,33 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
         (item) => SavedTrainingPlan.fromJson(item as Map<String, dynamic>),
       ),
     );
+  }
+
+  @override
+  Future<NextTrainingSession?> nextTrainingSession({
+    required String token,
+  }) async {
+    final body = await _get('/api/v1/agent/training-plans/next', token: token);
+    final data = body['data'];
+    if (data == null) return null;
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Invalid next training session response');
+    }
+    return NextTrainingSession.fromJson(data);
+  }
+
+  @override
+  Future<SavedTrainingPlan> completeTrainingDay({
+    required String token,
+    required int planId,
+    required int day,
+  }) async {
+    final body = await _post(
+      '/api/v1/agent/training-plans/$planId/days/$day/complete',
+      const <String, dynamic>{},
+      token: token,
+    );
+    return SavedTrainingPlan.fromJson(body['data'] as Map<String, dynamic>);
   }
 
   @override

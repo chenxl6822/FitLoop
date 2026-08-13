@@ -9,6 +9,7 @@ import com.fitloop.agent.AgentDtos.RunResponse;
 import com.fitloop.agent.AgentDtos.RunResultRequest;
 import com.fitloop.agent.AgentDtos.ToolAuditRequest;
 import com.fitloop.agent.AgentDtos.TrainingPlanResponse;
+import com.fitloop.agent.AgentDtos.NextTrainingSessionResponse;
 import com.fitloop.appeal.Appeal;
 import com.fitloop.appeal.AppealDtos.ReviewAppealRequest;
 import com.fitloop.appeal.AppealRepository;
@@ -16,7 +17,10 @@ import com.fitloop.appeal.AppealService;
 import com.fitloop.audit.AdminAuditService;
 import com.fitloop.user.UserRepository;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -101,8 +105,46 @@ public class AgentGatewayService {
     @Transactional(readOnly = true)
     public List<TrainingPlanResponse> listTrainingPlans(Long userId) {
         return trainingPlans.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(TrainingPlanResponse::from)
+                .map(this::trainingPlanResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public NextTrainingSessionResponse nextTrainingSession(Long userId) {
+        for (TrainingPlan plan : trainingPlans.findByUserIdOrderByCreatedAtDesc(userId)) {
+            if (!"ACTIVE".equalsIgnoreCase(plan.getStatus())) continue;
+            try {
+                Map<String, Object> payload = readMap(plan.getPlanJson());
+                List<Map<String, Object>> days = trainingDays(payload);
+                Set<Integer> completed = new LinkedHashSet<>(completedDays(plan));
+                for (Map<String, Object> day : days) {
+                    int dayNumber = intValue(day.get("day"), "day");
+                    if (completed.contains(dayNumber)) continue;
+                    return new NextTrainingSessionResponse(
+                            plan.getPlanId(), plan.getTitle(), dayNumber,
+                            requiredString(day.get("session_type"), "session_type"),
+                            intValue(day.get("duration_minutes"), "duration_minutes"),
+                            requiredString(day.get("intensity"), "intensity"),
+                            optionalString(day.get("notes")), completed.size(), days.size());
+                }
+            } catch (IllegalArgumentException | IllegalStateException ignoredLegacyPlan) {
+                // Keep older or malformed saved plans viewable without blocking the user's dashboard.
+            }
+        }
+        return null;
+    }
+
+    @Transactional
+    public TrainingPlanResponse completeTrainingDay(Long userId, Long planId, int day) {
+        TrainingPlan plan = trainingPlans.findForUpdate(planId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("Training plan does not exist"));
+        List<Map<String, Object>> days = trainingDays(readMap(plan.getPlanJson()));
+        boolean knownDay = days.stream().anyMatch(item -> intValue(item.get("day"), "day") == day);
+        if (!knownDay) throw new IllegalArgumentException("Training plan day does not exist");
+        Set<Integer> completed = new LinkedHashSet<>(completedDays(plan));
+        completed.add(day);
+        plan.setCompletedDaysJson(write(completed.stream().sorted().toList()));
+        return trainingPlanResponse(plan);
     }
 
     @Transactional
@@ -121,7 +163,7 @@ public class AgentGatewayService {
 
     @Transactional
     public void auditTool(String runId, ToolAuditRequest request) {
-        requireRunning(runId);
+        requireRunning(lockedRun(runId));
         if (toolAudits.countByRunId(runId) >= 8) {
             throw new IllegalStateException("Agent run tool-call limit exceeded");
         }
@@ -129,9 +171,10 @@ public class AgentGatewayService {
                 request.resultJson(), request.succeeded(), request.durationMs(), request.errorMessage()));
     }
 
-    Object executeTool(AgentDtos.ToolContext context, String toolName,
-                       Map<String, Object> arguments, AgentToolInvocation invocation) {
-        AgentRun run = requireRunning(context.runId());
+    @Transactional(noRollbackFor = RuntimeException.class)
+    public Object executeTool(AgentDtos.ToolContext context, String toolName,
+                              Map<String, Object> arguments, AgentToolInvocation invocation) {
+        AgentRun run = requireRunning(lockedRun(context.runId()));
         if (!run.getSubjectUserId().equals(context.subjectUserId())
                 || run.getRunType() != context.type()
                 || !java.util.Objects.equals(run.getSubjectResourceId(), context.subjectResourceId())) {
@@ -264,6 +307,59 @@ public class AgentGatewayService {
         return trainingPlans.save(plan).getPlanId();
     }
 
+    private TrainingPlanResponse trainingPlanResponse(TrainingPlan plan) {
+        return new TrainingPlanResponse(plan.getPlanId(), plan.getTitle(), plan.getPlanJson(),
+                plan.getStatus(), plan.getCreatedAt(), completedDays(plan));
+    }
+
+    private List<Integer> completedDays(TrainingPlan plan) {
+        String raw = plan.getCompletedDaysJson();
+        if (raw == null || raw.isBlank()) return List.of();
+        try {
+            List<Integer> values = objectMapper.readValue(raw, new TypeReference<List<Integer>>() { });
+            return values.stream().filter(value -> value != null && value >= 1 && value <= 28)
+                    .distinct().sorted().toList();
+        } catch (Exception ex) {
+            throw new IllegalStateException("Stored training plan progress is invalid", ex);
+        }
+    }
+
+    private List<Map<String, Object>> trainingDays(Map<String, Object> payload) {
+        Object rawDays = payload.get("days");
+        if (!(rawDays instanceof List<?> values) || values.isEmpty()) {
+            throw new IllegalArgumentException("Training plan has no executable days");
+        }
+        List<Map<String, Object>> days = new ArrayList<>();
+        for (Object value : values) {
+            if (!(value instanceof Map<?, ?> rawDay)) {
+                throw new IllegalArgumentException("Invalid training plan day");
+            }
+            Map<String, Object> day = new java.util.LinkedHashMap<>();
+            rawDay.forEach((key, item) -> day.put(String.valueOf(key), item));
+            days.add(day);
+        }
+        days.sort(java.util.Comparator.comparingInt(item -> intValue(item.get("day"), "day")));
+        return days;
+    }
+
+    private int intValue(Object value, String field) {
+        if (!(value instanceof Number number)) {
+            throw new IllegalArgumentException("Invalid training plan " + field);
+        }
+        return number.intValue();
+    }
+
+    private String requiredString(Object value, String field) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            throw new IllegalArgumentException("Invalid training plan " + field);
+        }
+        return text;
+    }
+
+    private String optionalString(Object value) {
+        return value instanceof String text && !text.isBlank() ? text : null;
+    }
+
     private Long reviewAppeal(AgentActionProposal proposal, Long actorId) {
         AgentRun run = runs.findById(proposal.getRunId()).orElseThrow();
         if (run.getSubjectResourceId() == null) throw new IllegalArgumentException("Appeal run has no appeal id");
@@ -294,6 +390,10 @@ public class AgentGatewayService {
 
     private AgentRun requireRunning(String runId) {
         AgentRun run = runs.findById(runId).orElseThrow(() -> new IllegalArgumentException("Agent run does not exist"));
+        return requireRunning(run);
+    }
+
+    private AgentRun requireRunning(AgentRun run) {
         if (run.getStatus() != AgentRunStatus.RUNNING) throw new IllegalStateException("Agent run is not RUNNING");
         return run;
     }

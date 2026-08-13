@@ -365,6 +365,49 @@ class SettingsPage extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text('隐私与数据',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+                ListTile(
+                  key: const Key('privacy-explanation-entry'),
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('数据使用说明'),
+                  subtitle: const Text('了解轨迹、健康与 AI 数据如何使用'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const _PrivacyPage()),
+                  ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  key: const Key('account-data-entry'),
+                  leading: const Icon(Icons.manage_accounts_outlined),
+                  title: const Text('我的数据与账号'),
+                  subtitle: const Text('导出副本或申请注销账号'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => _AccountDataPage(
+                        api: api,
+                        session: session,
+                        onDeleted: onLogout,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: Text('关于',
                       style: Theme.of(context)
                           .textTheme
@@ -407,6 +450,332 @@ class SettingsPage extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => _AdminDashboardPage(api: api, token: session.token),
       ),
+    );
+  }
+}
+
+class _PrivacyPage extends StatelessWidget {
+  const _PrivacyPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('数据使用说明')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: const [
+          _PrivacySection(
+            icon: Icons.route_outlined,
+            title: '运动轨迹',
+            body:
+                '仅在你开始 GPS 运动并授权定位后记录。轨迹详情只对账号本人开放；道路底图需要单独同意，加载时地图服务商会接收瓦片坐标、IP 等必要网络信息。',
+          ),
+          _PrivacySection(
+            icon: Icons.favorite_border,
+            title: '健康与训练数据',
+            body: '体重、睡眠、饮食、目标和训练记录用于统计与个性化建议。当前版本由你主动录入，不会在后台读取系统健康数据。',
+          ),
+          _PrivacySection(
+            icon: Icons.psychology_outlined,
+            title: 'AI 教练',
+            body: 'AI 建议仅供训练参考。需要写入训练计划的操作会先展示给你确认；不要在目标描述中填写身份证号、病历等无关敏感信息。',
+          ),
+          _PrivacySection(
+            icon: Icons.lock_outline,
+            title: '你的控制权',
+            body:
+                '你可以在“我的数据与账号”导出副本，或验证当前密码后注销。注销会删除业务数据并撤销会话，同时保留不含联系方式的最小注销标记以维护数据一致性。',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrivacySection extends StatelessWidget {
+  const _PrivacySection({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  Text(body),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AccountDataPage extends StatefulWidget {
+  const _AccountDataPage({
+    required this.api,
+    required this.session,
+    this.onDeleted,
+  });
+
+  final FitLoopApi api;
+  final UserSession session;
+  final VoidCallback? onDeleted;
+
+  @override
+  State<_AccountDataPage> createState() => _AccountDataPageState();
+}
+
+class _AccountDataPageState extends State<_AccountDataPage> {
+  bool _exporting = false;
+  bool _deleting = false;
+  String? _exportedJson;
+  String? _error;
+
+  Future<void> _export() async {
+    setState(() {
+      _exporting = true;
+      _error = null;
+    });
+    try {
+      final data =
+          await widget.api.exportAccountData(token: widget.session.token);
+      if (!mounted) return;
+      setState(() =>
+          _exportedJson = const JsonEncoder.withIndent('  ').convert(data));
+    } catch (error) {
+      if (mounted) setState(() => _error = _friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _copyExport() async {
+    final value = _exportedJson;
+    if (value == null) return;
+    await Clipboard.setData(ClipboardData(text: value));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('数据副本已复制到剪贴板')),
+      );
+    }
+  }
+
+  Future<void> _confirmDelete() async {
+    final password = await showDialog<String>(
+      context: context,
+      builder: (_) => const _DeleteAccountDialog(),
+    );
+    if (password == null || password.isEmpty || !mounted) return;
+
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
+    try {
+      await widget.api.deleteAccount(
+        token: widget.session.token,
+        password: password,
+      );
+      if (!mounted) return;
+      widget.onDeleted?.call();
+    } catch (error) {
+      if (mounted) setState(() => _error = _friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
+  String _friendlyError(Object error) {
+    if (error is ApiException) return error.message;
+    return '操作失败，请检查网络后重试';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('我的数据与账号')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('导出数据副本',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 8),
+                  const Text(
+                      '包括账号资料、运动与轨迹、目标、健康记录、提醒、社交关系、申诉、反馈和训练计划。不会包含密码或登录令牌。'),
+                  const SizedBox(height: 16),
+                  FilledButton.icon(
+                    key: const Key('export-account-data'),
+                    onPressed: _exporting ? null : _export,
+                    icon: _exporting
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download_outlined),
+                    label: Text(_exporting ? '正在准备…' : '生成数据副本'),
+                  ),
+                  if (_exportedJson != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      key: const Key('account-export-preview'),
+                      constraints: const BoxConstraints(maxHeight: 260),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color:
+                            Theme.of(context).colorScheme.surfaceContainerLow,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          _exportedJson!,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      key: const Key('copy-account-data'),
+                      onPressed: _copyExport,
+                      icon: const Icon(Icons.copy_outlined),
+                      label: const Text('复制 JSON'),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('注销账号',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(context).colorScheme.error,
+                          )),
+                  const SizedBox(height: 8),
+                  const Text('建议先导出数据副本。注销成功后会立即退出，且无法恢复原有记录。'),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    key: const Key('delete-account'),
+                    onPressed: _deleting ? null : _confirmDelete,
+                    icon: _deleting
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.delete_forever_outlined),
+                    label: Text(_deleting ? '正在注销…' : '永久注销账号'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              key: const Key('account-data-error'),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DeleteAccountDialog extends StatefulWidget {
+  const _DeleteAccountDialog();
+
+  @override
+  State<_DeleteAccountDialog> createState() => _DeleteAccountDialogState();
+}
+
+class _DeleteAccountDialogState extends State<_DeleteAccountDialog> {
+  final _password = TextEditingController();
+
+  @override
+  void dispose() {
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('永久注销账号？'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('运动轨迹、健康记录、训练计划和社交关系将被删除，此操作不可恢复。请输入当前密码确认。'),
+            const SizedBox(height: 16),
+            TextField(
+              key: const Key('delete-account-password'),
+              controller: _password,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '当前密码'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          key: const Key('confirm-delete-account'),
+          onPressed: () {
+            final value = _password.text;
+            if (value.isNotEmpty) Navigator.of(context).pop(value);
+          },
+          child: const Text('确认永久注销'),
+        ),
+      ],
     );
   }
 }

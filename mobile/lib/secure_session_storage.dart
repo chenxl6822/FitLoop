@@ -45,6 +45,15 @@ class TokenStorage {
     _secureStore = store;
   }
 
+  static Future<String?> readProtectedValue(String key) =>
+      _secureStore.read(key: key);
+
+  static Future<void> writeProtectedValue(String key, String value) =>
+      _secureStore.write(key: key, value: value);
+
+  static Future<void> deleteProtectedValue(String key) =>
+      _secureStore.delete(key: key);
+
   static Future<void> save(UserSession value) async {
     if (value.token.trim().isEmpty ||
         value.refreshToken.trim().isEmpty ||

@@ -26,6 +26,12 @@ public final class SportDtos {
 
     public record TrackBatchResponse(int accepted, int duplicates, int lastSequenceNo) { }
 
+    public record TrackPointResponse(int sequenceNo, double lat, double lng,
+                                     double accuracy, Instant timestamp) { }
+
+    public record WorkoutTrackResponse(Long recordId, String coordinateSystem,
+                                       List<TrackPointResponse> points) { }
+
     public record FinishSessionRequest(@NotBlank String sessionId, Long durationSeconds, Double distanceKm,
                                        Double calorie, Double weightKg, String photoUrl, String note) {
     }

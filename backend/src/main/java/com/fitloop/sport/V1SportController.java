@@ -6,6 +6,7 @@ import com.fitloop.sport.SportDtos.SportCursorPage;
 import com.fitloop.sport.SportDtos.SportRecordResponse;
 import com.fitloop.sport.SportDtos.TrackBatchRequest;
 import com.fitloop.sport.SportDtos.TrackBatchResponse;
+import com.fitloop.sport.SportDtos.WorkoutTrackResponse;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,6 +40,11 @@ public class V1SportController {
             throw new IllegalArgumentException("Path sessionId must match request sessionId");
         }
         return workouts.finish(AuthSupport.currentUserId(), request, idempotencyKey);
+    }
+
+    @GetMapping("/{recordId}/track-points")
+    public WorkoutTrackResponse track(@PathVariable Long recordId) {
+        return workouts.track(AuthSupport.currentUserId(), recordId);
     }
 
     @GetMapping

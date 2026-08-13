@@ -42,6 +42,11 @@ abstract class FitLoopApi {
 
   Future<List<SportRecord>> listSportRecords({required String token});
 
+  Future<WorkoutTrack> workoutTrack({
+    required String token,
+    required int recordId,
+  });
+
   Future<List<SportTarget>> currentTargets({required String token});
 
   Future<SportTarget> createTarget({
@@ -160,6 +165,13 @@ abstract class FitLoopApi {
 
   Future<FeedbackListResponse> listFeedback({required String token});
 
+  Future<Map<String, dynamic>> exportAccountData({required String token});
+
+  Future<void> deleteAccount({
+    required String token,
+    required String password,
+  });
+
   Future<AgentRunCreated> createCoachRun({
     required String token,
     required String objective,
@@ -171,6 +183,14 @@ abstract class FitLoopApi {
   });
 
   Future<List<SavedTrainingPlan>> listTrainingPlans({required String token});
+
+  Future<NextTrainingSession?> nextTrainingSession({required String token});
+
+  Future<SavedTrainingPlan> completeTrainingDay({
+    required String token,
+    required int planId,
+    required int day,
+  });
 
   Future<AdminStats> adminGetStats({required String token});
 

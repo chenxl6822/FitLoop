@@ -118,7 +118,7 @@ public class SocialService {
             return new UserSearchResponse(List.of());
         }
         String q = query.trim();
-        List<UserInfo> matches = users.findByNicknameContainingOrPhoneContaining(q, q);
+        List<UserInfo> matches = users.findActiveMatches(q);
         Set<Long> friendIds = friends.findByUserId(userId).stream()
                 .map(UserFriend::getFriendUserId)
                 .collect(Collectors.toSet());

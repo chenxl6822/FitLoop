@@ -7,6 +7,7 @@ import com.fitloop.agent.AgentDtos.RunCreatedResponse;
 import com.fitloop.agent.AgentDtos.RunResponse;
 import com.fitloop.agent.AgentDtos.RejectProposalRequest;
 import com.fitloop.agent.AgentDtos.TrainingPlanResponse;
+import com.fitloop.agent.AgentDtos.NextTrainingSessionResponse;
 import com.fitloop.common.ApiResponse;
 import com.fitloop.security.AuthSupport;
 import jakarta.validation.Valid;
@@ -49,6 +50,18 @@ public class AgentController {
     @GetMapping("/training-plans")
     public ApiResponse<List<TrainingPlanResponse>> trainingPlans() {
         return ApiResponse.ok(gateway.listTrainingPlans(AuthSupport.currentUserId()));
+    }
+
+    @GetMapping("/training-plans/next")
+    public ApiResponse<NextTrainingSessionResponse> nextTrainingSession() {
+        return ApiResponse.ok(gateway.nextTrainingSession(AuthSupport.currentUserId()));
+    }
+
+    @PostMapping("/training-plans/{planId}/days/{day}/complete")
+    public ApiResponse<TrainingPlanResponse> completeTrainingDay(
+            @PathVariable Long planId, @PathVariable int day) {
+        if (day < 1 || day > 28) throw new IllegalArgumentException("Training plan day is out of range");
+        return ApiResponse.ok(gateway.completeTrainingDay(AuthSupport.currentUserId(), planId, day));
     }
 
     @PostMapping("/actions/{proposalId}/confirm")

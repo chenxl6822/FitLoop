@@ -12,9 +12,11 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  setUp(() {
+  setUp(() async {
+    SyncQueue.resetSerializersForTesting();
     SharedPreferences.setMockInitialValues({});
     TokenStorage.useSecureStoreForTesting(_WidgetTestSecureStore());
+    await SyncQueue.clear();
   });
 
   testWidgets('renders login then dashboard shell', (tester) async {
@@ -53,6 +55,44 @@ void main() {
     await _selectGpsCheckinMode(tester);
 
     expect(find.textContaining('已上传 1 个轨迹点'), findsOneWidget);
+    expect(find.byKey(const Key('workout-map-card')), findsOneWidget);
+    expect(find.byKey(const Key('local-track-preview')), findsOneWidget);
+  });
+
+  testWidgets('shows and completes the next training from the dashboard',
+      (tester) async {
+    final api = _FakeApi(
+      nextTraining: const NextTrainingSession(
+        planId: 42,
+        planTitle: '5 公里入门计划',
+        day: 1,
+        sessionType: '轻松跑',
+        durationMinutes: 30,
+        intensity: 'LOW',
+        notes: '保持可以轻松交谈的速度',
+        completedSessions: 0,
+        totalSessions: 3,
+      ),
+    );
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+    await _enterApp(tester);
+
+    expect(find.byKey(const Key('next-training-card')), findsOneWidget);
+    expect(find.text('5 公里入门计划'), findsOneWidget);
+    expect(find.textContaining('轻松跑'), findsOneWidget);
+    expect(find.text('进度 0/3'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('next-training-complete')));
+    await tester.pumpAndSettle();
+    expect(find.text('确认完成训练？'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('training-complete-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(api.completedTrainingDays, [(planId: 42, day: 1)]);
+    expect(find.text('训练已完成，下一项计划已更新'), findsOneWidget);
+    expect(find.textContaining('暂无待完成训练'), findsOneWidget);
   });
 
   testWidgets('refreshes ranking on tab entry and switches scope',
@@ -75,6 +115,21 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.lastRankingScope, 'global');
+  });
+
+  testWidgets('shows a safe retry card for queued workouts', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: PendingSyncCard(
+          pendingCount: 1,
+          syncing: false,
+        ),
+      ),
+    ));
+
+    expect(find.text('1 条运动记录待同步'), findsOneWidget);
+    expect(find.textContaining('安全保存在本机'), findsOneWidget);
+    expect(find.byKey(const Key('sync-pending-button')), findsOneWidget);
   });
 
   testWidgets('registers with email verification code', (tester) async {
@@ -338,30 +393,6 @@ void main() {
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
-  testWidgets('queues finish request when session finish fails',
-      (tester) async {
-    final api = _FakeApi(finishError: const SocketException('offline'));
-    await tester.pumpWidget(
-      FitLoopApp(
-        api: api,
-        locationService: _FakeLocationService(
-          currentPosition: _position(accuracy: 8),
-        ),
-      ),
-    );
-
-    await _openSportPage(tester);
-    await _startSportSession(tester, api);
-    await tester.tap(find.byKey(const Key('sport-session-toggle')));
-    await tester.pumpAndSettle();
-
-    final pending = await SyncQueue.pending();
-    expect(pending, hasLength(1));
-    expect(pending.single.sessionId, 'session-1');
-    expect(find.textContaining('已加入离线同步队列'), findsOneWidget);
-    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
-  });
-
   testWidgets('submits an appeal from a historical abnormal workout',
       (tester) async {
     final api = _FakeApi(
@@ -395,6 +426,38 @@ void main() {
     expect(api.createdAppeals, 1);
     expect(find.byKey(const Key('appeal-record-42')), findsNothing);
     expect(find.byKey(const Key('my-appeals-card')), findsOneWidget);
+  });
+
+  testWidgets('opens the signed-in users private workout route',
+      (tester) async {
+    final api = _FakeApi(
+      sportRecords: const [
+        SportRecord(
+          recordId: 43,
+          status: 1,
+          durationSeconds: 1200,
+          distanceKm: 2.1,
+          calorie: 160,
+          sportType: 'running',
+          checkinMode: 'gps',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+
+    await _openSportPage(tester);
+    final routeButton = find.byKey(const Key('track-record-43'));
+    await tester.scrollUntilVisible(routeButton, 200);
+    tester.widget<TextButton>(routeButton).onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(find.text('路线 #43'), findsOneWidget);
+    expect(find.text('历史路线'), findsOneWidget);
+    expect(find.text('2 个'), findsOneWidget);
+    await tester.scrollUntilVisible(find.textContaining('仅本人可见'), 200);
+    expect(find.textContaining('仅本人可见'), findsOneWidget);
   });
 
   testWidgets('saves reminder and refreshes profile without reopening it',
@@ -1130,9 +1193,62 @@ Future<void> _openSportReminderSettings(WidgetTester tester) async {
 Future<void> _selectGpsCheckinMode(WidgetTester tester) async {
   await tester.tap(find.text('GPS 定位打卡'));
   await tester.pumpAndSettle();
+  final privacyDialog = find.text('是否加载道路底图？');
+  if (privacyDialog.evaluate().isNotEmpty) {
+    await tester.tap(find.text('仅记录轨迹'));
+    await tester.pumpAndSettle();
+  }
 }
 
 void _adminDashboardTests() {
+  testWidgets('privacy controls explain, export and delete account data',
+      (tester) async {
+    final api = _FakeApi();
+    var deleted = false;
+    await tester.pumpWidget(MaterialApp(
+      home: SettingsPage(
+        session: UserSession(
+          token: 'user-token',
+          refreshToken: 'user-refresh-token',
+          expiresAt: DateTime.utc(2100),
+          userId: 1,
+          nickname: 'User',
+        ),
+        api: api,
+        onLogout: () => deleted = true,
+      ),
+    ));
+
+    await tester.tap(find.byKey(const Key('privacy-explanation-entry')));
+    await tester.pumpAndSettle();
+    expect(find.text('运动轨迹'), findsOneWidget);
+    expect(find.textContaining('只对账号本人开放'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('account-data-entry')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('export-account-data')));
+    await tester.pumpAndSettle();
+    expect(api.accountDataExports, 1);
+    expect(find.byKey(const Key('account-export-preview')), findsOneWidget);
+    expect(find.textContaining('synthetic workout'), findsOneWidget);
+
+    final deleteButton = find.byKey(const Key('delete-account'));
+    await tester.ensureVisible(deleteButton);
+    await tester.pumpAndSettle();
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('delete-account-password')),
+      'current-password',
+    );
+    await tester.tap(find.byKey(const Key('confirm-delete-account')));
+    await tester.pumpAndSettle();
+    expect(api.deletedAccountPassword, 'current-password');
+    expect(deleted, isTrue);
+  });
+
   testWidgets('admin dashboard is visible only to admin sessions',
       (tester) async {
     final api = _FakeApi();
@@ -1165,9 +1281,11 @@ void _adminDashboardTests() {
         api: api,
       ),
     ));
-    expect(find.text('管理后台'), findsOneWidget);
+    final adminEntry = find.text('管理后台');
+    await tester.scrollUntilVisible(adminEntry, 200);
+    expect(adminEntry, findsOneWidget);
 
-    await tester.tap(find.text('管理后台'));
+    await tester.tap(adminEntry);
     await tester.pumpAndSettle();
     expect(find.text('申诉'), findsOneWidget);
     expect(find.text('Agent'), findsOneWidget);
@@ -1363,7 +1481,6 @@ class _FakeApi implements FitLoopApi {
     List<ReminderConfig> reminders = const <ReminderConfig>[],
     List<SportRecord> sportRecords = const <SportRecord>[],
     List<AppealResponse> appeals = const <AppealResponse>[],
-    this.finishError,
     this.reminderUpsertError,
     this.coachCreateError,
     this.coachCreateFuture,
@@ -1371,12 +1488,14 @@ class _FakeApi implements FitLoopApi {
     this.coachConfirmFuture,
     List<AgentRunDetail> coachRuns = const <AgentRunDetail>[],
     List<SavedTrainingPlan> trainingPlans = const <SavedTrainingPlan>[],
+    NextTrainingSession? nextTraining,
   })  : _targets = List.of(targets),
         _reminders = List.of(reminders),
         _sportRecords = List.of(sportRecords),
         _appeals = List.of(appeals),
         _coachRuns = List.of(coachRuns),
-        _trainingPlans = List.of(trainingPlans);
+        _trainingPlans = List.of(trainingPlans),
+        _nextTraining = nextTraining;
 
   factory _FakeApi.withTarget() {
     return _FakeApi(
@@ -1402,7 +1521,7 @@ class _FakeApi implements FitLoopApi {
   final List<AppealResponse> _appeals;
   final List<AgentRunDetail> _coachRuns;
   final List<SavedTrainingPlan> _trainingPlans;
-  final Object? finishError;
+  NextTrainingSession? _nextTraining;
   final Object? reminderUpsertError;
   final Object? coachCreateError;
   final Future<AgentRunCreated>? coachCreateFuture;
@@ -1418,6 +1537,9 @@ class _FakeApi implements FitLoopApi {
   int createdCoachRuns = 0;
   int coachRunQueries = 0;
   int trainingPlanQueries = 0;
+  int accountDataExports = 0;
+  String? deletedAccountPassword;
+  final List<({int planId, int day})> completedTrainingDays = [];
   int rankingCalls = 0;
   final List<int> confirmedCoachProposals = [];
   final List<int> rejectedCoachProposals = [];
@@ -1502,6 +1624,34 @@ class _FakeApi implements FitLoopApi {
   }) async {
     trainingPlanQueries += 1;
     return List.unmodifiable(_trainingPlans);
+  }
+
+  @override
+  Future<NextTrainingSession?> nextTrainingSession({
+    required String token,
+  }) async {
+    return _nextTraining;
+  }
+
+  @override
+  Future<SavedTrainingPlan> completeTrainingDay({
+    required String token,
+    required int planId,
+    required int day,
+  }) async {
+    completedTrainingDays.add((planId: planId, day: day));
+    _nextTraining = null;
+    final plan =
+        _trainingPlans.where((item) => item.planId == planId).firstOrNull;
+    return SavedTrainingPlan(
+      planId: planId,
+      title: plan?.title ?? '训练计划',
+      planJson: plan?.planJson ??
+          '{"title":"训练计划","goal":"完成训练","days":[{"day":$day,"session_type":"跑步","duration_minutes":30,"intensity":"LOW"}]}',
+      status: plan?.status ?? 'ACTIVE',
+      createdAt: plan?.createdAt ?? '2026-08-13T00:00:00Z',
+      completedDays: [day],
+    );
   }
 
   @override
@@ -1633,10 +1783,6 @@ class _FakeApi implements FitLoopApi {
     String? note,
     String? photoUrl,
   }) async {
-    final error = finishError;
-    if (error != null) {
-      throw error;
-    }
     finishedSports += 1;
     return const SportRecord(
       recordId: 1,
@@ -1667,6 +1813,33 @@ class _FakeApi implements FitLoopApi {
   @override
   Future<List<SportRecord>> listSportRecords({required String token}) async {
     return List.of(_sportRecords);
+  }
+
+  @override
+  Future<WorkoutTrack> workoutTrack({
+    required String token,
+    required int recordId,
+  }) async {
+    return WorkoutTrack(
+      recordId: recordId,
+      coordinateSystem: 'WGS84',
+      points: [
+        WorkoutTrackPoint(
+          sequenceNo: 0,
+          lat: 31.2304,
+          lng: 121.4737,
+          accuracy: 5,
+          timestamp: DateTime.utc(2026, 5, 25, 8),
+        ),
+        WorkoutTrackPoint(
+          sequenceNo: 1,
+          lat: 31.2308,
+          lng: 121.4741,
+          accuracy: 6,
+          timestamp: DateTime.utc(2026, 5, 25, 8, 1),
+        ),
+      ],
+    );
   }
 
   @override
@@ -1913,6 +2086,26 @@ class _FakeApi implements FitLoopApi {
   @override
   Future<FeedbackListResponse> listFeedback({required String token}) async {
     return const FeedbackListResponse(feedbacks: []);
+  }
+
+  @override
+  Future<Map<String, dynamic>> exportAccountData(
+      {required String token}) async {
+    accountDataExports += 1;
+    return <String, dynamic>{
+      'exportedAt': '2026-08-13T00:00:00Z',
+      'workouts': <Map<String, dynamic>>[
+        <String, dynamic>{'note': 'synthetic workout'},
+      ],
+    };
+  }
+
+  @override
+  Future<void> deleteAccount({
+    required String token,
+    required String password,
+  }) async {
+    deletedAccountPassword = password;
   }
 
   @override

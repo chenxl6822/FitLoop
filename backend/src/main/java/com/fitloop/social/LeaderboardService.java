@@ -95,6 +95,11 @@ public class LeaderboardService {
             int rank = (int) offset + 1;
             for (var value : values) {
                 Long userId = Long.valueOf(value.getValue());
+                if (!users.existsByUserIdAndDeletedAtIsNull(userId)) {
+                    redis.opsForZSet().remove(distanceKey(period), value.getValue());
+                    redis.opsForHash().delete(calorieKey(period), value.getValue());
+                    continue;
+                }
                 Object calories = redis.opsForHash().get(calorieKey(period), value.getValue());
                 double calorie = calories == null ? 0 : Double.parseDouble(calories.toString());
                 rows.add(row(rank++, userId, value.getScore() == null ? 0 : value.getScore(), calorie));
