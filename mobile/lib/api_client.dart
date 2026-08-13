@@ -190,6 +190,18 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   @override
+  Future<WorkoutTrack> workoutTrack({
+    required String token,
+    required int recordId,
+  }) async {
+    final data = await _getDirect(
+      '/api/v1/workouts/$recordId/track-points',
+      token: token,
+    );
+    return WorkoutTrack.fromJson(data);
+  }
+
+  @override
   Future<List<SportTarget>> currentTargets({required String token}) async {
     final body = await _get('/api/targets/current', token: token);
     final data = body['data'] as Map<String, dynamic>;
@@ -619,6 +631,18 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
 
   Future<Map<String, dynamic>> _get(String path, {String? token}) async {
     return _request('GET', path, token: token);
+  }
+
+  Future<Map<String, dynamic>> _getDirect(String path,
+      {required String token}) async {
+    var accessToken = await _accessTokenForRequest(token);
+    var response = await _executeJson('GET', path, token: accessToken);
+    if (response.statusCode == HttpStatus.unauthorized && _session != null) {
+      final refreshed = await _refreshSession(rejectedToken: accessToken);
+      accessToken = refreshed.token;
+      response = await _executeJson('GET', path, token: accessToken);
+    }
+    return _expectDirect(response);
   }
 
   Future<Map<String, dynamic>> _post(

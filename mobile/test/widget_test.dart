@@ -53,6 +53,8 @@ void main() {
     await _selectGpsCheckinMode(tester);
 
     expect(find.textContaining('已上传 1 个轨迹点'), findsOneWidget);
+    expect(find.byKey(const Key('workout-map-card')), findsOneWidget);
+    expect(find.byKey(const Key('local-track-preview')), findsOneWidget);
   });
 
   testWidgets('refreshes ranking on tab entry and switches scope',
@@ -395,6 +397,38 @@ void main() {
     expect(api.createdAppeals, 1);
     expect(find.byKey(const Key('appeal-record-42')), findsNothing);
     expect(find.byKey(const Key('my-appeals-card')), findsOneWidget);
+  });
+
+  testWidgets('opens the signed-in users private workout route',
+      (tester) async {
+    final api = _FakeApi(
+      sportRecords: const [
+        SportRecord(
+          recordId: 43,
+          status: 1,
+          durationSeconds: 1200,
+          distanceKm: 2.1,
+          calorie: 160,
+          sportType: 'running',
+          checkinMode: 'gps',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      FitLoopApp(api: api, locationService: _FakeLocationService()),
+    );
+
+    await _openSportPage(tester);
+    final routeButton = find.byKey(const Key('track-record-43'));
+    await tester.scrollUntilVisible(routeButton, 200);
+    tester.widget<TextButton>(routeButton).onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(find.text('路线 #43'), findsOneWidget);
+    expect(find.text('历史路线'), findsOneWidget);
+    expect(find.text('2 个'), findsOneWidget);
+    await tester.scrollUntilVisible(find.textContaining('仅本人可见'), 200);
+    expect(find.textContaining('仅本人可见'), findsOneWidget);
   });
 
   testWidgets('saves reminder and refreshes profile without reopening it',
@@ -1130,6 +1164,11 @@ Future<void> _openSportReminderSettings(WidgetTester tester) async {
 Future<void> _selectGpsCheckinMode(WidgetTester tester) async {
   await tester.tap(find.text('GPS 定位打卡'));
   await tester.pumpAndSettle();
+  final privacyDialog = find.text('是否加载道路底图？');
+  if (privacyDialog.evaluate().isNotEmpty) {
+    await tester.tap(find.text('仅记录轨迹'));
+    await tester.pumpAndSettle();
+  }
 }
 
 void _adminDashboardTests() {
@@ -1667,6 +1706,33 @@ class _FakeApi implements FitLoopApi {
   @override
   Future<List<SportRecord>> listSportRecords({required String token}) async {
     return List.of(_sportRecords);
+  }
+
+  @override
+  Future<WorkoutTrack> workoutTrack({
+    required String token,
+    required int recordId,
+  }) async {
+    return WorkoutTrack(
+      recordId: recordId,
+      coordinateSystem: 'WGS84',
+      points: [
+        WorkoutTrackPoint(
+          sequenceNo: 0,
+          lat: 31.2304,
+          lng: 121.4737,
+          accuracy: 5,
+          timestamp: DateTime.utc(2026, 5, 25, 8),
+        ),
+        WorkoutTrackPoint(
+          sequenceNo: 1,
+          lat: 31.2308,
+          lng: 121.4741,
+          accuracy: 6,
+          timestamp: DateTime.utc(2026, 5, 25, 8, 1),
+        ),
+      ],
+    );
   }
 
   @override

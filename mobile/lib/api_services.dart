@@ -42,6 +42,11 @@ abstract class FitLoopApi {
 
   Future<List<SportRecord>> listSportRecords({required String token});
 
+  Future<WorkoutTrack> workoutTrack({
+    required String token,
+    required int recordId,
+  });
+
   Future<List<SportTarget>> currentTargets({required String token});
 
   Future<SportTarget> createTarget({

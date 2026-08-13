@@ -113,6 +113,9 @@ class _SportSessionPageState extends State<SportSessionPage> {
   double? _lastLat;
   double? _lastLng;
   double? _currentSpeedMs;
+  final List<WorkoutMapPoint> _liveTrack = [];
+  bool _mapPrivacyGranted = false;
+  bool _mapPrivacyChoiceLoaded = false;
   bool _isPaused = false;
   Timer? _elapsedTimer;
   int _activeSeconds = 0;
@@ -128,6 +131,51 @@ class _SportSessionPageState extends State<SportSessionPage> {
   void initState() {
     super.initState();
     _appealFuture = _loadAppealCenter();
+    unawaited(_loadMapPrivacyChoice());
+  }
+
+  Future<void> _loadMapPrivacyChoice() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _mapPrivacyGranted = prefs.getBool(_kMapPrivacyConsentKey) ?? false;
+      _mapPrivacyChoiceLoaded = prefs.containsKey(_kMapPrivacyConsentKey);
+    });
+  }
+
+  Future<bool> _chooseMapPrivacy({bool force = false}) async {
+    if (!force && _mapPrivacyChoiceLoaded) return _mapPrivacyGranted;
+    final granted = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('是否加载道路底图？'),
+            content: const Text(
+              'FitLoop 会使用定位绘制本次跑步路线。加载 OpenStreetMap 道路底图时，'
+              '地图服务会收到当前可见区域和必要的网络信息；原始轨迹仍保存在 FitLoop，'
+              '默认仅本人可见。你也可以只使用本地轨迹预览。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('仅记录轨迹'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('同意并显示地图'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kMapPrivacyConsentKey, granted);
+    if (mounted) {
+      setState(() {
+        _mapPrivacyGranted = granted;
+        _mapPrivacyChoiceLoaded = true;
+      });
+    }
+    return granted;
   }
 
   Future<_SportAppealSnapshot> _loadAppealCenter() async {
@@ -241,6 +289,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
   }
 
   Future<void> _startGpsCheckin() async {
+    await _chooseMapPrivacy();
+    if (!mounted) return;
     final canUseLocation = await _ensureLocationPermission();
     if (!canUseLocation) return;
 
@@ -264,6 +314,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _currentLat = null;
         _currentLng = null;
         _currentAccuracy = null;
+        _liveTrack.clear();
         _isPaused = false;
         _activeSeconds = 0;
         _status = 'GPS 打卡进行中，正在获取位置...';
@@ -395,6 +446,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
 
         if (lastPosition != null &&
             await _uploadTrackPoint(_sessionId!, lastPosition)) {
+          _appendLiveTrackPoint(lastPosition);
           _trackPointCount++;
         }
       }
@@ -604,6 +656,18 @@ class _SportSessionPageState extends State<SportSessionPage> {
         position.accuracy <= _maxAcceptedAccuracyMeters;
   }
 
+  void _appendLiveTrackPoint(Position position) {
+    if (!_hasUsableAccuracy(position)) return;
+    final point = WorkoutMapPoint(position.latitude, position.longitude);
+    if (_liveTrack.isNotEmpty) {
+      final previous = _liveTrack.last;
+      if (previous.lat == point.lat && previous.lng == point.lng) return;
+    }
+    if (mounted) {
+      setState(() => _liveTrack.add(point));
+    }
+  }
+
   Future<bool> _uploadTrackPoint(String sessionId, Position position) async {
     if (!_hasUsableAccuracy(position)) {
       if (mounted) {
@@ -678,6 +742,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
         }
         return;
       }
+
+      _appendLiveTrackPoint(position);
 
       // 计算实时距离增量
       if (_lastLat != null && _lastLng != null) {
@@ -802,6 +868,20 @@ class _SportSessionPageState extends State<SportSessionPage> {
     }
   }
 
+  Future<void> _showWorkoutTrack(SportRecord record) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => WorkoutTrackPage(
+          api: widget.api,
+          session: widget.session,
+          record: record,
+          privacyGranted: _mapPrivacyGranted,
+          onRequestMap: () => _chooseMapPrivacy(force: true),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final running = _sessionId != null;
@@ -866,6 +946,11 @@ class _SportSessionPageState extends State<SportSessionPage> {
               icon: Icons.timer_outlined),
         ],
         if (running && _selectedCheckinMode == 'gps') ...[
+          WorkoutMapCard(
+            points: List.unmodifiable(_liveTrack),
+            privacyGranted: _mapPrivacyGranted,
+            onRequestMap: () => unawaited(_chooseMapPrivacy(force: true)),
+          ),
           _MetricCard(
               label: '已用时间',
               value: _formatDuration(_activeSeconds),
@@ -914,6 +999,13 @@ class _SportSessionPageState extends State<SportSessionPage> {
             ),
           ),
         ],
+        if (!running && lastRecord != null && _liveTrack.isNotEmpty)
+          WorkoutMapCard(
+            points: List.unmodifiable(_liveTrack),
+            privacyGranted: _mapPrivacyGranted,
+            onRequestMap: () => unawaited(_chooseMapPrivacy(force: true)),
+            title: '刚刚的路线',
+          ),
         if (running && _selectedCheckinMode == 'sensor') ...[
           _MetricCard(
               label: '当前步数',
@@ -950,6 +1042,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
             return _SportAppealCenter(
               snapshot: data,
               onAppeal: _showAppealSheet,
+              onViewTrack: _showWorkoutTrack,
               onRefresh: _refreshAppealCenter,
             );
           },
@@ -970,11 +1063,13 @@ class _SportAppealCenter extends StatelessWidget {
   const _SportAppealCenter({
     required this.snapshot,
     required this.onAppeal,
+    required this.onViewTrack,
     required this.onRefresh,
   });
 
   final _SportAppealSnapshot snapshot;
   final ValueChanged<int> onAppeal;
+  final ValueChanged<SportRecord> onViewTrack;
   final VoidCallback onRefresh;
 
   @override
@@ -1015,6 +1110,7 @@ class _SportAppealCenter extends StatelessWidget {
                 ...snapshot.records.take(10).map((record) {
                   final canAppeal = record.status == 2 &&
                       !appealedRecordIds.contains(record.recordId);
+                  final hasTrack = record.checkinMode == 'gps';
                   final reason = record.abnormalReason;
                   return ListTile(
                     key: Key('sport-record-${record.recordId}'),
@@ -1035,13 +1131,25 @@ class _SportAppealCenter extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: canAppeal
-                        ? TextButton(
-                            key: Key('appeal-record-${record.recordId}'),
-                            onPressed: () => onAppeal(record.recordId),
-                            child: const Text('申诉'),
-                          )
-                        : null,
+                    trailing: !canAppeal && !hasTrack
+                        ? null
+                        : Wrap(
+                            spacing: 4,
+                            children: [
+                              if (hasTrack)
+                                TextButton(
+                                  key: Key('track-record-${record.recordId}'),
+                                  onPressed: () => onViewTrack(record),
+                                  child: const Text('路线'),
+                                ),
+                              if (canAppeal)
+                                TextButton(
+                                  key: Key('appeal-record-${record.recordId}'),
+                                  onPressed: () => onAppeal(record.recordId),
+                                  child: const Text('申诉'),
+                                ),
+                            ],
+                          ),
                   );
                 }),
             ],

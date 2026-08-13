@@ -757,6 +757,55 @@ class TrackPoint {
   }
 }
 
+class WorkoutTrackPoint {
+  const WorkoutTrackPoint({
+    required this.sequenceNo,
+    required this.lat,
+    required this.lng,
+    required this.accuracy,
+    required this.timestamp,
+  });
+
+  factory WorkoutTrackPoint.fromJson(Map<String, dynamic> json) {
+    return WorkoutTrackPoint(
+      sequenceNo: json['sequenceNo'] as int,
+      lat: (json['lat'] as num).toDouble(),
+      lng: (json['lng'] as num).toDouble(),
+      accuracy: (json['accuracy'] as num).toDouble(),
+      timestamp: DateTime.parse(json['timestamp'] as String),
+    );
+  }
+
+  final int sequenceNo;
+  final double lat;
+  final double lng;
+  final double accuracy;
+  final DateTime timestamp;
+}
+
+class WorkoutTrack {
+  const WorkoutTrack({
+    required this.recordId,
+    required this.coordinateSystem,
+    required this.points,
+  });
+
+  factory WorkoutTrack.fromJson(Map<String, dynamic> json) {
+    final rawPoints = json['points'] as List<dynamic>? ?? const [];
+    return WorkoutTrack(
+      recordId: json['recordId'] as int,
+      coordinateSystem: json['coordinateSystem'] as String,
+      points: List.unmodifiable(rawPoints.map(
+        (point) => WorkoutTrackPoint.fromJson(point as Map<String, dynamic>),
+      )),
+    );
+  }
+
+  final int recordId;
+  final String coordinateSystem;
+  final List<WorkoutTrackPoint> points;
+}
+
 class SportRecord {
   const SportRecord({
     required this.recordId,
@@ -765,6 +814,7 @@ class SportRecord {
     required this.distanceKm,
     required this.calorie,
     this.sportType,
+    this.checkinMode,
     this.abnormalReason,
     this.startedAt,
   });
@@ -777,6 +827,7 @@ class SportRecord {
       distanceKm: (json['distanceKm'] as num).toDouble(),
       calorie: (json['calorie'] as num).toDouble(),
       sportType: json['sportType'] as String?,
+      checkinMode: json['checkinMode'] as String?,
       abnormalReason: json['abnormalReason'] as String?,
       startedAt: json['startedAt'] == null
           ? null
@@ -790,6 +841,7 @@ class SportRecord {
   final double distanceKm;
   final double calorie;
   final String? sportType;
+  final String? checkinMode;
   final String? abnormalReason;
   final DateTime? startedAt;
 }
