@@ -51,6 +51,9 @@ public class AuthTokenService {
         }
         UserInfo user = users.findById(current.getUserId())
                 .orElseThrow(() -> new IllegalArgumentException("用户不存在"));
+        if (user.getDeletedAt() != null) {
+            throw new IllegalArgumentException("账号已注销");
+        }
         TokenPair replacement = create(user, current.getFamilyId());
         current.setRevokedAt(now);
         current.setRevocationReason("ROTATED");

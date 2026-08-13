@@ -165,6 +165,13 @@ abstract class FitLoopApi {
 
   Future<FeedbackListResponse> listFeedback({required String token});
 
+  Future<Map<String, dynamic>> exportAccountData({required String token});
+
+  Future<void> deleteAccount({
+    required String token,
+    required String password,
+  });
+
   Future<AgentRunCreated> createCoachRun({
     required String token,
     required String objective,

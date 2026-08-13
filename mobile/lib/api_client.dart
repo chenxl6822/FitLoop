@@ -588,6 +588,30 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
     );
   }
 
+  @override
+  Future<Map<String, dynamic>> exportAccountData(
+      {required String token}) async {
+    final body = await _get('/api/user/data-export', token: token);
+    final data = body['data'];
+    if (data is! Map<String, dynamic>) {
+      throw const FormatException('Invalid account data export response');
+    }
+    return data;
+  }
+
+  @override
+  Future<void> deleteAccount({
+    required String token,
+    required String password,
+  }) async {
+    await _request(
+      'DELETE',
+      '/api/user/account',
+      payload: {'password': password},
+      token: token,
+    );
+  }
+
   Future<String> _safeFilePath(String imagePath) async {
     try {
       final file = File(imagePath);

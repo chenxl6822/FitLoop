@@ -1201,6 +1201,54 @@ Future<void> _selectGpsCheckinMode(WidgetTester tester) async {
 }
 
 void _adminDashboardTests() {
+  testWidgets('privacy controls explain, export and delete account data',
+      (tester) async {
+    final api = _FakeApi();
+    var deleted = false;
+    await tester.pumpWidget(MaterialApp(
+      home: SettingsPage(
+        session: UserSession(
+          token: 'user-token',
+          refreshToken: 'user-refresh-token',
+          expiresAt: DateTime.utc(2100),
+          userId: 1,
+          nickname: 'User',
+        ),
+        api: api,
+        onLogout: () => deleted = true,
+      ),
+    ));
+
+    await tester.tap(find.byKey(const Key('privacy-explanation-entry')));
+    await tester.pumpAndSettle();
+    expect(find.text('运动轨迹'), findsOneWidget);
+    expect(find.textContaining('只对账号本人开放'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('account-data-entry')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('export-account-data')));
+    await tester.pumpAndSettle();
+    expect(api.accountDataExports, 1);
+    expect(find.byKey(const Key('account-export-preview')), findsOneWidget);
+    expect(find.textContaining('synthetic workout'), findsOneWidget);
+
+    final deleteButton = find.byKey(const Key('delete-account'));
+    await tester.ensureVisible(deleteButton);
+    await tester.pumpAndSettle();
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('delete-account-password')),
+      'current-password',
+    );
+    await tester.tap(find.byKey(const Key('confirm-delete-account')));
+    await tester.pumpAndSettle();
+    expect(api.deletedAccountPassword, 'current-password');
+    expect(deleted, isTrue);
+  });
+
   testWidgets('admin dashboard is visible only to admin sessions',
       (tester) async {
     final api = _FakeApi();
@@ -1233,9 +1281,11 @@ void _adminDashboardTests() {
         api: api,
       ),
     ));
-    expect(find.text('管理后台'), findsOneWidget);
+    final adminEntry = find.text('管理后台');
+    await tester.scrollUntilVisible(adminEntry, 200);
+    expect(adminEntry, findsOneWidget);
 
-    await tester.tap(find.text('管理后台'));
+    await tester.tap(adminEntry);
     await tester.pumpAndSettle();
     expect(find.text('申诉'), findsOneWidget);
     expect(find.text('Agent'), findsOneWidget);
@@ -1487,6 +1537,8 @@ class _FakeApi implements FitLoopApi {
   int createdCoachRuns = 0;
   int coachRunQueries = 0;
   int trainingPlanQueries = 0;
+  int accountDataExports = 0;
+  String? deletedAccountPassword;
   final List<({int planId, int day})> completedTrainingDays = [];
   int rankingCalls = 0;
   final List<int> confirmedCoachProposals = [];
@@ -2034,6 +2086,26 @@ class _FakeApi implements FitLoopApi {
   @override
   Future<FeedbackListResponse> listFeedback({required String token}) async {
     return const FeedbackListResponse(feedbacks: []);
+  }
+
+  @override
+  Future<Map<String, dynamic>> exportAccountData(
+      {required String token}) async {
+    accountDataExports += 1;
+    return <String, dynamic>{
+      'exportedAt': '2026-08-13T00:00:00Z',
+      'workouts': <Map<String, dynamic>>[
+        <String, dynamic>{'note': 'synthetic workout'},
+      ],
+    };
+  }
+
+  @override
+  Future<void> deleteAccount({
+    required String token,
+    required String password,
+  }) async {
+    deletedAccountPassword = password;
   }
 
   @override

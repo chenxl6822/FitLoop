@@ -33,6 +33,9 @@ class SocialServiceTest {
     @Autowired
     private SportRecordRepository sportRecordRepository;
 
+    @Autowired
+    private LeaderboardService leaderboard;
+
     @MockitoBean
     private org.springframework.data.redis.core.StringRedisTemplate redis;
 
@@ -132,6 +135,20 @@ class SocialServiceTest {
     }
 
     @Test
+    void searchUsersNeverReturnsDeletedAccounts() {
+        var deleted = createUser("13811113333", "Former Runner");
+        deleted.setDeletedAt(Instant.now());
+        userRepository.saveAndFlush(deleted);
+        createUser("13800000001", "Active Runner");
+        var viewer = createUser("13800000002", "Viewer");
+
+        var result = socialService.searchUsers(viewer.getUserId(), "Runner");
+
+        assertThat(result.users()).extracting(item -> item.nickname())
+                .containsExactly("Active Runner");
+    }
+
+    @Test
     void rankingScopesSeparatePersonalFriendsAndGlobalUsers() {
         var alice = createUser("13800000001", "Alice");
         var bob = createUser("13800000002", "Bob");
@@ -174,6 +191,30 @@ class SocialServiceTest {
         assertThat(result.rankingList()).hasSize(1);
         assertThat(result.rankingList().getFirst().userId()).isEqualTo(user.getUserId());
         assertThat(result.rankingList().getFirst().distanceKm()).isEqualTo(5.2);
+    }
+
+    @Test
+    void weeklyRankingEvictsDeletedUsersFromRedisProjection() {
+        var deleted = createUser("13800000010", "Deleted Runner");
+        deleted.setDeletedAt(Instant.now());
+        userRepository.saveAndFlush(deleted);
+        var zsets = org.mockito.Mockito.mock(
+                org.springframework.data.redis.core.ZSetOperations.class);
+        org.mockito.Mockito.when(redis.opsForZSet()).thenReturn(zsets);
+        org.mockito.Mockito.when(zsets.reverseRangeWithScores(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(java.util.Set.of(
+                        new org.springframework.data.redis.core.DefaultTypedTuple<>(
+                                deleted.getUserId().toString(), 5.0)));
+
+        var result = leaderboard.ranking(null, "global", "week", 1, 20);
+
+        assertThat(result.rankingList()).isEmpty();
+        org.mockito.Mockito.verify(zsets).remove(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(deleted.getUserId().toString()));
     }
 
     private void saveWorkout(UserInfo user, String sessionId, double distanceKm) {

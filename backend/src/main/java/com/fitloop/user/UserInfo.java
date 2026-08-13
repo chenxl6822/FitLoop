@@ -39,6 +39,7 @@ public class UserInfo {
     private UserRole role = UserRole.USER;
     private Instant createdAt;
     private Instant updatedAt;
+    private Instant deletedAt;
 
     @PrePersist
     void prePersist() {
@@ -74,4 +75,6 @@ public class UserInfo {
     public void setLevel(int level) { this.level = level; }
     public UserRole getRole() { return role; }
     public void setRole(UserRole role) { this.role = role; }
+    public Instant getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
 }

@@ -18,6 +18,7 @@ public final class UserDtos {
 
     public record UpdateProfileRequest(String nickname, String avatarUrl, String gender, String grade, String college) {
     }
+    public record DeleteAccountRequest(@NotBlank String password) { }
 
     public record UserProfile(Long userId, String phone, String email, String nickname, String avatarUrl,
                               String gender, String grade, String college, int points, int level) {

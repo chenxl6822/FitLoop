@@ -3,6 +3,8 @@ package com.fitloop.security;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fitloop.user.UserRole;
+import com.fitloop.user.UserInfo;
+import com.fitloop.user.UserRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -25,6 +27,9 @@ class AdminRbacIntegrationTest {
     @Autowired
     private JwtService jwtService;
 
+    @Autowired
+    private UserRepository users;
+
     @MockitoBean
     private StringRedisTemplate redis;
 
@@ -33,8 +38,10 @@ class AdminRbacIntegrationTest {
 
     @Test
     void adminEndpointsRequireAdminJwt() throws Exception {
-        String userToken = jwtService.issue(1L, UserRole.USER);
-        String adminToken = jwtService.issue(2L, UserRole.ADMIN);
+        Long userId = users.save(user("rbac-user", UserRole.USER)).getUserId();
+        Long adminId = users.save(user("rbac-admin", UserRole.ADMIN)).getUserId();
+        String userToken = jwtService.issue(userId, UserRole.USER);
+        String adminToken = jwtService.issue(adminId, UserRole.ADMIN);
 
         HttpResponse<String> anonymous = get(null);
         HttpResponse<String> user = get(userToken);
@@ -44,6 +51,14 @@ class AdminRbacIntegrationTest {
         assertThat(user.statusCode()).isEqualTo(403);
         assertThat(admin.statusCode()).isEqualTo(200);
         assertThat(admin.body()).contains("\"items\":[]");
+    }
+
+    private UserInfo user(String nickname, UserRole role) {
+        UserInfo user = new UserInfo();
+        user.setNickname(nickname);
+        user.setPasswordHash("not-used-in-this-rbac-test");
+        user.setRole(role);
+        return user;
     }
 
     private HttpResponse<String> get(String token) throws Exception {

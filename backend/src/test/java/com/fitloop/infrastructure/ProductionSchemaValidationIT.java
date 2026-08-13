@@ -2,11 +2,19 @@ package com.fitloop.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fitloop.user.AccountDataService;
+import com.fitloop.user.UserInfo;
+import com.fitloop.user.UserRepository;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.WeekFields;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -53,13 +61,44 @@ class ProductionSchemaValidationIT {
     }
 
     @Test
-    void flywaySchemaPassesProductionJpaValidation(@Autowired DataSource dataSource) {
+    void flywaySchemaPassesProductionJpaValidationAndAccountErasureRunsOnMySql(
+            @Autowired DataSource dataSource,
+            @Autowired UserRepository users,
+            @Autowired PasswordEncoder passwordEncoder,
+            @Autowired AccountDataService accountData,
+            @Autowired StringRedisTemplate redis) {
         var jdbc = new JdbcTemplate(dataSource);
 
         assertThat(jdbc.queryForObject(
                 "select version from flyway_schema_history "
                         + "where success = 1 order by installed_rank desc limit 1",
                 String.class))
-                .isEqualTo("6");
+                .isEqualTo("7");
+
+        UserInfo user = new UserInfo();
+        user.setPhone("13973000001");
+        user.setNickname("MySQL erasure owner");
+        user.setPasswordHash(passwordEncoder.encode("mysql-delete-pass"));
+        Long userId = users.saveAndFlush(user).getUserId();
+        jdbc.update("insert into health_data(user_id, weight_kg, data_date) values (?, 61.0, current_date)",
+                userId);
+        LocalDate date = LocalDate.now(ZoneId.of("Asia/Shanghai"));
+        WeekFields fields = WeekFields.ISO;
+        String period = date.get(fields.weekBasedYear()) + "-"
+                + String.format("%02d", date.get(fields.weekOfWeekBasedYear()));
+        String distanceKey = "ranking:week:distance:" + period;
+        String calorieKey = "ranking:week:calorie:" + period;
+        redis.opsForZSet().add(distanceKey, userId.toString(), 5.0);
+        redis.opsForHash().put(calorieKey, userId.toString(), "300");
+
+        assertThat(accountData.export(userId).toString()).contains("MySQL erasure owner");
+        accountData.delete(userId, "mysql-delete-pass");
+        users.flush();
+
+        assertThat(users.existsByUserIdAndDeletedAtIsNull(userId)).isFalse();
+        assertThat(jdbc.queryForObject(
+                "select count(*) from health_data where user_id = ?", Long.class, userId)).isZero();
+        assertThat(redis.opsForZSet().score(distanceKey, userId.toString())).isNull();
+        assertThat(redis.opsForHash().get(calorieKey, userId.toString())).isNull();
     }
 }

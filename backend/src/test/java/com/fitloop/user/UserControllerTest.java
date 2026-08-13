@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,6 +36,9 @@ class UserControllerTest {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private AccountDataService accountDataService;
 
     @MockitoBean
     private JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -84,5 +88,24 @@ class UserControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
+    }
+
+    @Test
+    void exportsAndDeletesOnlyTheAuthenticatedAccount() throws Exception {
+        when(accountDataService.export(1L)).thenReturn(java.util.Map.of(
+                "profile", java.util.Map.of("nickname", "小明"),
+                "workouts", java.util.List.of()));
+
+        mockMvc.perform(get("/api/user/data-export"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.profile.nickname").value("小明"));
+        mockMvc.perform(delete("/api/user/account")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"current-pass\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(0));
+
+        org.mockito.Mockito.verify(accountDataService).export(1L);
+        org.mockito.Mockito.verify(accountDataService).delete(1L, "current-pass");
     }
 }
