@@ -93,6 +93,7 @@ class AgentGatewayServiceTest {
     void executionRequiresRunningStateMatchingScopeAndEightToolLimit() {
         AgentRun run = running(AgentRunType.COACH, null);
         when(runs.findById(run.getRunId())).thenReturn(Optional.of(run));
+        when(runs.findForUpdate(run.getRunId())).thenReturn(Optional.of(run));
         when(toolAudits.countByRunId(run.getRunId())).thenReturn(0L);
 
         gateway.appendMessage(run.getRunId(), new AgentMessageRequest("user", "hello"));

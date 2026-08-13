@@ -121,7 +121,7 @@ public class AgentGatewayService {
 
     @Transactional
     public void auditTool(String runId, ToolAuditRequest request) {
-        requireRunning(runId);
+        requireRunning(lockedRun(runId));
         if (toolAudits.countByRunId(runId) >= 8) {
             throw new IllegalStateException("Agent run tool-call limit exceeded");
         }
@@ -129,9 +129,10 @@ public class AgentGatewayService {
                 request.resultJson(), request.succeeded(), request.durationMs(), request.errorMessage()));
     }
 
-    Object executeTool(AgentDtos.ToolContext context, String toolName,
-                       Map<String, Object> arguments, AgentToolInvocation invocation) {
-        AgentRun run = requireRunning(context.runId());
+    @Transactional(noRollbackFor = RuntimeException.class)
+    public Object executeTool(AgentDtos.ToolContext context, String toolName,
+                              Map<String, Object> arguments, AgentToolInvocation invocation) {
+        AgentRun run = requireRunning(lockedRun(context.runId()));
         if (!run.getSubjectUserId().equals(context.subjectUserId())
                 || run.getRunType() != context.type()
                 || !java.util.Objects.equals(run.getSubjectResourceId(), context.subjectResourceId())) {
@@ -294,6 +295,10 @@ public class AgentGatewayService {
 
     private AgentRun requireRunning(String runId) {
         AgentRun run = runs.findById(runId).orElseThrow(() -> new IllegalArgumentException("Agent run does not exist"));
+        return requireRunning(run);
+    }
+
+    private AgentRun requireRunning(AgentRun run) {
         if (run.getStatus() != AgentRunStatus.RUNNING) throw new IllegalStateException("Agent run is not RUNNING");
         return run;
     }
