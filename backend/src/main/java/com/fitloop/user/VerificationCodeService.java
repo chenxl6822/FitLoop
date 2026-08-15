@@ -68,7 +68,10 @@ public class VerificationCodeService {
         this.environment = environment;
         this.random = random;
         this.clock = clock;
-        this.hashSecret = hashSecret;
+        this.hashSecret = new String(
+                com.fitloop.security.ProductionSecrets.requireSecret(
+                        "fitloop.verification.hash-secret", hashSecret, 32),
+                StandardCharsets.UTF_8);
         this.debugReturnEnabled = debugReturnEnabled;
         this.smsEnabled = smsEnabled;
     }

@@ -26,10 +26,8 @@ public class AgentDelegationTokenService {
             @Value("${fitloop.agent.delegation-secret:${fitloop.jwt.secret}}") String secret,
             @Value("${fitloop.agent.delegation-ttl-seconds:300}") long ttlSeconds,
             ObjectMapper objectMapper) {
-        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException("Agent delegation secret must contain at least 32 bytes");
-        }
-        this.secret = secret.getBytes(StandardCharsets.UTF_8);
+        this.secret = com.fitloop.security.ProductionSecrets.requireSecret(
+                "fitloop.agent.delegation-secret", secret, 32);
         this.ttlSeconds = Math.min(Math.max(ttlSeconds, 30), 300);
         this.objectMapper = objectMapper;
     }
