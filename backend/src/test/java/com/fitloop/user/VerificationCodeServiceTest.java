@@ -95,7 +95,7 @@ class VerificationCodeServiceTest {
                 env,
                 new SecureRandom(),
                 Clock.systemUTC(),
-                "test-hash-secret",
+                "test-otp-hash-secret-32-bytes-ok!!",
                 false,  // debugReturnEnabled = false
                 false   // smsEnabled = false
         );
@@ -113,7 +113,7 @@ class VerificationCodeServiceTest {
                 env,
                 new SecureRandom(),
                 Clock.systemUTC(),
-                "test-hash-secret",
+                "test-otp-hash-secret-32-bytes-ok!!",
                 false,  // debugReturnEnabled = false
                 true    // smsEnabled = true
         );

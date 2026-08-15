@@ -25,10 +25,7 @@ public class JwtService {
 
     public JwtService(@Value("${fitloop.jwt.secret}") String secret,
                       @Value("${fitloop.jwt.ttl-seconds}") long ttlSeconds) {
-        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException("fitloop.jwt.secret must contain at least 32 bytes");
-        }
-        this.secret = secret.getBytes(StandardCharsets.UTF_8);
+        this.secret = ProductionSecrets.requireSecret("fitloop.jwt.secret", secret, 32);
         this.ttlSeconds = ttlSeconds;
     }
 
