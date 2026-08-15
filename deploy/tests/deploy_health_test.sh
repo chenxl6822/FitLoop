@@ -95,7 +95,10 @@ write_env() {
         'FITLOOP_PUBLIC_BASE_URL=http://public.test' \
         'FITLOOP_AGENT_ENABLED=false' \
         'DEEPSEEK_API_KEY=' \
-        'FITLOOP_AGENT_SERVICE_KEY=' > "${env_file}"
+        'FITLOOP_JWT_SECRET=deploy-health-test-jwt-secret-32b-ok' \
+        'FITLOOP_OTP_HASH_SECRET=deploy-health-test-otp-secret-32b-ok' \
+        'FITLOOP_AGENT_SERVICE_KEY=deploy-health-test-agent-key-32b-ok' \
+        'FITLOOP_AGENT_DELEGATION_SECRET=deploy-health-test-delegation-32b-ok' > "${env_file}"
 }
 
 run_deploy() {
