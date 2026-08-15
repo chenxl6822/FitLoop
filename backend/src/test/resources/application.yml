@@ -29,8 +29,11 @@ fitloop:
     refresh-ttl-seconds: 86400
   admin:
     key: test-admin-key
+  agent:
+    service-key: test-agent-service-key-32-bytes-ok
+    delegation-secret: test-agent-delegation-secret-32-bytes
   verification:
-    hash-secret: test-otp-hash-secret
+    hash-secret: test-otp-hash-secret-32-bytes-ok!!
     debug-return: true
   mail:
     from: test@example.com

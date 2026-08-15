@@ -32,10 +32,8 @@ public class AgentInternalController {
                                    @Value("${fitloop.agent.service-key}") String serviceKey) {
         this.gateway = gateway;
         this.tokens = tokens;
-        if (serviceKey.getBytes(StandardCharsets.UTF_8).length < 32) {
-            throw new IllegalStateException("fitloop.agent.service-key must contain at least 32 bytes");
-        }
-        this.serviceKey = serviceKey.getBytes(StandardCharsets.UTF_8);
+        this.serviceKey = com.fitloop.security.ProductionSecrets.requireSecret(
+                "fitloop.agent.service-key", serviceKey, 32);
     }
 
     @PostMapping("/{runId}/delegation-token")
