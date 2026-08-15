@@ -50,6 +50,25 @@ FITLOOP_PUBLIC_BASE_URL="${FITLOOP_PUBLIC_BASE_URL:-$(read_env_value FITLOOP_PUB
 FITLOOP_AGENT_ENABLED="${FITLOOP_AGENT_ENABLED:-$(read_env_value FITLOOP_AGENT_ENABLED)}"
 DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-$(read_env_value DEEPSEEK_API_KEY)}"
 FITLOOP_AGENT_SERVICE_KEY="${FITLOOP_AGENT_SERVICE_KEY:-$(read_env_value FITLOOP_AGENT_SERVICE_KEY)}"
+FITLOOP_JWT_SECRET="${FITLOOP_JWT_SECRET:-$(read_env_value FITLOOP_JWT_SECRET)}"
+FITLOOP_OTP_HASH_SECRET="${FITLOOP_OTP_HASH_SECRET:-$(read_env_value FITLOOP_OTP_HASH_SECRET)}"
+FITLOOP_AGENT_DELEGATION_SECRET="${FITLOOP_AGENT_DELEGATION_SECRET:-$(read_env_value FITLOOP_AGENT_DELEGATION_SECRET)}"
+
+require_configured_secret() {
+    local name="$1"
+    local value="$2"
+    if [ -z "${value}" ] ||
+       [[ "${value}" == replace-with-* ]] ||
+       [[ "${value}" == change-me* ]]; then
+        log_error "${name} 未配置或仍是占位值"
+        exit 1
+    fi
+}
+
+require_configured_secret "FITLOOP_JWT_SECRET" "${FITLOOP_JWT_SECRET:-}"
+require_configured_secret "FITLOOP_OTP_HASH_SECRET" "${FITLOOP_OTP_HASH_SECRET:-}"
+require_configured_secret "FITLOOP_AGENT_SERVICE_KEY" "${FITLOOP_AGENT_SERVICE_KEY:-}"
+require_configured_secret "FITLOOP_AGENT_DELEGATION_SECRET" "${FITLOOP_AGENT_DELEGATION_SECRET:-}"
 
 # --- 检查 Docker ---
 if ! command -v docker &> /dev/null; then
