@@ -61,12 +61,13 @@ fitloop:
     bootstrap-account: ${FITLOOP_ADMIN_BOOTSTRAP_ACCOUNT:}
     bootstrap-nickname: ${FITLOOP_ADMIN_BOOTSTRAP_NICKNAME:}
   jwt:
-    secret: ${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}
+    # No usable default: missing or placeholder values must fail closed at startup.
+    secret: ${FITLOOP_JWT_SECRET}
     ttl-seconds: ${FITLOOP_JWT_TTL_SECONDS:900}
     refresh-ttl-seconds: ${FITLOOP_REFRESH_TTL_SECONDS:2592000}
   agent:
-    service-key: ${FITLOOP_AGENT_SERVICE_KEY:change-me-agent-service-key-32-bytes}
-    delegation-secret: ${FITLOOP_AGENT_DELEGATION_SECRET:${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}}
+    service-key: ${FITLOOP_AGENT_SERVICE_KEY}
+    delegation-secret: ${FITLOOP_AGENT_DELEGATION_SECRET:${FITLOOP_JWT_SECRET}}
     delegation-ttl-seconds: ${FITLOOP_AGENT_DELEGATION_TTL_SECONDS:300}
     stream-key: ${FITLOOP_AGENT_STREAM_KEY:fitloop:agent:runs}
   upload:
@@ -76,5 +77,5 @@ fitloop:
   sms:
     enabled: ${FITLOOP_SMS_ENABLED:false}
   verification:
-    hash-secret: ${FITLOOP_OTP_HASH_SECRET:${FITLOOP_JWT_SECRET:change-me-to-a-long-random-secret-for-production}}
+    hash-secret: ${FITLOOP_OTP_HASH_SECRET:${FITLOOP_JWT_SECRET}}
     debug-return: ${FITLOOP_OTP_DEBUG_RETURN:false}
