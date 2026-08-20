@@ -6,6 +6,8 @@ plugins {
 
 val compatibilitySigning =
     System.getenv("FITLOOP_COMPAT_SIGNING")?.equals("true", ignoreCase = true) == true
+val httpTransitionRelease =
+    System.getenv("FITLOOP_HTTP_TRANSITION")?.equals("true", ignoreCase = true) == true
 val releaseStorePath = System.getenv("FITLOOP_RELEASE_STORE_FILE")
 val releaseStorePassword = System.getenv("FITLOOP_RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = System.getenv("FITLOOP_RELEASE_KEY_ALIAS")
@@ -59,10 +61,19 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        manifestPlaceholders["networkSecurityConfig"] = "@xml/network_security_config"
     }
 
     buildTypes {
         release {
+            manifestPlaceholders["usesCleartextTraffic"] =
+                httpTransitionRelease.toString()
+            manifestPlaceholders["networkSecurityConfig"] = if (httpTransitionRelease) {
+                "@xml/network_security_config_http_transition"
+            } else {
+                "@xml/network_security_config"
+            }
             signingConfig = when {
                 compatibilitySigning -> signingConfigs.getByName("debug")
                 officialSigningReady -> signingConfigs.getByName("officialRelease")

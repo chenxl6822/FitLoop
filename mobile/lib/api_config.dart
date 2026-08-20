@@ -3,7 +3,7 @@
 /// 使用方法：
 ///
 /// **生产 APK / 下载站：**
-///   默认使用 http://43.139.72.25
+///   默认使用 https://43.139.72.25
 ///
 /// **开发调试（电脑本机）：**
 ///   flutter run --dart-define=FITLOOP_API_BASE_URL=http://localhost:8080
@@ -19,10 +19,10 @@
 ///   flutter run --dart-define=FITLOOP_API_BASE_URL=https://your-domain.com
 ///
 /// **构建 APK（真机 / 生产环境）：**
-///   flutter build apk --release --dart-define=FITLOOP_API_BASE_URL=http://43.139.72.25
+///   flutter build apk --release --dart-define=FITLOOP_API_BASE_URL=https://43.139.72.25
 ///
 /// **运行时覆盖（用于设置页面）：**
-///   ApiConfig.setBaseUrl('http://new-server:8080');
+///   ApiConfig.setBaseUrl('https://new-server.example');
 ///
 /// 注意：localhost 在手机上指向手机自己，不能用于真机访问电脑后端。
 class ApiConfig {
@@ -33,7 +33,7 @@ class ApiConfig {
   /// 编译时默认值（可通过 --dart-define=FITLOOP_API_BASE_URL 覆盖）
   static const String _buildTimeBaseUrl = String.fromEnvironment(
     'FITLOOP_API_BASE_URL',
-    defaultValue: 'http://43.139.72.25',
+    defaultValue: 'https://43.139.72.25',
   );
 
   /// 当前生效的 base URL
