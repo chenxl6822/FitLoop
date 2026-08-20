@@ -7,6 +7,7 @@ DEPLOY_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${DEPLOY_DIR}/.." && pwd)"
 INSTALL_SCRIPT="${DEPLOY_DIR}/install-apk.sh"
 BUILD_APK_SCRIPT="${DEPLOY_DIR}/build-apk.ps1"
+DOWNLOAD_PAGE="${DEPLOY_DIR}/download.html"
 NGINX_CONFIG="${DEPLOY_DIR}/nginx.conf"
 NGINX_TLS_CONFIG="${DEPLOY_DIR}/nginx.tls.conf"
 NGINX_HTTPS_ONLY_CONFIG="${DEPLOY_DIR}/nginx.https-only.conf"
@@ -2564,6 +2565,52 @@ then
     fail "nginx-managed-active-only"
 fi
 pass "nginx-managed-active-only"
+
+if ! python3 - "${NGINX_TLS_CONFIG}" <<'PY'
+import pathlib
+import re
+import sys
+
+config_path = pathlib.Path(sys.argv[1])
+config = config_path.read_text(encoding="utf-8")
+health_locations = re.findall(
+    r"location\s+/actuator/health\s*\{(?P<body>[^}]*)\}",
+    config,
+    flags=re.MULTILINE,
+)
+
+errors = []
+if len(health_locations) != 2:
+    errors.append(
+        f"expected two /actuator/health locations, found {len(health_locations)}"
+    )
+for index, body in enumerate(health_locations, start=1):
+    if re.search(r"proxy_pass\s+http://fitloop_backend\s*;", body) is None:
+        errors.append(f"health location {index} must proxy to fitloop_backend")
+    if re.search(r"proxy_set_header\s+Host\s+\$host\s*;", body) is None:
+        errors.append(
+            f"health location {index} must pass a valid client Host header"
+        )
+
+if errors:
+    print(
+        "Nginx TLS health proxy assertions failed:\n- " + "\n- ".join(errors),
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PY
+then
+    fail "nginx-tls-health-host-header"
+fi
+pass "nginx-tls-health-host-header"
+
+if grep -Fq 'http://43.139.72.25' "${DOWNLOAD_PAGE}" \
+    || ! grep -Fq '当前 API 地址：https://43.139.72.25' "${DOWNLOAD_PAGE}" \
+    || ! grep -Fq 'apiBaseUrl: "https://43.139.72.25"' "${DOWNLOAD_PAGE}"
+then
+    fail "download-page-defaults-to-https"
+fi
+pass "download-page-defaults-to-https"
 
 if ! grep -Fq '$canonicalChecksum = "$sha256  app-release.apk`n"' "${BUILD_APK_SCRIPT}" \
     || ! grep -Fq '[System.IO.File]::WriteAllText(' "${BUILD_APK_SCRIPT}" \

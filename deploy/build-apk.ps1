@@ -100,11 +100,17 @@ if ($SigningMode -eq "Official") {
 }
 
 $previousCompatibilityValue = $env:FITLOOP_COMPAT_SIGNING
+$previousHttpTransitionValue = $env:FITLOOP_HTTP_TRANSITION
 try {
     if ($SigningMode -eq "Compatibility") {
         $env:FITLOOP_COMPAT_SIGNING = "true"
     } else {
         Remove-Item Env:FITLOOP_COMPAT_SIGNING -ErrorAction SilentlyContinue
+    }
+    if ($AllowInsecureHttpTransitionRelease) {
+        $env:FITLOOP_HTTP_TRANSITION = "true"
+    } else {
+        Remove-Item Env:FITLOOP_HTTP_TRANSITION -ErrorAction SilentlyContinue
     }
 
     Push-Location $mobileDir
@@ -124,6 +130,11 @@ try {
         Remove-Item Env:FITLOOP_COMPAT_SIGNING -ErrorAction SilentlyContinue
     } else {
         $env:FITLOOP_COMPAT_SIGNING = $previousCompatibilityValue
+    }
+    if ($null -eq $previousHttpTransitionValue) {
+        Remove-Item Env:FITLOOP_HTTP_TRANSITION -ErrorAction SilentlyContinue
+    } else {
+        $env:FITLOOP_HTTP_TRANSITION = $previousHttpTransitionValue
     }
 }
 
