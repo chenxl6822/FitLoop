@@ -90,6 +90,8 @@ flutter test
 flutter run --dart-define=FITLOOP_API_BASE_URL=http://10.0.2.2:8080
 ```
 
+Release 默认 API 为 `https://43.139.72.25`；生产 Android manifest 默认禁止任意明文流量。本地调试仍可用 `http://10.0.2.2` / 局域网 IP；仅经明确批准的短期 HTTP 过渡包才可使用 `deploy/build-apk.ps1 -AllowInsecureHttpTransitionRelease`。
+
 如需演示 Android Release 构建，可使用以下命令。公网发布时 API 必须使用 HTTPS；本地求职演示不要求注册域名：
 
 ```powershell
@@ -122,7 +124,7 @@ CI 执行以下门禁：
 - Shell 语法与基础/TLS/Agent E2E Compose 配置校验。
 - Pull Request 高危依赖审查。
 
-当前仓库基线：后端 155 项单元/切片测试和 2 项 MySQL/Testcontainers 集成测试，JaCoCo 覆盖率门禁通过；Agent 18 项测试；Flutter 47 项测试。教练与申诉审批已使用真实 DeepSeek V4 模型完成模型层演示，且两条完整应用链路已通过隔离容器 E2E。测试声明数量与最近一次实际执行结果应分开记录，避免把历史基线误报为本次全部通过。
+`origin/main` @ `3e48671`（合并 PR #29）的 GitHub Actions 快照：后端 Surefire 188 项、Failsafe 4 项，全部通过且 JaCoCo 门禁通过；Agent pytest 36 项通过；Flutter 63 项通过；隔离容器 Agent E2E 通过。测试声明数量与最近一次实际执行结果应分开记录，避免把历史基线误报为本次全部通过。教练与申诉审批已使用真实 DeepSeek V4 模型完成模型层演示。
 
 ## 可选部署能力
 
@@ -135,12 +137,12 @@ APK 二进制不再进入 Git。发布产物必须附带 SHA-256，服务器通�
 
 ## 当前状态与边界
 
-- `0.1.7+8` 作为作品集候选版本已进入发布准备阶段；AI 教练训练计划的确认后查看、计划列表与详情已通过 PR #17 合入 `main`，本周期尚未部署 Backend 或发布 APK。
-- Agent 真实模型演示使用固定脱敏证据验证模型、工具调用、结构化输出和护栏；隔离容器 E2E 验证 Spring、Redis、Worker、工具审计和人工确认的完整链路。
-- 当前公网仍运行 `0.1.5+6`；已决定以短期、少量受控用户的 HTTP 过渡方式准备 `0.1.7+8`。在 Backend 同步、兼容签名、真机升级/全新安装、回滚门禁和单独激活批准完成前，该环境不代表当前 `main`，也不作为安全生产环境。
-- TLS、证书到期监控和 Agent 降级配置保留为工程能力展示；若决定保留或升级公网服务，需完成域名或固定公网 IP 证书与 HTTPS 验证；若决定下线，则按决策停止服务。
+- `0.1.7+8` 仍是作品集候选版本。Gate 0B 相关安全修复已合入 `main`（PR #23–#29）：生产占位密钥 fail-closed 与 backend loopback、Release 默认 HTTPS / 禁止任意 cleartext、密码最小长度、可信代理下的 `X-Forwarded-For`、运动照片魔数校验、Agent 409 等价复用，以及 OTP 失败尝试在回滚后仍可持久计数。
+- AI 教练训练计划确认后查看、计划列表与详情已在更早 PR 合入；Agent 真实模型演示使用固定脱敏证据；隔离容器 E2E 覆盖 Spring、Redis、Worker、工具审计和人工确认。
+- 仓库代码侧 Release 路径默认走 HTTPS；仅显式授权的 HTTP 过渡构建可临时放行明文。公网是否已完成证书挂载、Backend/APK 是否已与当前 `main` 对齐，必须以服务器与发布记录复核为准，不能用仓库默认值代替部署证据。
+- Gate 0C 发布证据尚未完成：正式签名、兼容升级、真机冒烟、备份/恢复与原子回滚、HTTPS 或书面锁定的 HTTP 过渡结束条件，均需按 [人工发布执行手册](docs/MANUAL_RELEASE_RUNBOOK.md) 留存脱敏证据后，才能称为发布候选或已上线。
 - 正式 keystore 的创建、离线备份和签名切换尚未完成，不能宣称正式生产签名完成。
-- 当前已包含普通用户 AI 教练 UI 与训练计划确认/拒绝流程；仍不包含 iOS 正式构建、数据库重构、验证码重做或 Git 历史重写。
+- 当前已包含普通用户 AI 教练 UI 与训练计划确认/拒绝流程；仍不包含 iOS 正式构建、数据库重构或 Git 历史重写。Gate 0 完成前不扩展社交展示类功能。
 
 ## 文档
 
