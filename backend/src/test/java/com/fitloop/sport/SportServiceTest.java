@@ -139,13 +139,34 @@ class SportServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
                 new MockMultipartFile("file", "fake.bmp", "image/bmp", samplePng())))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("图片");
+        assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "broken.jpg", "image/jpeg",
+                        new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x00})))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("图片");
 
         assertThat(upload("image/jpeg", sampleJpeg())).endsWith(".jpg");
         assertThat(upload("image/jpg", sampleJpeg())).endsWith(".jpg");
         assertThat(upload("image/png", samplePng())).endsWith(".png");
         assertThat(upload("image/gif", sampleGif())).endsWith(".gif");
         assertThat(upload("image/webp", sampleWebp())).endsWith(".webp");
+        assertThat(upload(null, samplePng())).endsWith(".png");
+        assertThat(upload("   ", samplePng())).endsWith(".png");
+        assertThat(upload("application/octet-stream", sampleJpeg())).endsWith(".jpg");
+    }
+
+    @Test
+    void photoUploadRejectsContentTypeThatConflictsWithDetectedBytes() throws Exception {
+        assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "proof.png", "image/gif", samplePng())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("图片");
+        assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "proof.webp", "image/png", sampleWebp())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("图片");
     }
 
     @Test
