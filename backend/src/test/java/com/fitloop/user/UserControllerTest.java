@@ -84,7 +84,7 @@ class UserControllerTest {
         mockMvc.perform(post("/api/auth/password/reset")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"account":"13800000001","code":"123456","newPassword":"newpass"}
+                                {"account":"13800000001","code":"123456","newPassword":"newpass1"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(0));
