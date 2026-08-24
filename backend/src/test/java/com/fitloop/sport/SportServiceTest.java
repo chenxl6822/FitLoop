@@ -124,7 +124,7 @@ class SportServiceTest {
     }
 
     @Test
-    void photoUploadValidatesInputAndMapsSupportedExtensions() {
+    void photoUploadValidatesInputAndMapsSupportedExtensions() throws Exception {
         assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
                 new MockMultipartFile("file", "empty.png", "image/png", new byte[0])))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -137,13 +137,15 @@ class SportServiceTest {
         assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
                 new MockMultipartFile("file", "huge.png", "image/png", new byte[10 * 1024 * 1024 + 1])))
                 .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> sportService.savePhoto(USER_ID,
+                new MockMultipartFile("file", "fake.bmp", "image/bmp", samplePng())))
+                .isInstanceOf(IllegalArgumentException.class);
 
-        assertThat(upload("image/jpeg")).endsWith(".jpg");
-        assertThat(upload("image/jpg")).endsWith(".jpg");
-        assertThat(upload("image/png")).endsWith(".png");
-        assertThat(upload("image/gif")).endsWith(".gif");
-        assertThat(upload("image/webp")).endsWith(".webp");
-        assertThat(upload("image/bmp")).endsWith(".img");
+        assertThat(upload("image/jpeg", sampleJpeg())).endsWith(".jpg");
+        assertThat(upload("image/jpg", sampleJpeg())).endsWith(".jpg");
+        assertThat(upload("image/png", samplePng())).endsWith(".png");
+        assertThat(upload("image/gif", sampleGif())).endsWith(".gif");
+        assertThat(upload("image/webp", sampleWebp())).endsWith(".webp");
     }
 
     @Test
@@ -163,8 +165,40 @@ class SportServiceTest {
         assertThat(sportService.list(USER_ID)).hasSizeGreaterThanOrEqualTo(3);
     }
 
-    private String upload(String contentType) {
+    private String upload(String contentType, byte[] bytes) {
         return sportService.savePhoto(USER_ID,
-                new MockMultipartFile("file", "photo", contentType, new byte[]{1, 2, 3}));
+                new MockMultipartFile("file", "photo", contentType, bytes));
+    }
+
+    private static byte[] samplePng() throws Exception {
+        var image = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "png", out);
+        return out.toByteArray();
+    }
+
+    private static byte[] sampleJpeg() throws Exception {
+        var image = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "jpg", out);
+        return out.toByteArray();
+    }
+
+    private static byte[] sampleGif() throws Exception {
+        var image = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "gif", out);
+        return out.toByteArray();
+    }
+
+    private static byte[] sampleWebp() {
+        // Minimal RIFF/WEBP container header; WebP is accepted by magic only.
+        return new byte[] {
+                'R', 'I', 'F', 'F', 0x1A, 0x00, 0x00, 0x00,
+                'W', 'E', 'B', 'P',
+                'V', 'P', '8', ' ', 0x0E, 0x00, 0x00, 0x00,
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E
+        };
     }
 }
