@@ -119,10 +119,10 @@ class UserServiceTest {
 
     @Test
     void loginWithCorrectPasswordReturnsToken() {
-        registerWithCode("13800000004", "correct", "User4");
+        registerWithCode("13800000004", "correct1", "User4");
 
         var result = userService.login(
-                new LoginRequest("13800000004", "correct", null, "password"));
+                new LoginRequest("13800000004", "correct1", null, "password"));
 
         assertThat(result.token()).isNotNull().isNotEmpty();
         assertThat(result.refreshToken()).isNotBlank();
@@ -133,9 +133,9 @@ class UserServiceTest {
 
     @Test
     void refreshTokenRotatesAndOldTokenCannotBeReused() {
-        registerWithCode("13800000014", "correct", "RotateUser");
+        registerWithCode("13800000014", "correct1", "RotateUser");
         var login = userService.login(
-                new LoginRequest("13800000014", "correct", null, "password"));
+                new LoginRequest("13800000014", "correct1", null, "password"));
 
         var refreshed = userService.refresh(login.refreshToken());
 
@@ -147,10 +147,10 @@ class UserServiceTest {
 
     @Test
     void loginRejectsWrongPassword() {
-        registerWithCode("13800000005", "correct", "User5");
+        registerWithCode("13800000005", "correct1", "User5");
 
         assertThatThrownBy(() -> userService.login(
-                new LoginRequest("13800000005", "wrong", null, "password")))
+                new LoginRequest("13800000005", "wrongpwd", null, "password")))
                 .hasMessageContaining("账号或密码错误");
     }
 
@@ -227,12 +227,12 @@ class UserServiceTest {
 
     @Test
     void resetPasswordWithValidCodeChangesPassword() {
-        registerWithCode("13800000013", "oldpass", "ResetUser");
+        registerWithCode("13800000013", "oldpass1", "ResetUser");
         String code = verificationCodes.sendCode("phone", "13800000013", "reset_password", null).debugCode();
 
-        userService.resetPassword(new UserDtos.PasswordResetRequest("13800000013", code, "newpass"));
+        userService.resetPassword(new UserDtos.PasswordResetRequest("13800000013", code, "newpass1"));
 
-        var result = userService.login(new LoginRequest("13800000013", "newpass", null, "password"));
+        var result = userService.login(new LoginRequest("13800000013", "newpass1", null, "password"));
         assertThat(result.token()).isNotBlank();
     }
 
