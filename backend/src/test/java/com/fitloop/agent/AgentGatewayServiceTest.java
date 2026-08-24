@@ -142,7 +142,7 @@ class AgentGatewayServiceTest {
     @Test
     void proposalValidationEnforcesAgentSpecificWriteBoundaries() {
         AgentRun coach = running(AgentRunType.COACH, null);
-        when(runs.findById(coach.getRunId())).thenReturn(Optional.of(coach));
+        when(runs.findForUpdate(coach.getRunId())).thenReturn(Optional.of(coach));
         when(proposals.findByRunIdOrderByProposalIdAsc(coach.getRunId())).thenReturn(List.of());
 
         assertThatThrownBy(() -> gateway.propose(coach.getRunId(),
@@ -156,8 +156,7 @@ class AgentGatewayServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
 
         AgentRun appeal = running(AgentRunType.APPEAL_REVIEW, 10L);
-        when(runs.findById(appeal.getRunId())).thenReturn(Optional.of(appeal));
-        when(proposals.findByRunIdOrderByProposalIdAsc(appeal.getRunId())).thenReturn(List.of());
+        when(runs.findForUpdate(appeal.getRunId())).thenReturn(Optional.of(appeal));
         assertThatThrownBy(() -> gateway.propose(appeal.getRunId(),
                 new ProposalRequest("CREATE_TRAINING_PLAN", "{}", true)))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -169,7 +168,30 @@ class AgentGatewayServiceTest {
                 .thenReturn(List.of(proposal(coach, "CREATE_TRAINING_PLAN", "{}", false)));
         assertThatThrownBy(() -> gateway.propose(coach.getRunId(),
                 new ProposalRequest("CREATE_TRAINING_PLAN", "{}", false)))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ExistingAgentProposalException.class);
+    }
+
+    @Test
+    void duplicateProposalIsSerializedAndReturnsConflictBody() {
+        AgentRun coach = running(AgentRunType.COACH, null);
+        AgentActionProposal existing = proposal(
+                coach, "CREATE_TRAINING_PLAN", "{\"title\":\"Existing plan\"}", false);
+        when(runs.findForUpdate(coach.getRunId())).thenReturn(Optional.of(coach));
+        when(proposals.findByRunIdOrderByProposalIdAsc(coach.getRunId()))
+                .thenReturn(List.of(existing));
+
+        assertThatThrownBy(() -> gateway.propose(coach.getRunId(),
+                new ProposalRequest("CREATE_TRAINING_PLAN", "{\"title\":\"Retry plan\"}", false)))
+                .isInstanceOf(ExistingAgentProposalException.class)
+                .satisfies(error -> {
+                    ExistingAgentProposalException conflict = (ExistingAgentProposalException) error;
+                    assertThat(conflict.existing().actionType()).isEqualTo("CREATE_TRAINING_PLAN");
+                    assertThat(conflict.existing().payloadJson()).isEqualTo("{\"title\":\"Existing plan\"}");
+                    assertThat(conflict.existing().requiresAdmin()).isFalse();
+                });
+
+        verify(runs).findForUpdate(coach.getRunId());
+        verify(proposals, never()).save(any());
     }
 
     @Test

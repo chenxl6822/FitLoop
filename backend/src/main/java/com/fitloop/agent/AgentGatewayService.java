@@ -211,11 +211,12 @@ public class AgentGatewayService {
 
     @Transactional
     public ProposalResponse propose(String runId, ProposalRequest request) {
-        AgentRun run = requireRunning(runId);
-        if (!proposals.findByRunIdOrderByProposalIdAsc(runId).isEmpty()) {
-            throw new IllegalStateException("Agent run already has an action proposal");
-        }
+        AgentRun run = requireRunning(lockedRun(runId));
         validateProposal(run, request);
+        var existing = proposals.findByRunIdOrderByProposalIdAsc(runId);
+        if (!existing.isEmpty()) {
+            throw new ExistingAgentProposalException(proposalResponse(existing.getFirst()));
+        }
         AgentActionProposal proposal = new AgentActionProposal();
         proposal.setRunId(runId);
         proposal.setSubjectUserId(run.getSubjectUserId());
