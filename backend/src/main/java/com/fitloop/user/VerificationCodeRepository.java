@@ -9,6 +9,9 @@ public interface VerificationCodeRepository extends JpaRepository<VerificationCo
     Optional<VerificationCode> findTopByTargetAndChannelAndPurposeAndUsedFalseOrderByCreatedAtDesc(
             String target, String channel, String purpose);
 
+    Optional<VerificationCode> findTopByTargetAndChannelAndPurposeOrderByCreatedAtDesc(
+            String target, String channel, String purpose);
+
     List<VerificationCode> findByTargetAndChannelAndPurposeAndUsedFalse(
             String target, String channel, String purpose);
 

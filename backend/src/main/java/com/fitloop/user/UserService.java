@@ -28,7 +28,7 @@ public class UserService {
         this.verificationCodes = verificationCodes;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public UserProfile register(RegisterRequest request) {
         String phone = normalizePhone(request.phone());
         String email = normalizeEmail(request.email());
@@ -47,12 +47,12 @@ public class UserService {
         if (StringUtils.hasText(phone) && !verificationCodes.verifyCode(
                 VerificationCodeService.CHANNEL_PHONE, phone,
                 VerificationCodeService.PURPOSE_REGISTER, request.code())) {
-            throw new IllegalArgumentException("验证码错误或已过期");
+            throw new InvalidVerificationCodeException("验证码错误或已过期");
         }
         if (StringUtils.hasText(email) && !verificationCodes.verifyCode(
                 VerificationCodeService.CHANNEL_EMAIL, email,
                 VerificationCodeService.PURPOSE_REGISTER, request.code())) {
-            throw new IllegalArgumentException("验证码错误或已过期");
+            throw new InvalidVerificationCodeException("验证码错误或已过期");
         }
         UserInfo user = new UserInfo();
         user.setPhone(phone);
@@ -62,7 +62,7 @@ public class UserService {
         return UserProfile.from(users.save(user));
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public LoginResponse login(LoginRequest request) {
         String account = normalizeAccount(request.account());
         UserInfo user = users.findByPhoneOrEmail(account, account)
@@ -75,7 +75,7 @@ public class UserService {
             String channel = verificationCodes.inferChannel(account);
             if (!verificationCodes.verifyCode(channel, account,
                     VerificationCodeService.PURPOSE_LOGIN, request.code())) {
-                throw new IllegalArgumentException("验证码错误或已过期");
+                throw new InvalidVerificationCodeException("验证码错误或已过期");
             }
         } else if (!StringUtils.hasText(request.password())
                 || !passwordEncoder.matches(request.password(), user.getPasswordHash())) {
@@ -95,7 +95,7 @@ public class UserService {
         authTokens.revoke(refreshToken);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = InvalidVerificationCodeException.class)
     public void resetPassword(PasswordResetRequest request) {
         String account = normalizeAccount(request.account());
         String channel = verificationCodes.inferChannel(account);
@@ -103,7 +103,7 @@ public class UserService {
                 .orElseThrow(() -> new IllegalArgumentException("账号不存在"));
         if (!verificationCodes.verifyCode(channel, account,
                 VerificationCodeService.PURPOSE_RESET_PASSWORD, request.code())) {
-            throw new IllegalArgumentException("验证码错误或已过期");
+            throw new InvalidVerificationCodeException("验证码错误或已过期");
         }
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         authTokens.revokeAll(user.getUserId(), "PASSWORD_CHANGED");
