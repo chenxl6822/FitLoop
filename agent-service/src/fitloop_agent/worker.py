@@ -127,7 +127,7 @@ class AgentWorker:
             await self._ack(message_id)
         except httpx.HTTPStatusError as exc:
             status = exc.response.status_code
-            if status in (400, 404, 409):
+            if status in (400, 404):
                 logger.info("agent_message_discarded run_id=%s status=%s", run_id, status)
                 await self._ack(message_id)
                 return
@@ -143,17 +143,24 @@ class AgentWorker:
     ) -> None:
         usage = self._usage(raw_result, "COACH")
         result_json = output.model_dump_json()
-        await self.backend.add_message(context.run_id, context.token, "assistant", output.answer)
         status = "SUCCEEDED"
         if output.proposal is not None:
-            await self.backend.propose(
+            created = await self._propose_or_reuse(
                 context.run_id,
                 context.token,
                 "CREATE_TRAINING_PLAN",
                 output.proposal.model_dump_json(),
                 False,
             )
+            if created:
+                await self.backend.add_message(
+                    context.run_id, context.token, "assistant", output.answer
+                )
             status = "WAITING_APPROVAL"
+        else:
+            await self.backend.add_message(
+                context.run_id, context.token, "assistant", output.answer
+            )
         await self._complete(context, status, result_json, usage, started)
 
     async def _finish_appeal(
@@ -161,14 +168,63 @@ class AgentWorker:
     ) -> None:
         usage = self._usage(raw_result, "APPEAL_REVIEW")
         result_json = output.model_dump_json()
-        await self.backend.add_message(context.run_id, context.token, "assistant", result_json)
         status = "SUCCEEDED"
         if output.decision in ("APPROVE", "REJECT"):
-            await self.backend.propose(
+            created = await self._propose_or_reuse(
                 context.run_id, context.token, "REVIEW_APPEAL", result_json, True
             )
+            if created:
+                await self.backend.add_message(
+                    context.run_id, context.token, "assistant", result_json
+                )
             status = "WAITING_APPROVAL"
+        else:
+            await self.backend.add_message(
+                context.run_id, context.token, "assistant", result_json
+            )
         await self._complete(context, status, result_json, usage, started)
+
+    async def _propose_or_reuse(
+        self,
+        run_id: str,
+        token: str,
+        action_type: str,
+        payload_json: str,
+        requires_admin: bool,
+    ) -> bool:
+        try:
+            await self.backend.propose(
+                run_id, token, action_type, payload_json, requires_admin
+            )
+            return True
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 409:
+                raise
+            if not self._proposal_conflict_is_equivalent(
+                exc.response, action_type, payload_json, requires_admin
+            ):
+                raise
+            logger.info("agent_proposal_reused run_id=%s", run_id)
+            return False
+
+    @staticmethod
+    def _proposal_conflict_is_equivalent(
+        response: httpx.Response,
+        action_type: str,
+        payload_json: str,
+        requires_admin: bool,
+    ) -> bool:
+        try:
+            existing = response.json()
+        except ValueError:
+            return False
+        if not isinstance(existing, dict):
+            return False
+        return (
+            existing.get("actionType") == action_type
+            and existing.get("payloadJson") == payload_json
+            and existing.get("requiresAdmin") is requires_admin
+        )
 
     async def _complete(
         self,
