@@ -1,19 +1,22 @@
 package com.fitloop.user;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public final class UserDtos {
     private UserDtos() {
     }
 
-    public record RegisterRequest(String phone, String email, @NotBlank String password, String code, String nickname) {
+    public record RegisterRequest(String phone, String email,
+                                  @NotBlank @Size(min = 8, message = "密码长度不能少于8位") String password,
+                                  String code, String nickname) {
     }
 
     public record LoginRequest(@NotBlank String account, String password, String code, String loginType) {
     }
 
     public record PasswordResetRequest(@NotBlank String account, @NotBlank String code,
-                                       @NotBlank String newPassword) {
+                                       @NotBlank @Size(min = 8, message = "密码长度不能少于8位") String newPassword) {
     }
 
     public record UpdateProfileRequest(String nickname, String avatarUrl, String gender, String grade, String college) {
