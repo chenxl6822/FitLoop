@@ -1,6 +1,7 @@
 package com.fitloop.sport;
 
 import com.fitloop.common.DomainEventOutbox;
+import com.fitloop.common.ImageUploadSupport;
 import com.fitloop.sport.SportDtos.FinishSessionRequest;
 import com.fitloop.sport.SportDtos.SportCursorPage;
 import com.fitloop.sport.SportDtos.SportRecordResponse;
@@ -17,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,7 +27,6 @@ import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -168,22 +167,19 @@ public class SportService {
 
     public String savePhoto(Long userId, MultipartFile file) {
         if (file.isEmpty()) throw new IllegalArgumentException("文件不能为空");
-        String contentType = file.getContentType();
-        if (contentType == null || !contentType.startsWith("image/")) {
-            throw new IllegalArgumentException("只能上传图片文件");
-        }
         if (file.getSize() > 10 * 1024 * 1024) throw new IllegalArgumentException("文件不能超过 10MB");
         try {
+            byte[] bytes = file.getBytes();
+            ImageUploadSupport.Format format = ImageUploadSupport.requireImage(bytes);
+            String contentType = file.getContentType();
+            if (contentType != null
+                    && !contentType.isBlank()
+                    && !ImageUploadSupport.isCompatibleContentType(contentType, format)) {
+                throw new IllegalArgumentException("只能上传图片文件");
+            }
             Files.createDirectories(photoDir);
-            String extension = switch (contentType.toLowerCase(Locale.ROOT)) {
-                case "image/jpeg", "image/jpg" -> ".jpg";
-                case "image/png" -> ".png";
-                case "image/gif" -> ".gif";
-                case "image/webp" -> ".webp";
-                default -> ".img";
-            };
-            String filename = "photo_" + userId + "_" + Instant.now().toEpochMilli() + extension;
-            Files.copy(file.getInputStream(), photoDir.resolve(filename), StandardCopyOption.REPLACE_EXISTING);
+            String filename = "photo_" + userId + "_" + Instant.now().toEpochMilli() + format.extension();
+            Files.write(photoDir.resolve(filename), bytes);
             return "/uploads/photos/" + filename;
         } catch (IOException ex) {
             throw new IllegalArgumentException("照片上传失败: " + ex.getMessage());
