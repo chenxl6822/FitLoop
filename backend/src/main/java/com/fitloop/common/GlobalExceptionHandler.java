@@ -1,5 +1,6 @@
 package com.fitloop.common;
 
+import com.fitloop.agent.ExistingAgentProposalException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
@@ -17,6 +18,11 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Object illegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
         return error(request, HttpStatus.BAD_REQUEST, "Invalid request", ex.getMessage());
+    }
+
+    @ExceptionHandler(ExistingAgentProposalException.class)
+    public ResponseEntity<?> existingAgentProposal(ExistingAgentProposalException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.existing());
     }
 
     @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class})
