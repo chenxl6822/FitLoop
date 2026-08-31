@@ -52,7 +52,6 @@ class CampusServiceTest {
         when(campusAuthClient.verify(7L, "20230001", "pw"))
                 .thenReturn(new CampusVerifyResult("20230001", "数学与计算科学学院", "计科2班", "软件工程", "2023级"));
         var user = new UserInfo();
-        user.setUserId(7L);
         user.setNickname("Tester");
         when(users.findById(7L)).thenReturn(Optional.of(user));
         when(verifications.save(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> {
