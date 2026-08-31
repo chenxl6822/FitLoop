@@ -109,10 +109,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
   double? _currentLat;
   double? _currentLng;
   double? _currentAccuracy;
-  double _totalDistanceKm = 0;
-  double? _lastLat;
-  double? _lastLng;
   double? _currentSpeedMs;
+  final TrackProcessor _trackProcessor = TrackProcessor();
   final List<WorkoutMapPoint> _liveTrack = [];
   bool _mapPrivacyGranted = false;
   bool _mapPrivacyChoiceLoaded = false;
@@ -187,7 +185,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
           builder: (context) => AlertDialog(
             title: const Text('是否加载道路底图？'),
             content: const Text(
-              'FitLoop 会使用定位绘制本次跑步路线。加载 OpenStreetMap 道路底图时，'
+              'FitLoop 会使用定位绘制本次跑步路线。加载天地图道路底图时，'
               '地图服务会收到当前可见区域和必要的网络信息；原始轨迹仍保存在 FitLoop，'
               '默认仅本人可见。你也可以只使用本地轨迹预览。',
             ),
@@ -344,9 +342,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _sessionId = start.sessionId;
         _startedAt = startedAt;
         _trackPointCount = 0;
-        _totalDistanceKm = 0;
-        _lastLat = null;
-        _lastLng = null;
+        _trackProcessor.reset();
         _currentSpeedMs = null;
         _currentLat = null;
         _currentLng = null;
@@ -467,6 +463,19 @@ class _SportSessionPageState extends State<SportSessionPage> {
     }
   }
 
+  Future<double> _resolveWeightKg() async {
+    try {
+      final history = await widget.api.weightHistory(token: widget.session.token);
+      for (final point in history.points.reversed) {
+        final weight = point.weightKg;
+        if (weight != null && weight > 0) {
+          return weight;
+        }
+      }
+    } catch (_) {}
+    return 60;
+  }
+
   Future<void> _finishCheckin() async {
     setState(() {
       _busy = true;
@@ -493,24 +502,28 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _pedometerService?.dispose();
       }
 
-      final duration = DateTime.now()
-          .difference(_startedAt ?? DateTime.now())
-          .inSeconds
-          .clamp(1, 24 * 3600)
-          .toInt();
+      final duration = _selectedCheckinMode == 'gps'
+          ? _activeSeconds.clamp(1, 24 * 3600)
+          : DateTime.now()
+              .difference(_startedAt ?? DateTime.now())
+              .inSeconds
+              .clamp(1, 24 * 3600)
+              .toInt();
 
       double? distanceKm;
-      if (_selectedCheckinMode == 'gps' && _totalDistanceKm > 0) {
-        distanceKm = _totalDistanceKm;
+      if (_selectedCheckinMode == 'gps' && _trackProcessor.totalDistanceKm > 0) {
+        distanceKm = _trackProcessor.totalDistanceKm;
       } else if (_selectedCheckinMode == 'sensor' && _stepCount > 0) {
         distanceKm = _stepCount * 0.7 / 1000.0;
       }
+
+      final weightKg = await _resolveWeightKg();
 
       final finishResult = await ReliableWorkoutFinisher(widget.api).finish(
         token: widget.session.token,
         sessionId: _sessionId!,
         durationSeconds: duration,
-        weightKg: 60,
+        weightKg: weightKg,
         distanceKm: distanceKm,
       );
 
@@ -526,7 +539,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
           _stepCount = 0;
           _isPaused = false;
           _activeSeconds = 0;
-          _totalDistanceKm = 0;
+          _trackProcessor.reset();
           _pendingSyncCount = pendingCount;
           _currentLat = null;
           _currentLng = null;
@@ -556,10 +569,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _stepCount = 0;
         _isPaused = false;
         _activeSeconds = 0;
-        _totalDistanceKm = 0;
+        _trackProcessor.reset();
+        _currentSpeedMs = null;
         _currentLat = null;
         _currentLng = null;
-        _currentSpeedMs = null;
         _lastRecord = record;
         _status = statusMsg;
         _appealFuture = _loadAppealCenter();
@@ -722,21 +735,6 @@ class _SportSessionPageState extends State<SportSessionPage> {
     return true;
   }
 
-  /// Haversine 公式计算两点间距离 (km)
-  double _haversineKm(double lat1, double lng1, double lat2, double lng2) {
-    const r = 6371.0;
-    final dLat = _degToRad(lat2 - lat1);
-    final dLng = _degToRad(lng2 - lng1);
-    final a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_degToRad(lat1)) *
-            cos(_degToRad(lat2)) *
-            sin(dLng / 2) *
-            sin(dLng / 2);
-    return r * 2 * atan2(sqrt(a), sqrt(1 - a));
-  }
-
-  double _degToRad(double deg) => deg * pi / 180.0;
-
   void _startGpsTracking(String sessionId) {
     const throttleSeconds = 5;
     DateTime? lastUpload;
@@ -775,20 +773,21 @@ class _SportSessionPageState extends State<SportSessionPage> {
 
       _appendLiveTrackPoint(position);
 
-      // 计算实时距离增量
-      if (_lastLat != null && _lastLng != null) {
-        final segKm = _haversineKm(
-            _lastLat!, _lastLng!, position.latitude, position.longitude);
-        if (mounted) {
-          setState(() => _totalDistanceKm += segKm);
-        }
+      final speedMs = position.speed >= 0 ? position.speed : null;
+      _trackProcessor.ingest(
+        lat: position.latitude,
+        lng: position.longitude,
+        accuracyMeters: position.accuracy,
+        timestamp: position.timestamp,
+        speedMs: speedMs,
+      );
+      if (mounted) {
+        setState(() {});
       }
-      _lastLat = position.latitude;
-      _lastLng = position.longitude;
 
       // 计算当前速度 (m/s)
-      if (position.speed >= 0) {
-        if (mounted) setState(() => _currentSpeedMs = position.speed);
+      if (speedMs != null) {
+        if (mounted) setState(() => _currentSpeedMs = speedMs);
       }
 
       // 节流上传
@@ -1002,17 +1001,24 @@ class _SportSessionPageState extends State<SportSessionPage> {
               value: '$_trackPointCount 个',
               icon: Icons.route_outlined),
           _MetricCard(
-              label: '估算距离',
-              value: '${_totalDistanceKm.toStringAsFixed(2)} km',
+              label: '运动距离',
+              value: '${_trackProcessor.totalDistanceKm.toStringAsFixed(2)} km',
               icon: Icons.straighten_outlined),
+          _MetricCard(
+              label: '平均速度',
+              value: _trackProcessor.averageSpeedKmh(_activeSeconds) < 0.1
+                  ? '--'
+                  : '${_trackProcessor.averageSpeedKmh(_activeSeconds).toStringAsFixed(1)} km/h',
+              icon: Icons.speed_outlined),
           if (_currentSpeedMs != null)
             _MetricCard(
-                label: '当前速度',
+                label: '瞬时速度',
                 value: '${(_currentSpeedMs! * 3.6).toStringAsFixed(1)} km/h',
-                icon: Icons.speed_outlined),
+                icon: Icons.av_timer_outlined),
           _MetricCard(
               label: '平均配速',
-              value: _formatPace(_activeSeconds, _totalDistanceKm),
+              value: _formatPace(
+                  _activeSeconds, _trackProcessor.totalDistanceKm),
               icon: Icons.trending_down_outlined),
           if (_currentAccuracy != null &&
               _currentAccuracy! > _maxAcceptedAccuracyMeters)

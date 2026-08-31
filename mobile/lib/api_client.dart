@@ -491,6 +491,31 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   @override
+  Future<CampusStatusResponse> campusStatus({required String token}) async {
+    final data = await _get('/api/v1/campus/status', token: token);
+    return CampusStatusResponse.fromJson(data['data'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<CampusStatusResponse> verifyCampus({
+    required String token,
+    required String studentId,
+    required String password,
+  }) async {
+    final data = await _post(
+      '/api/v1/campus/verify',
+      {'studentId': studentId, 'password': password},
+      token: token,
+    );
+    return CampusStatusResponse.fromJson(data['data'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> unlinkCampus({required String token}) async {
+    await _delete('/api/v1/campus/link', token: token);
+  }
+
+  @override
   Future<Map<String, String>> sendSmsCode({required String phone}) async {
     final body = await _post('/api/sms/send', {'phone': phone});
     final data = body['data'] as Map<String, dynamic>;

@@ -53,6 +53,9 @@ services:
       FITLOOP_JWT_SECRET: ${FITLOOP_JWT_SECRET:?FITLOOP_JWT_SECRET must be set}
       FITLOOP_AGENT_SERVICE_KEY: ${FITLOOP_AGENT_SERVICE_KEY:?FITLOOP_AGENT_SERVICE_KEY must be set}
       FITLOOP_AGENT_DELEGATION_SECRET: ${FITLOOP_AGENT_DELEGATION_SECRET:?FITLOOP_AGENT_DELEGATION_SECRET must be set}
+      FITLOOP_CAMPUS_AUTH_SERVICE_KEY: ${FITLOOP_CAMPUS_AUTH_SERVICE_KEY:${FITLOOP_AGENT_SERVICE_KEY}}
+      FITLOOP_CAMPUS_AUTH_BASE_URL: http://campus-auth:8091
+      FITLOOP_CAMPUS_ID_HASH_SECRET: ${FITLOOP_CAMPUS_ID_HASH_SECRET:${FITLOOP_OTP_HASH_SECRET:?FITLOOP_OTP_HASH_SECRET must be set}}
       FITLOOP_ADMIN_BOOTSTRAP_ACCOUNT: ${FITLOOP_ADMIN_BOOTSTRAP_ACCOUNT:-}
       FITLOOP_ADMIN_BOOTSTRAP_NICKNAME: ${FITLOOP_ADMIN_BOOTSTRAP_NICKNAME:-}
       FITLOOP_OTP_HASH_SECRET: ${FITLOOP_OTP_HASH_SECRET:?FITLOOP_OTP_HASH_SECRET must be set}
@@ -103,6 +106,26 @@ services:
       - "127.0.0.1:8090:8090"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  campus-auth:
+    build:
+      context: ..
+      dockerfile: campus-auth/Dockerfile
+    container_name: fitloop-campus-auth
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      CAMPUS_SERVICE_KEY: ${FITLOOP_CAMPUS_AUTH_SERVICE_KEY:${FITLOOP_AGENT_SERVICE_KEY}}
+    ports:
+      - "127.0.0.1:8091:8091"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/ready')"]
       interval: 10s
       timeout: 5s
       retries: 12

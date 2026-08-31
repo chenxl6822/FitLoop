@@ -1357,3 +1357,32 @@ class UserProfileResponse {
         avatarUrl: json['avatarUrl'] as String?,
       );
 }
+
+class CampusStatusResponse {
+  const CampusStatusResponse({
+    required this.verified,
+    this.college,
+    this.className,
+    this.major,
+    this.grade,
+    this.verifiedAt,
+  });
+
+  factory CampusStatusResponse.fromJson(Map<String, dynamic> json) {
+    return CampusStatusResponse(
+      verified: json['verified'] as bool? ?? false,
+      college: json['college'] as String?,
+      className: json['className'] as String?,
+      major: json['major'] as String?,
+      grade: json['grade'] as String?,
+      verifiedAt: json['verifiedAt'] as String?,
+    );
+  }
+
+  final bool verified;
+  final String? college;
+  final String? className;
+  final String? major;
+  final String? grade;
+  final String? verifiedAt;
+}

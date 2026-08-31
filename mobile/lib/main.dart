@@ -19,7 +19,9 @@ import 'reminder_scheduler.dart';
 import 'secure_session_storage.dart';
 import 'splash_screen.dart';
 import 'stats_charts.dart';
+import 'map_config.dart';
 import 'sync_queue.dart';
+import 'track_processor.dart';
 
 part 'features/workout/workout.dart';
 part 'features/workout/workout_map.dart';
@@ -34,10 +36,7 @@ part 'shared/shared_ui.dart';
 
 const _kOnboardingDoneKey = 'onboarding_done';
 const _kMapPrivacyConsentKey = 'map_tile_privacy_consent_v1';
-const _mapTileUrl = String.fromEnvironment(
-  'FITLOOP_MAP_TILE_URL',
-  defaultValue: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-);
+// Map tiles: prefer FITLOOP_TIANDITU_TOKEN (天地图), or FITLOOP_MAP_TILE_URL override.
 const _appVersion = String.fromEnvironment(
   'FITLOOP_APP_VERSION',
   defaultValue: '0.1.7',

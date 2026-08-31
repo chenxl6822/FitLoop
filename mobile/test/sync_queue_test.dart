@@ -108,7 +108,25 @@ void main() {
     final pending = await SyncQueue.pending();
     expect(pending.single.sessionId, 'failed-session');
     expect(pending.single.durationSeconds, 420);
+    expect(pending.single.distanceKm, 1.2);
     expect(pending.single.toJson().containsKey('token'), isFalse);
+  });
+
+  test('replays queued distance when syncing offline finish', () async {
+    await SyncQueue.enqueueFinish(PendingFinishRecord(
+      sessionId: 'queued-session',
+      durationSeconds: 300,
+      weightKg: 60,
+      distanceKm: 3.62,
+    ));
+    final api = _SyncFakeApi();
+
+    await SyncProcessor(
+      api,
+      token: 'current-signed-in-token',
+    ).processAll();
+
+    expect(api.receivedDistanceKm, 3.62);
   });
 }
 
@@ -141,6 +159,7 @@ class _SyncFakeApi implements FitLoopApi {
   final Object? finishError;
   String? receivedToken;
   String? receivedSessionId;
+  double? receivedDistanceKm;
 
   @override
   Future<SportRecord> finishSport({
@@ -157,6 +176,7 @@ class _SyncFakeApi implements FitLoopApi {
     if (error != null) throw error;
     receivedToken = token;
     receivedSessionId = sessionId;
+    receivedDistanceKm = distanceKm;
     return SportRecord(
       recordId: 1,
       status: 1,

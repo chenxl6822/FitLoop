@@ -31,6 +31,7 @@ public class SecurityConfig {
                                 "/api/user/register", "/api/sms/send", "/api/verification/send",
                                 "/api/config/features", "/actuator/health", "/actuator/health/**",
                                 "/internal/v1/agent/runs/*/delegation-token",
+                                "/internal/v1/campus/link",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/uploads/avatars/**", "/uploads/photos/**").permitAll()
                         .requestMatchers("/api/admin/**", "/api/v1/admin/**").hasRole("ADMIN")

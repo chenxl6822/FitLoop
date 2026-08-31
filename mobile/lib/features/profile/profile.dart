@@ -355,6 +355,22 @@ class SettingsPage extends StatelessWidget {
                 _InfoRow(label: '用户ID', value: session.userId.toString()),
                 if (session.avatarUrl != null)
                   const _InfoRow(label: '头像', value: '已设置'),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  key: const Key('campus-verify-entry'),
+                  leading: const Icon(Icons.school_outlined),
+                  title: const Text('湘大校园认证'),
+                  subtitle: const Text('绑定学号、学院与班级，用于校园榜单'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CampusVerifyPage(
+                        api: api,
+                        session: session,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1451,6 +1467,191 @@ class _AvatarWidget extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+class CampusVerifyPage extends StatefulWidget {
+  const CampusVerifyPage({
+    super.key,
+    required this.api,
+    required this.session,
+  });
+
+  final FitLoopApi api;
+  final UserSession session;
+
+  @override
+  State<CampusVerifyPage> createState() => _CampusVerifyPageState();
+}
+
+class _CampusVerifyPageState extends State<CampusVerifyPage> {
+  late Future<CampusStatusResponse> _statusFuture;
+  final _studentIdController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _busy = false;
+  String? _message;
+
+  @override
+  void initState() {
+    super.initState();
+    _statusFuture = widget.api.campusStatus(token: widget.session.token);
+  }
+
+  @override
+  void dispose() {
+    _studentIdController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _refreshStatus() async {
+    setState(() {
+      _statusFuture = widget.api.campusStatus(token: widget.session.token);
+    });
+    await _statusFuture;
+  }
+
+  Future<void> _verify() async {
+    final studentId = _studentIdController.text.trim();
+    final password = _passwordController.text;
+    if (studentId.isEmpty || password.isEmpty) {
+      setState(() => _message = '请输入学号和教务系统密码');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.api.verifyCampus(
+        token: widget.session.token,
+        studentId: studentId,
+        password: password,
+      );
+      _passwordController.clear();
+      await _refreshStatus();
+      if (mounted) {
+        setState(() => _message = '校园认证成功');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = friendlyErrorMsg(error));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _unlink() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.api.unlinkCampus(token: widget.session.token);
+      await _refreshStatus();
+      if (mounted) {
+        setState(() => _message = '已解除校园认证');
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = friendlyErrorMsg(error));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('湘大校园认证')),
+      body: FutureBuilder<CampusStatusResponse>(
+        future: _statusFuture,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text(friendlyErrorMsg(snapshot.error)));
+          }
+          final status = snapshot.data;
+          if (status == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        status.verified ? '已认证湘大学籍' : '尚未完成校园认证',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        status.verified
+                            ? 'FitLoop 仅保存学院、班级和学号哈希，不会存储你的教务密码。'
+                            : '使用湘大教务系统账号一次性验证身份。密码仅用于本次验证，不会写入 FitLoop。',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      if (status.verified) ...[
+                        const SizedBox(height: 12),
+                        if (status.college != null)
+                          _InfoRow(label: '学院', value: status.college!),
+                        if (status.className != null)
+                          _InfoRow(label: '班级', value: status.className!),
+                        if (status.major != null)
+                          _InfoRow(label: '专业', value: status.major!),
+                        if (status.grade != null)
+                          _InfoRow(label: '年级', value: status.grade!),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              if (!status.verified) ...[
+                TextField(
+                  controller: _studentIdController,
+                  decoration: const InputDecoration(
+                    labelText: '学号',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: '教务系统密码',
+                    prefixIcon: Icon(Icons.lock_outline),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _busy ? null : _verify,
+                  icon: const Icon(Icons.verified_outlined),
+                  label: Text(_busy ? '验证中...' : '立即认证'),
+                ),
+              ] else ...[
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _unlink,
+                  icon: const Icon(Icons.link_off_outlined),
+                  label: const Text('解除认证'),
+                ),
+              ],
+              if (_message != null) ...[
+                const SizedBox(height: 16),
+                Text(_message!, style: const TextStyle(fontSize: 13)),
+              ],
+            ],
+          );
+        },
+      ),
     );
   }
 }

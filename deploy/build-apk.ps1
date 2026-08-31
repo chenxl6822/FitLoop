@@ -9,7 +9,9 @@ param(
 
     [switch]$AllowInsecureApiForDevelopment,
 
-    [switch]$AllowInsecureHttpTransitionRelease
+    [switch]$AllowInsecureHttpTransitionRelease,
+
+    [string]$TiandituToken
 )
 
 $ErrorActionPreference = "Stop"
@@ -118,10 +120,15 @@ try {
         flutter pub get
         flutter analyze
         flutter test
-        flutter build apk --release `
-            --dart-define="FITLOOP_API_BASE_URL=$ApiBaseUrl" `
-            --dart-define="FITLOOP_APP_VERSION=$versionName" `
-            --dart-define="FITLOOP_BUILD_NUMBER=$versionCode"
+        $buildDefines = @(
+            "--dart-define=FITLOOP_API_BASE_URL=$ApiBaseUrl",
+            "--dart-define=FITLOOP_APP_VERSION=$versionName",
+            "--dart-define=FITLOOP_BUILD_NUMBER=$versionCode"
+        )
+        if (-not [string]::IsNullOrWhiteSpace($TiandituToken)) {
+            $buildDefines += "--dart-define=FITLOOP_TIANDITU_TOKEN=$TiandituToken"
+        }
+        flutter build apk --release @buildDefines
     } finally {
         Pop-Location
     }
