@@ -1,7 +1,6 @@
 package com.fitloop.campus;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -17,13 +16,13 @@ public class CampusAuthClient {
     private final String baseUrl;
     private final String serviceKey;
 
-    public CampusAuthClient(RestTemplateBuilder builder,
-                            @Value("${fitloop.campus.auth-base-url:http://campus-auth:8091}") String baseUrl,
+    public CampusAuthClient(@Value("${fitloop.campus.auth-base-url:http://campus-auth:8091}") String baseUrl,
                             @Value("${fitloop.campus.service-key}") String serviceKey) {
-        this.restTemplate = builder.build();
+        this.restTemplate = new RestTemplate();
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        this.serviceKey = com.fitloop.security.ProductionSecrets.requireSecret(
+        com.fitloop.security.ProductionSecrets.requireSecret(
                 "fitloop.campus.service-key", serviceKey, 32);
+        this.serviceKey = serviceKey.trim();
     }
 
     public CampusVerifyResult verify(long userId, String studentId, String password) {
