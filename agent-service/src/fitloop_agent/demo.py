@@ -19,6 +19,7 @@ COACH_REQUIRED_TOOLS = {
     "get_user_goals",
     "get_recent_workouts",
     "calculate_training_load",
+    "get_academic_schedule",
 }
 APPEAL_REQUIRED_TOOLS = {"get_appeal_evidence", "get_anomaly_rules"}
 
@@ -57,6 +58,29 @@ DEMO_TOOL_PAYLOADS: dict[str, Any] = {
         "chronicLoad28d": 82,
         "acuteChronicRatio": 1.17,
         "riskBand": "NORMAL",
+    },
+    "get_academic_schedule": {
+        "synced": True,
+        "termYear": "2025",
+        "termCode": "12",
+        "todayCourses": [
+            {
+                "name": "高等数学",
+                "classroom": "A101",
+                "dayOfWeek": 1,
+                "startTime": "08:00",
+                "endTime": "09:35",
+            }
+        ],
+        "nextCourseToday": {
+            "name": "大学英语",
+            "classroom": "B202",
+            "dayOfWeek": 1,
+            "startTime": "14:00",
+            "endTime": "15:35",
+        },
+        "suggestedWorkoutWindows": [{"startTime": "09:40", "endTime": "11:30"}],
+        "upcomingExams": [],
     },
     "get_appeal_evidence": {
         "appeal": {"id": 2001, "reason": "手表在隧道路段出现定位漂移，请复核。"},

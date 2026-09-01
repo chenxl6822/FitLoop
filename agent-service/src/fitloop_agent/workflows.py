@@ -72,7 +72,7 @@ async def get_coach_evidence(ctx: RunContextWrapper[AgentContext]) -> dict[str, 
     """Read the minimum structured evidence required for a safe coaching answer."""
     token = ctx.context.token
     backend = ctx.context.backend
-    goals, workouts, health_trends, goal_completion, training_load = await asyncio.gather(
+    goals, workouts, health_trends, goal_completion, training_load, academic_schedule = await asyncio.gather(
         backend.tool("/internal/v1/agent-tools/coach/goals", token, "get_user_goals"),
         backend.tool("/internal/v1/agent-tools/coach/workouts", token, "get_recent_workouts"),
         backend.tool("/internal/v1/agent-tools/coach/health-trends", token, "get_health_trends"),
@@ -82,6 +82,9 @@ async def get_coach_evidence(ctx: RunContextWrapper[AgentContext]) -> dict[str, 
         backend.tool(
             "/internal/v1/agent-tools/coach/training-load", token, "calculate_training_load"
         ),
+        backend.tool(
+            "/internal/v1/agent-tools/coach/academic-schedule", token, "get_academic_schedule"
+        ),
     )
     return {
         "goals": goals,
@@ -89,6 +92,7 @@ async def get_coach_evidence(ctx: RunContextWrapper[AgentContext]) -> dict[str, 
         "healthTrends": health_trends,
         "goalCompletion": goal_completion,
         "trainingLoad": training_load,
+        "academicSchedule": academic_schedule,
     }
 
 
@@ -116,6 +120,8 @@ async def get_appeal_review_context(ctx: RunContextWrapper[AgentContext]) -> dic
 COACH_INSTRUCTIONS = """
 You are the FitLoop training coach. Before answering, you must call get_coach_evidence.
 Use only the supplied structured evidence and build advice from it.
+When academicSchedule.synced is true, avoid scheduling workouts during class times and prefer
+suggestedWorkoutWindows. During upcoming exams within 7 days, reduce training intensity.
 Never invent age, training frequency, health conditions, or other facts that are absent from tool results.
 You may propose a training plan, but you cannot create goals, change data, call arbitrary URLs,
 or access raw GPS. Never diagnose illness, prescribe medication, or advise dosage. If health data

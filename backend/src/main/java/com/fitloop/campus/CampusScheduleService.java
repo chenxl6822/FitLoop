@@ -99,6 +99,14 @@ public class CampusScheduleService {
         return buildResponse(userId);
     }
 
+    @Transactional(readOnly = true)
+    public CampusScheduleResponse scheduleForCoach(Long userId) {
+        if (verifications.findByUserId(userId).isEmpty()) {
+            return CampusScheduleResponse.empty();
+        }
+        return buildResponse(userId);
+    }
+
     @Transactional
     public void deleteForUser(Long userId) {
         courses.deleteByUserId(userId);
