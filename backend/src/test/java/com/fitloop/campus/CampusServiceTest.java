@@ -26,6 +26,8 @@ class CampusServiceTest {
     private UserRepository users;
     @Mock
     private CampusAuthClient campusAuthClient;
+    @Mock
+    private CampusScheduleService campusScheduleService;
 
     private CampusService service;
 
@@ -35,6 +37,7 @@ class CampusServiceTest {
                 verifications,
                 users,
                 campusAuthClient,
+                campusScheduleService,
                 "campus-hash-secret-value-32bytes!!");
     }
 

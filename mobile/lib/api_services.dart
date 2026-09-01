@@ -145,6 +145,14 @@ abstract class FitLoopApi {
 
   Future<void> unlinkCampus({required String token});
 
+  Future<CampusScheduleResponse> campusSchedule({required String token});
+
+  Future<CampusScheduleResponse> syncCampusSchedule({
+    required String token,
+    required String studentId,
+    required String password,
+  });
+
   Future<Map<String, String>> sendSmsCode({required String phone});
 
   Future<Map<String, String>> sendVerificationCode({

@@ -10,6 +10,8 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @Component
 public class CampusAuthClient {
     private final RestTemplate restTemplate;
@@ -65,6 +67,53 @@ public class CampusAuthClient {
             String className,
             String major,
             String grade
+    ) {
+    }
+
+    public CampusScheduleSyncResult syncSchedule(long userId, String studentId, String password) {
+        var headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Campus-Auth-Service-Key", serviceKey);
+        var body = new VerifyPayload(userId, studentId, password);
+        try {
+            var response = restTemplate.postForEntity(
+                    baseUrl + "/internal/v1/sync-schedule",
+                    new HttpEntity<>(body, headers),
+                    CampusScheduleSyncResult.class);
+            if (response.getBody() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Campus auth returned empty body");
+            }
+            return response.getBody();
+        } catch (HttpStatusCodeException ex) {
+            throw mapError(ex);
+        }
+    }
+
+    public record CampusScheduleSyncResult(
+            String termYear,
+            String termCode,
+            List<SyncCourseRow> courses,
+            List<SyncExamRow> exams
+    ) {
+    }
+
+    public record SyncCourseRow(
+            String name,
+            String teacher,
+            String classroom,
+            int dayOfWeek,
+            int startSection,
+            int sectionCount,
+            String weeks
+    ) {
+    }
+
+    public record SyncExamRow(
+            String name,
+            String startTime,
+            String endTime,
+            String location,
+            String examType
     ) {
     }
 }

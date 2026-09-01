@@ -21,15 +21,18 @@ public class CampusService {
     private final CampusVerificationRepository verifications;
     private final UserRepository users;
     private final CampusAuthClient campusAuthClient;
+    private final CampusScheduleService campusScheduleService;
     private final byte[] idHashSecret;
 
     public CampusService(CampusVerificationRepository verifications,
                          UserRepository users,
                          CampusAuthClient campusAuthClient,
+                         CampusScheduleService campusScheduleService,
                          @Value("${fitloop.campus.id-hash-secret}") String idHashSecret) {
         this.verifications = verifications;
         this.users = users;
         this.campusAuthClient = campusAuthClient;
+        this.campusScheduleService = campusScheduleService;
         this.idHashSecret = com.fitloop.security.ProductionSecrets.requireSecret(
                 "fitloop.campus.id-hash-secret", idHashSecret, 32);
     }
@@ -96,6 +99,7 @@ public class CampusService {
     @Transactional
     public void unlink(Long userId) {
         verifications.deleteByUserId(userId);
+        campusScheduleService.deleteForUser(userId);
     }
 
     public String hashStudentId(String studentId) {

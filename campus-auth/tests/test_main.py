@@ -28,3 +28,14 @@ async def test_verify_requires_service_key():
             json={"userId": 1, "studentId": "20230001", "password": "secret"},
         )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_sync_schedule_requires_service_key():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/internal/v1/sync-schedule",
+            json={"userId": 1, "studentId": "20230001", "password": "secret"},
+        )
+    assert response.status_code == 401

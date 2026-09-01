@@ -1487,6 +1487,7 @@ class CampusVerifyPage extends StatefulWidget {
 
 class _CampusVerifyPageState extends State<CampusVerifyPage> {
   late Future<CampusStatusResponse> _statusFuture;
+  Future<CampusScheduleResponse>? _scheduleFuture;
   final _studentIdController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _busy = false;
@@ -1496,6 +1497,13 @@ class _CampusVerifyPageState extends State<CampusVerifyPage> {
   void initState() {
     super.initState();
     _statusFuture = widget.api.campusStatus(token: widget.session.token);
+    _statusFuture.then((status) {
+      if (!mounted || !status.verified) return;
+      setState(() {
+        _scheduleFuture =
+            widget.api.campusSchedule(token: widget.session.token);
+      });
+    });
   }
 
   @override
@@ -1509,7 +1517,58 @@ class _CampusVerifyPageState extends State<CampusVerifyPage> {
     setState(() {
       _statusFuture = widget.api.campusStatus(token: widget.session.token);
     });
-    await _statusFuture;
+    final status = await _statusFuture;
+    if (status.verified) {
+      setState(() {
+        _scheduleFuture =
+            widget.api.campusSchedule(token: widget.session.token);
+      });
+    }
+  }
+
+  Future<void> _syncSchedule() async {
+    final studentId = _studentIdController.text.trim();
+    final password = _passwordController.text;
+    if (studentId.isEmpty || password.isEmpty) {
+      setState(() => _message = '请输入学号和教务系统密码以同步课表');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      final schedule = await widget.api.syncCampusSchedule(
+        token: widget.session.token,
+        studentId: studentId,
+        password: password,
+      );
+      _passwordController.clear();
+      setState(() {
+        _scheduleFuture = Future.value(schedule);
+        _message = '课表同步成功（${schedule.courses.length} 门课，'
+            '${schedule.exams.length} 场考试）';
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _message = friendlyErrorMsg(error));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _openSchedule() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CampusSchedulePage(
+          api: widget.api,
+          session: widget.session,
+          initialFuture: _scheduleFuture ??
+              widget.api.campusSchedule(token: widget.session.token),
+        ),
+      ),
+    );
   }
 
   Future<void> _verify() async {
@@ -1638,6 +1697,71 @@ class _CampusVerifyPageState extends State<CampusVerifyPage> {
                   label: Text(_busy ? '验证中...' : '立即认证'),
                 ),
               ] else ...[
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('课表与考试',
+                            style: Theme.of(context).textTheme.titleSmall),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '同步后可查看今日课程、考试安排和建议运动时段。密码仅用于本次同步，不会保存。',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _studentIdController,
+                          decoration: const InputDecoration(
+                            labelText: '学号',
+                            prefixIcon: Icon(Icons.badge_outlined),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: '教务系统密码',
+                            prefixIcon: Icon(Icons.lock_outline),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        FilledButton.icon(
+                          onPressed: _busy ? null : _syncSchedule,
+                          icon: const Icon(Icons.sync_outlined),
+                          label: Text(_busy ? '同步中...' : '同步课表与考试'),
+                        ),
+                        if (_scheduleFuture != null)
+                          FutureBuilder<CampusScheduleResponse>(
+                            future: _scheduleFuture,
+                            builder: (context, scheduleSnapshot) {
+                              final schedule = scheduleSnapshot.data;
+                              if (schedule == null || !schedule.synced) {
+                                return const SizedBox.shrink();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: Text(
+                                  '上次同步：${schedule.lastSyncedAt ?? '未知'}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              );
+                            },
+                          ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: _openSchedule,
+                          icon: const Icon(Icons.calendar_month_outlined),
+                          label: const Text('查看我的课表'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 OutlinedButton.icon(
                   onPressed: _busy ? null : _unlink,
                   icon: const Icon(Icons.link_off_outlined),
@@ -1648,6 +1772,152 @@ class _CampusVerifyPageState extends State<CampusVerifyPage> {
                 const SizedBox(height: 16),
                 Text(_message!, style: const TextStyle(fontSize: 13)),
               ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class CampusSchedulePage extends StatefulWidget {
+  const CampusSchedulePage({
+    super.key,
+    required this.api,
+    required this.session,
+    required this.initialFuture,
+  });
+
+  final FitLoopApi api;
+  final UserSession session;
+  final Future<CampusScheduleResponse> initialFuture;
+
+  @override
+  State<CampusSchedulePage> createState() => _CampusSchedulePageState();
+}
+
+class _CampusSchedulePageState extends State<CampusSchedulePage> {
+  late Future<CampusScheduleResponse> _future;
+
+  static const _dayLabels = [
+    '周一',
+    '周二',
+    '周三',
+    '周四',
+    '周五',
+    '周六',
+    '周日',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.initialFuture;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('我的课表')),
+      body: FutureBuilder<CampusScheduleResponse>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text(friendlyErrorMsg(snapshot.error)));
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final schedule = snapshot.data!;
+          if (!schedule.synced) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('尚未同步课表。请在校园认证页点击「同步课表与考试」。'),
+              ),
+            );
+          }
+          return ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              if (schedule.nextCourseToday != null)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.schedule_outlined),
+                    title: const Text('下一节课'),
+                    subtitle: Text(
+                      '${schedule.nextCourseToday!.name} · '
+                      '${schedule.nextCourseToday!.startTime}-'
+                      '${schedule.nextCourseToday!.endTime} · '
+                      '${schedule.nextCourseToday!.classroom ?? ''}',
+                    ),
+                  ),
+                ),
+              if (schedule.suggestedWorkoutWindows.isNotEmpty)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('今日建议运动时段',
+                            style: Theme.of(context).textTheme.titleSmall),
+                        const SizedBox(height: 8),
+                        ...schedule.suggestedWorkoutWindows.map(
+                          (window) => Text(
+                            '${window.startTime} - ${window.endTime}',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              Text('本周课程',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              ...List.generate(7, (index) {
+                final day = index + 1;
+                final dayCourses = schedule.courses
+                    .where((course) => course.dayOfWeek == day)
+                    .toList();
+                if (dayCourses.isEmpty) return const SizedBox.shrink();
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ExpansionTile(
+                    title: Text(_dayLabels[index]),
+                    subtitle: Text('${dayCourses.length} 门课'),
+                    children: dayCourses
+                        .map(
+                          (course) => ListTile(
+                            title: Text(course.name),
+                            subtitle: Text(
+                              '${course.startTime}-${course.endTime} · '
+                              '${course.classroom ?? ''} · ${course.teacher ?? ''}',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                );
+              }),
+              const SizedBox(height: 16),
+              Text('考试安排',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              if (schedule.upcomingExams.isEmpty)
+                const Text('暂无近期考试', style: TextStyle(fontSize: 13))
+              else
+                ...schedule.upcomingExams.map(
+                  (exam) => Card(
+                    child: ListTile(
+                      title: Text(exam.name),
+                      subtitle: Text(
+                        '${exam.startTime}${exam.location != null ? ' · ${exam.location}' : ''}',
+                      ),
+                    ),
+                  ),
+                ),
             ],
           );
         },

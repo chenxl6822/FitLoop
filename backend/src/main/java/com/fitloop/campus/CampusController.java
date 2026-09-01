@@ -1,6 +1,8 @@
 package com.fitloop.campus;
 
 import com.fitloop.common.ApiResponse;
+import com.fitloop.campus.CampusDtos.CampusScheduleResponse;
+import com.fitloop.campus.CampusDtos.CampusScheduleSyncRequest;
 import com.fitloop.campus.CampusDtos.CampusStatusResponse;
 import com.fitloop.campus.CampusDtos.CampusVerifyRequest;
 import com.fitloop.security.AuthSupport;
@@ -18,9 +20,11 @@ import org.springframework.http.HttpStatus;
 @RequestMapping("/api/v1/campus")
 public class CampusController {
     private final CampusService campusService;
+    private final CampusScheduleService campusScheduleService;
 
-    public CampusController(CampusService campusService) {
+    public CampusController(CampusService campusService, CampusScheduleService campusScheduleService) {
         this.campusService = campusService;
+        this.campusScheduleService = campusScheduleService;
     }
 
     @GetMapping("/status")
@@ -37,5 +41,16 @@ public class CampusController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unlink() {
         campusService.unlink(AuthSupport.currentUserId());
+    }
+
+    @GetMapping("/schedule")
+    public ApiResponse<CampusScheduleResponse> schedule() {
+        return ApiResponse.ok(campusScheduleService.getSchedule(AuthSupport.currentUserId()));
+    }
+
+    @PostMapping("/sync-schedule")
+    public ApiResponse<CampusScheduleResponse> syncSchedule(
+            @Valid @RequestBody CampusScheduleSyncRequest request) {
+        return ApiResponse.ok(campusScheduleService.syncSchedule(AuthSupport.currentUserId(), request));
     }
 }

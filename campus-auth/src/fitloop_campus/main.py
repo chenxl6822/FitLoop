@@ -32,6 +32,31 @@ class VerifyResponse(BaseModel):
     grade: str | None = None
 
 
+class ScheduleCoursePayload(BaseModel):
+    name: str
+    teacher: str = ""
+    classroom: str = ""
+    dayOfWeek: int
+    startSection: int
+    sectionCount: int
+    weeks: str = ""
+
+
+class ScheduleExamPayload(BaseModel):
+    name: str
+    startTime: str
+    endTime: str | None = None
+    location: str = ""
+    examType: str = "考试"
+
+
+class SyncScheduleResponse(BaseModel):
+    termYear: str
+    termCode: str
+    courses: list[ScheduleCoursePayload]
+    exams: list[ScheduleExamPayload]
+
+
 settings = Settings()
 
 
@@ -86,4 +111,58 @@ async def verify(
         className=profile.class_,
         major=profile.major,
         grade=profile.grade,
+    )
+
+
+@app.post("/internal/v1/sync-schedule", response_model=SyncScheduleResponse)
+async def sync_schedule(
+    request: VerifyRequest,
+    x_campus_auth_service_key: str | None = Header(default=None, alias="X-Campus-Auth-Service-Key"),
+) -> SyncScheduleResponse:
+    _require_service_key(x_campus_auth_service_key)
+    from .xtu_schedule import sync_xtu_schedule
+
+    try:
+        schedule = await sync_xtu_schedule(request.studentId.strip(), request.password)
+    except ValueError as error:
+        message = str(error)
+        if message == "invalid_credentials":
+            raise HTTPException(status_code=401, detail="invalid credentials") from error
+        if message == "account_disabled":
+            raise HTTPException(status_code=423, detail="account disabled") from error
+        if message == "service_unavailable":
+            raise HTTPException(status_code=503, detail="xtu ems unavailable") from error
+        raise HTTPException(status_code=400, detail=message) from error
+
+    logger.info(
+        "Synced XTU schedule for userId=%s courses=%s exams=%s",
+        request.userId,
+        len(schedule.courses),
+        len(schedule.exams),
+    )
+    return SyncScheduleResponse(
+        termYear=schedule.term_year,
+        termCode=schedule.term_code,
+        courses=[
+            ScheduleCoursePayload(
+                name=course.name,
+                teacher=course.teacher,
+                classroom=course.classroom,
+                dayOfWeek=course.day_of_week,
+                startSection=course.start_section,
+                sectionCount=course.section_count,
+                weeks=course.weeks,
+            )
+            for course in schedule.courses
+        ],
+        exams=[
+            ScheduleExamPayload(
+                name=exam.name,
+                startTime=exam.start_time,
+                endTime=exam.end_time,
+                location=exam.location,
+                examType=exam.exam_type,
+            )
+            for exam in schedule.exams
+        ],
     )
