@@ -35,14 +35,14 @@ class InfrastructureContainerIT {
         var migration = flyway.migrate();
 
         assertThat(migration.success).isTrue();
-        assertThat(migration.migrationsExecuted).isGreaterThanOrEqualTo(7);
+        assertThat(migration.migrationsExecuted).isGreaterThanOrEqualTo(9);
         try (var connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement();
              var rows = statement.executeQuery(
                      "select version from flyway_schema_history where success = 1 order by installed_rank desc limit 1")) {
             assertThat(rows.next()).isTrue();
-            assertThat(rows.getString(1)).isEqualTo("7");
+            assertThat(rows.getString(1)).isEqualTo("9");
         }
 
         flyway.clean();
@@ -66,7 +66,7 @@ class InfrastructureContainerIT {
                 .load()
                 .migrate();
         assertThat(takeover.success).isTrue();
-        assertThat(takeover.migrationsExecuted).isEqualTo(6);
+        assertThat(takeover.migrationsExecuted).isEqualTo(8);
         try (var connection = DriverManager.getConnection(
                 MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
              var statement = connection.createStatement();
