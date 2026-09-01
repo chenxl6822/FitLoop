@@ -7,6 +7,7 @@ import com.fitloop.agent.AgentToolDtos.AcademicScheduleCourseRow;
 import com.fitloop.agent.AgentToolDtos.AcademicScheduleExamRow;
 import com.fitloop.agent.AgentToolDtos.AcademicScheduleToolResponse;
 import com.fitloop.agent.AgentToolDtos.AcademicScheduleWindowRow;
+import com.fitloop.agent.AgentToolDtos.AppealEvidenceResponse;
 import com.fitloop.agent.AgentToolDtos.GoalToolResponse;
 import com.fitloop.agent.AgentToolDtos.HealthPoint;
 import com.fitloop.agent.AgentToolDtos.HealthTrendResponse;
