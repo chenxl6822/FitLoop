@@ -19,7 +19,7 @@ public class CampusAuthClient {
     private final String serviceKey;
 
     public CampusAuthClient(@Value("${fitloop.campus.auth-base-url:http://campus-auth:8091}") String baseUrl,
-                            @Value("${fitloop.campus.service-key}") String serviceKey) {
+                            @Value("${fitloop.campus.service-key:${fitloop.agent.service-key}}") String serviceKey) {
         this.restTemplate = new RestTemplate();
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         com.fitloop.security.ProductionSecrets.requireSecret(

@@ -21,7 +21,7 @@ public class CampusInternalController {
     private final byte[] serviceKey;
 
     public CampusInternalController(CampusService campusService,
-                                    @Value("${fitloop.campus.service-key}") String serviceKey) {
+                                    @Value("${fitloop.campus.service-key:${fitloop.agent.service-key}}") String serviceKey) {
         this.campusService = campusService;
         this.serviceKey = com.fitloop.security.ProductionSecrets.requireSecret(
                 "fitloop.campus.service-key", serviceKey, 32);

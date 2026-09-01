@@ -28,7 +28,7 @@ public class CampusService {
                          UserRepository users,
                          CampusAuthClient campusAuthClient,
                          CampusScheduleService campusScheduleService,
-                         @Value("${fitloop.campus.id-hash-secret}") String idHashSecret) {
+                         @Value("${fitloop.campus.id-hash-secret:${fitloop.verification.hash-secret}}") String idHashSecret) {
         this.verifications = verifications;
         this.users = users;
         this.campusAuthClient = campusAuthClient;
