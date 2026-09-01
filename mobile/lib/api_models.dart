@@ -1357,3 +1357,178 @@ class UserProfileResponse {
         avatarUrl: json['avatarUrl'] as String?,
       );
 }
+
+class CampusStatusResponse {
+  const CampusStatusResponse({
+    required this.verified,
+    this.college,
+    this.className,
+    this.major,
+    this.grade,
+    this.verifiedAt,
+  });
+
+  factory CampusStatusResponse.fromJson(Map<String, dynamic> json) {
+    return CampusStatusResponse(
+      verified: json['verified'] as bool? ?? false,
+      college: json['college'] as String?,
+      className: json['className'] as String?,
+      major: json['major'] as String?,
+      grade: json['grade'] as String?,
+      verifiedAt: json['verifiedAt'] as String?,
+    );
+  }
+
+  final bool verified;
+  final String? college;
+  final String? className;
+  final String? major;
+  final String? grade;
+  final String? verifiedAt;
+}
+
+class ScheduleCourseRow {
+  const ScheduleCourseRow({
+    required this.name,
+    this.teacher,
+    this.classroom,
+    required this.dayOfWeek,
+    required this.startSection,
+    required this.sectionCount,
+    this.weeks,
+    this.startTime,
+    this.endTime,
+  });
+
+  factory ScheduleCourseRow.fromJson(Map<String, dynamic> json) {
+    return ScheduleCourseRow(
+      name: json['name'] as String? ?? '',
+      teacher: json['teacher'] as String?,
+      classroom: json['classroom'] as String?,
+      dayOfWeek: (json['dayOfWeek'] as num?)?.toInt() ?? 1,
+      startSection: (json['startSection'] as num?)?.toInt() ?? 1,
+      sectionCount: (json['sectionCount'] as num?)?.toInt() ?? 1,
+      weeks: json['weeks'] as String?,
+      startTime: json['startTime'] as String?,
+      endTime: json['endTime'] as String?,
+    );
+  }
+
+  final String name;
+  final String? teacher;
+  final String? classroom;
+  final int dayOfWeek;
+  final int startSection;
+  final int sectionCount;
+  final String? weeks;
+  final String? startTime;
+  final String? endTime;
+}
+
+class ScheduleExamRow {
+  const ScheduleExamRow({
+    required this.name,
+    required this.startTime,
+    this.endTime,
+    this.location,
+    this.examType,
+  });
+
+  factory ScheduleExamRow.fromJson(Map<String, dynamic> json) {
+    return ScheduleExamRow(
+      name: json['name'] as String? ?? '',
+      startTime: json['startTime'] as String? ?? '',
+      endTime: json['endTime'] as String?,
+      location: json['location'] as String?,
+      examType: json['examType'] as String?,
+    );
+  }
+
+  final String name;
+  final String startTime;
+  final String? endTime;
+  final String? location;
+  final String? examType;
+}
+
+class WorkoutWindowRow {
+  const WorkoutWindowRow({required this.startTime, required this.endTime});
+
+  factory WorkoutWindowRow.fromJson(Map<String, dynamic> json) {
+    return WorkoutWindowRow(
+      startTime: json['startTime'] as String? ?? '',
+      endTime: json['endTime'] as String? ?? '',
+    );
+  }
+
+  final String startTime;
+  final String endTime;
+}
+
+class CampusScheduleResponse {
+  const CampusScheduleResponse({
+    required this.synced,
+    this.lastSyncedAt,
+    this.termYear,
+    this.termCode,
+    this.courses = const [],
+    this.exams = const [],
+    this.todayCourses = const [],
+    this.nextCourseToday,
+    this.suggestedWorkoutWindows = const [],
+    this.upcomingExams = const [],
+  });
+
+  factory CampusScheduleResponse.fromJson(Map<String, dynamic> json) {
+    List<ScheduleCourseRow> mapCourses(dynamic value) {
+      if (value is! List) return const [];
+      return value
+          .whereType<Map<String, dynamic>>()
+          .map(ScheduleCourseRow.fromJson)
+          .toList();
+    }
+
+    List<ScheduleExamRow> mapExams(dynamic value) {
+      if (value is! List) return const [];
+      return value
+          .whereType<Map<String, dynamic>>()
+          .map(ScheduleExamRow.fromJson)
+          .toList();
+    }
+
+    List<WorkoutWindowRow> mapWindows(dynamic value) {
+      if (value is! List) return const [];
+      return value
+          .whereType<Map<String, dynamic>>()
+          .map(WorkoutWindowRow.fromJson)
+          .toList();
+    }
+
+    final next = json['nextCourseToday'];
+    return CampusScheduleResponse(
+      synced: json['synced'] as bool? ?? false,
+      lastSyncedAt: json['lastSyncedAt'] as String?,
+      termYear: json['termYear'] as String?,
+      termCode: json['termCode'] as String?,
+      courses: mapCourses(json['courses']),
+      exams: mapExams(json['exams']),
+      todayCourses: mapCourses(json['todayCourses']),
+      nextCourseToday: next is Map<String, dynamic>
+          ? ScheduleCourseRow.fromJson(next)
+          : null,
+      suggestedWorkoutWindows: mapWindows(json['suggestedWorkoutWindows']),
+      upcomingExams: mapExams(json['upcomingExams']),
+    );
+  }
+
+  final bool synced;
+  final String? lastSyncedAt;
+  final String? termYear;
+  final String? termCode;
+  final List<ScheduleCourseRow> courses;
+  final List<ScheduleExamRow> exams;
+  final List<ScheduleCourseRow> todayCourses;
+  final ScheduleCourseRow? nextCourseToday;
+  final List<WorkoutWindowRow> suggestedWorkoutWindows;
+  final List<ScheduleExamRow> upcomingExams;
+}

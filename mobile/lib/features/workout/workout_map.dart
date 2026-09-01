@@ -31,9 +31,13 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
   final fmap.MapController _controller = fmap.MapController();
   bool _controllerReady = false;
   bool _followCurrent = true;
+  bool _tileLoadFailed = false;
 
   List<latlng.LatLng> get _mapPoints => widget.points
-      .map((point) => latlng.LatLng(point.lat, point.lng))
+      .map((point) {
+        final display = MapConfig.displayCoordinate(point.lat, point.lng);
+        return latlng.LatLng(display.lat, display.lng);
+      })
       .toList(growable: false);
 
   @override
@@ -52,13 +56,81 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
 
   void _moveToLatest() {
     if (!_controllerReady || !mounted || widget.points.isEmpty) return;
-    final point = widget.points.last;
-    _controller.move(latlng.LatLng(point.lat, point.lng), 17);
+    final point = _mapPoints.last;
+    _controller.move(point, 17);
+  }
+
+  List<Widget> _buildMapLayers(List<latlng.LatLng> points) {
+    final baseUrl = MapConfig.baseTileUrl;
+    if (!MapConfig.hasConfiguredTiles || baseUrl.isEmpty) {
+      return const [];
+    }
+
+    final layers = <Widget>[
+      fmap.TileLayer(
+        urlTemplate: baseUrl,
+        subdomains: MapConfig.tileSubdomains,
+        userAgentPackageName: 'com.fitloop.fitloop',
+        maxNativeZoom: 18,
+        errorTileCallback: (_, __, ___) {
+          if (mounted && !_tileLoadFailed) {
+            setState(() => _tileLoadFailed = true);
+          }
+        },
+      ),
+    ];
+
+    final labelUrl = MapConfig.labelTileUrl;
+    if (labelUrl.isNotEmpty) {
+      layers.add(
+        fmap.TileLayer(
+          urlTemplate: labelUrl,
+          subdomains: MapConfig.tileSubdomains,
+          userAgentPackageName: 'com.fitloop.fitloop',
+          maxNativeZoom: 18,
+        ),
+      );
+    }
+
+    if (points.length >= 2) {
+      layers.add(
+        fmap.PolylineLayer(
+          polylines: [
+            fmap.Polyline(
+              points: points,
+              strokeWidth: 6,
+              color: const Color(0xFF1F8A70),
+            ),
+          ],
+        ),
+      );
+    }
+
+    layers.add(
+      fmap.MarkerLayer(
+        markers: [
+          _routeMarker(
+            point: points.first,
+            color: const Color(0xFF2563EB),
+            label: '起点',
+          ),
+          _routeMarker(
+            point: points.last,
+            color: const Color(0xFFEF4444),
+            label: '当前位置',
+          ),
+        ],
+      ),
+    );
+
+    return layers;
   }
 
   @override
   Widget build(BuildContext context) {
     final points = _mapPoints;
+    final canRenderTiles =
+        widget.privacyGranted && MapConfig.hasConfiguredTiles;
     return Card(
       key: const Key('workout-map-card'),
       margin: const EdgeInsets.only(bottom: 12),
@@ -78,7 +150,7 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
-                if (widget.privacyGranted)
+                if (canRenderTiles)
                   IconButton(
                     key: const Key('workout-map-follow'),
                     tooltip: _followCurrent ? '停止跟随' : '跟随当前位置',
@@ -100,65 +172,72 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
             width: double.infinity,
             child: points.isEmpty
                 ? const _EmptyWorkoutMap()
-                : widget.privacyGranted
-                    ? fmap.FlutterMap(
-                        mapController: _controller,
-                        options: fmap.MapOptions(
-                          initialCenter: points.last,
-                          initialZoom: 17,
-                          initialCameraFit: points.length < 2
-                              ? null
-                              : fmap.CameraFit.coordinates(
-                                  coordinates: points,
-                                  padding: const EdgeInsets.all(32),
-                                  maxZoom: 18,
-                                ),
-                          minZoom: 3,
-                          maxZoom: 19,
-                          onMapReady: () {
-                            _controllerReady = true;
-                            if (_followCurrent && points.length < 2) {
-                              _moveToLatest();
-                            }
-                          },
-                          onPositionChanged: (_, hasGesture) {
-                            if (hasGesture && _followCurrent) {
-                              setState(() => _followCurrent = false);
-                            }
-                          },
-                        ),
+                : canRenderTiles
+                    ? Stack(
                         children: [
-                          fmap.TileLayer(
-                            urlTemplate: _mapTileUrl,
-                            userAgentPackageName: 'com.fitloop.fitloop',
-                            maxNativeZoom: 19,
-                          ),
-                          if (points.length >= 2)
-                            fmap.PolylineLayer(
-                              polylines: [
-                                fmap.Polyline(
-                                  points: points,
-                                  strokeWidth: 6,
-                                  color: const Color(0xFF1F8A70),
-                                ),
-                              ],
+                          fmap.FlutterMap(
+                            mapController: _controller,
+                            options: fmap.MapOptions(
+                              initialCenter: points.last,
+                              initialZoom: 17,
+                              initialCameraFit: points.length < 2
+                                  ? null
+                                  : fmap.CameraFit.coordinates(
+                                      coordinates: points,
+                                      padding: const EdgeInsets.all(32),
+                                      maxZoom: 18,
+                                    ),
+                              minZoom: 3,
+                              maxZoom: 19,
+                              onMapReady: () {
+                                _controllerReady = true;
+                                if (_followCurrent && points.length < 2) {
+                                  _moveToLatest();
+                                }
+                              },
+                              onPositionChanged: (_, hasGesture) {
+                                if (hasGesture && _followCurrent) {
+                                  setState(() => _followCurrent = false);
+                                }
+                              },
                             ),
-                          fmap.MarkerLayer(
-                            markers: [
-                              _routeMarker(
-                                point: points.first,
-                                color: const Color(0xFF2563EB),
-                                label: '起点',
-                              ),
-                              _routeMarker(
-                                point: points.last,
-                                color: const Color(0xFFEF4444),
-                                label: '当前位置',
-                              ),
-                            ],
+                            children: _buildMapLayers(points),
                           ),
-                          const fmap.SimpleAttributionWidget(
-                            source: Text('OpenStreetMap contributors'),
+                          if (_tileLoadFailed)
+                            const Align(
+                              alignment: Alignment.topCenter,
+                              child: Padding(
+                                padding: EdgeInsets.all(8),
+                                child: Material(
+                                  color: Color(0xCC1F2937),
+                                  borderRadius:
+                                      BorderRadius.all(Radius.circular(8)),
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    child: Text(
+                                      '底图加载失败，请检查网络或天地图密钥配置',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          Positioned(
+                            left: 8,
+                            bottom: 4,
+                            child: Text(
+                              'flutter_map | © ${MapConfig.attributionLabel}',
+                              style: const TextStyle(
+                                color: Color(0x99000000),
+                                fontSize: 10,
+                              ),
+                            ),
                           ),
                         ],
                       )
@@ -181,6 +260,14 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
                     child: const Text('启用底图'),
                   ),
                 ],
+              ),
+            )
+          else if (!MapConfig.hasConfiguredTiles)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 8, 12, 10),
+              child: Text(
+                '已同意底图隐私，但尚未配置 FITLOOP_TIANDITU_TOKEN；当前仅显示本地轨迹预览。',
+                style: TextStyle(fontSize: 12),
               ),
             ),
         ],

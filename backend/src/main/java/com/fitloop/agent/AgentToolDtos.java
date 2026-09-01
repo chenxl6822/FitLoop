@@ -19,4 +19,31 @@ public final class AgentToolDtos {
                                          List<WorkoutSummary> recentHistory) { }
     public record RuleEvidence(String code, String description, String threshold) { }
     public record RuleToolResponse(List<RuleEvidence> rules) { }
+
+    public record AcademicScheduleCourseRow(
+            String name,
+            String classroom,
+            int dayOfWeek,
+            String startTime,
+            String endTime
+    ) { }
+
+    public record AcademicScheduleExamRow(String name, String startTime, String location) { }
+
+    public record AcademicScheduleWindowRow(String startTime, String endTime) { }
+
+    public record AcademicScheduleToolResponse(
+            boolean synced,
+            String termYear,
+            String termCode,
+            List<AcademicScheduleCourseRow> todayCourses,
+            AcademicScheduleCourseRow nextCourseToday,
+            List<AcademicScheduleWindowRow> suggestedWorkoutWindows,
+            List<AcademicScheduleExamRow> upcomingExams
+    ) {
+        public static AcademicScheduleToolResponse empty() {
+            return new AcademicScheduleToolResponse(
+                    false, null, null, List.of(), null, List.of(), List.of());
+        }
+    }
 }

@@ -70,6 +70,24 @@ require_configured_secret "FITLOOP_OTP_HASH_SECRET" "${FITLOOP_OTP_HASH_SECRET:-
 require_configured_secret "FITLOOP_AGENT_SERVICE_KEY" "${FITLOOP_AGENT_SERVICE_KEY:-}"
 require_configured_secret "FITLOOP_AGENT_DELEGATION_SECRET" "${FITLOOP_AGENT_DELEGATION_SECRET:-}"
 
+# Campus auth reuses agent/OTP secrets unless dedicated values are set.
+# Compose cannot nest ${A:-${B}}; export defaults here before compose up.
+if [ -z "${FITLOOP_CAMPUS_AUTH_SERVICE_KEY:-}" ]; then
+    FITLOOP_CAMPUS_AUTH_SERVICE_KEY="$(read_env_value FITLOOP_CAMPUS_AUTH_SERVICE_KEY)"
+fi
+if [ -z "${FITLOOP_CAMPUS_AUTH_SERVICE_KEY:-}" ]; then
+    FITLOOP_CAMPUS_AUTH_SERVICE_KEY="${FITLOOP_AGENT_SERVICE_KEY}"
+fi
+export FITLOOP_CAMPUS_AUTH_SERVICE_KEY
+
+if [ -z "${FITLOOP_CAMPUS_ID_HASH_SECRET:-}" ]; then
+    FITLOOP_CAMPUS_ID_HASH_SECRET="$(read_env_value FITLOOP_CAMPUS_ID_HASH_SECRET)"
+fi
+if [ -z "${FITLOOP_CAMPUS_ID_HASH_SECRET:-}" ]; then
+    FITLOOP_CAMPUS_ID_HASH_SECRET="${FITLOOP_OTP_HASH_SECRET}"
+fi
+export FITLOOP_CAMPUS_ID_HASH_SECRET
+
 # --- 检查 Docker ---
 if ! command -v docker &> /dev/null; then
     log_error "Docker 未安装！请先安装 Docker"

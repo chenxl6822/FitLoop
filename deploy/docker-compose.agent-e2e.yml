@@ -42,6 +42,8 @@ services:
       FITLOOP_JWT_SECRET: agent-e2e-public-jwt-secret-not-for-production-2026
       FITLOOP_AGENT_SERVICE_KEY: agent-e2e-public-service-key-not-for-production-2026
       FITLOOP_AGENT_DELEGATION_SECRET: agent-e2e-public-delegation-secret-not-for-production-2026
+      FITLOOP_CAMPUS_AUTH_SERVICE_KEY: agent-e2e-public-service-key-not-for-production-2026
+      FITLOOP_CAMPUS_ID_HASH_SECRET: agent-e2e-public-otp-secret-not-for-production-2026
       FITLOOP_AGENT_STREAM_KEY: fitloop:agent:e2e:runs
       FITLOOP_OTP_HASH_SECRET: agent-e2e-public-otp-secret-not-for-production-2026
       FITLOOP_OTP_DEBUG_RETURN: "false"

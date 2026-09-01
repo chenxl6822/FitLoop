@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -488,6 +489,90 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
       nickname: profile.nickname,
       avatarUrl: _absoluteUrl(profile.avatarUrl),
     );
+  }
+
+  @override
+  Future<CampusStatusResponse> campusStatus({required String token}) async {
+    developer.log('GET /api/v1/campus/status', name: 'FitLoop.Campus');
+    try {
+      final data = await _get('/api/v1/campus/status', token: token);
+      final status = CampusStatusResponse.fromJson(
+          data['data'] as Map<String, dynamic>);
+      developer.log(
+        'campus status verified=${status.verified}',
+        name: 'FitLoop.Campus',
+      );
+      return status;
+    } catch (error, stack) {
+      developer.log(
+        'campus status failed: $error',
+        name: 'FitLoop.Campus',
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
+    }
+  }
+
+  @override
+  Future<CampusStatusResponse> verifyCampus({
+    required String token,
+    required String studentId,
+    required String password,
+  }) async {
+    developer.log(
+      'POST /api/v1/campus/verify studentId=$studentId',
+      name: 'FitLoop.Campus',
+    );
+    try {
+      final data = await _post(
+        '/api/v1/campus/verify',
+        {'studentId': studentId, 'password': password},
+        token: token,
+      );
+      final status = CampusStatusResponse.fromJson(
+          data['data'] as Map<String, dynamic>);
+      developer.log(
+        'campus verify ok verified=${status.verified} college=${status.college}',
+        name: 'FitLoop.Campus',
+      );
+      return status;
+    } catch (error, stack) {
+      developer.log(
+        'campus verify failed: $error',
+        name: 'FitLoop.Campus',
+        error: error,
+        stackTrace: stack,
+      );
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> unlinkCampus({required String token}) async {
+    await _delete('/api/v1/campus/link', token: token);
+  }
+
+  @override
+  Future<CampusScheduleResponse> campusSchedule({required String token}) async {
+    developer.log('GET /api/v1/campus/schedule', name: 'FitLoop.Campus');
+    final data = await _get('/api/v1/campus/schedule', token: token);
+    return CampusScheduleResponse.fromJson(data['data'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<CampusScheduleResponse> syncCampusSchedule({
+    required String token,
+    required String studentId,
+    required String password,
+  }) async {
+    developer.log('POST /api/v1/campus/sync-schedule', name: 'FitLoop.Campus');
+    final data = await _post(
+      '/api/v1/campus/sync-schedule',
+      {'studentId': studentId, 'password': password},
+      token: token,
+    );
+    return CampusScheduleResponse.fromJson(data['data'] as Map<String, dynamic>);
   }
 
   @override

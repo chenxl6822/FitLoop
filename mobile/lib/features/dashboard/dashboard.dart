@@ -22,6 +22,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<SportHistoryResponse>? _historyFuture;
   Future<SportStats>? _statsFuture;
   Future<NextTrainingSession?>? _nextTrainingFuture;
+  Future<CampusScheduleResponse>? _campusScheduleFuture;
   bool _completingTraining = false;
 
   @override
@@ -38,6 +39,15 @@ class _DashboardPageState extends State<DashboardPage> {
     _statsFuture = widget.api.sportStats(token: widget.session.token);
     _nextTrainingFuture =
         widget.api.nextTrainingSession(token: widget.session.token);
+    _campusScheduleFuture = _loadCampusSchedule();
+  }
+
+  Future<CampusScheduleResponse> _loadCampusSchedule() async {
+    try {
+      return await widget.api.campusSchedule(token: widget.session.token);
+    } catch (_) {
+      return const CampusScheduleResponse(synced: false);
+    }
   }
 
   void _refreshAll() {
@@ -211,6 +221,61 @@ class _DashboardPageState extends State<DashboardPage> {
             label: '欢迎回来',
             value: widget.session.nickname,
             icon: Icons.waving_hand_outlined),
+        FutureBuilder<CampusScheduleResponse>(
+          future: _campusScheduleFuture,
+          builder: (context, snapshot) {
+            final schedule = snapshot.data;
+            if (schedule == null || !schedule.synced) {
+              return const SizedBox.shrink();
+            }
+            final next = schedule.nextCourseToday;
+            final window = schedule.suggestedWorkoutWindows.isNotEmpty
+                ? schedule.suggestedWorkoutWindows.first
+                : null;
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.school_outlined, size: 20),
+                        const SizedBox(width: 8),
+                        Text('今日校园安排',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (next != null)
+                      Text(
+                        '下一节：${next.name} ${next.startTime}-${next.endTime}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    if (window != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '建议运动：${window.startTime}-${window.endTime}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ],
+                    if (schedule.upcomingExams.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '近期考试：${schedule.upcomingExams.first.name}',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
         FutureBuilder<NextTrainingSession?>(
           future: _nextTrainingFuture,
           builder: (context, snapshot) => _NextTrainingCard(

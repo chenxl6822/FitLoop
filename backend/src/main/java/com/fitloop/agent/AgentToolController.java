@@ -3,6 +3,10 @@ package com.fitloop.agent;
 import com.fitloop.agent.AgentDtos.CompletionResponse;
 import com.fitloop.agent.AgentDtos.ToolContext;
 import com.fitloop.agent.AgentDtos.TrainingLoadResponse;
+import com.fitloop.agent.AgentToolDtos.AcademicScheduleCourseRow;
+import com.fitloop.agent.AgentToolDtos.AcademicScheduleExamRow;
+import com.fitloop.agent.AgentToolDtos.AcademicScheduleToolResponse;
+import com.fitloop.agent.AgentToolDtos.AcademicScheduleWindowRow;
 import com.fitloop.agent.AgentToolDtos.AppealEvidenceResponse;
 import com.fitloop.agent.AgentToolDtos.GoalToolResponse;
 import com.fitloop.agent.AgentToolDtos.HealthPoint;
@@ -13,6 +17,8 @@ import com.fitloop.agent.AgentToolDtos.WorkoutSummary;
 import com.fitloop.agent.AgentToolDtos.WorkoutToolResponse;
 import com.fitloop.appeal.Appeal;
 import com.fitloop.appeal.AppealRepository;
+import com.fitloop.campus.CampusDtos.CampusScheduleResponse;
+import com.fitloop.campus.CampusScheduleService;
 import com.fitloop.sport.SportRecord;
 import com.fitloop.sport.SportRecordRepository;
 import com.fitloop.stats.HealthDataRepository;
@@ -37,15 +43,17 @@ public class AgentToolController {
     private final SportRecordRepository workouts;
     private final HealthDataRepository health;
     private final AppealRepository appeals;
+    private final CampusScheduleService campusSchedule;
 
     public AgentToolController(AgentGatewayService gateway, TargetService targets,
                                SportRecordRepository workouts, HealthDataRepository health,
-                               AppealRepository appeals) {
+                               AppealRepository appeals, CampusScheduleService campusSchedule) {
         this.gateway = gateway;
         this.targets = targets;
         this.workouts = workouts;
         this.health = health;
         this.appeals = appeals;
+        this.campusSchedule = campusSchedule;
     }
 
     @GetMapping("/coach/goals")
@@ -104,6 +112,44 @@ public class AgentToolController {
             String assessment = acuteLoad > 420 ? "HIGH" : acuteLoad > 180 ? "MODERATE" : "LOW";
             return new TrainingLoadResponse(records.size(), round(distance), round(seconds / 3600.0),
                     round(acuteLoad), assessment);
+        });
+    }
+
+    @GetMapping("/coach/academic-schedule")
+    public AcademicScheduleToolResponse academicSchedule(Authentication authentication) {
+        ToolContext context = coachContext(authentication);
+        return execute(context, "get_academic_schedule", Map.of(), () -> {
+            CampusScheduleResponse schedule = campusSchedule.scheduleForCoach(context.subjectUserId());
+            if (!schedule.synced()) {
+                return AcademicScheduleToolResponse.empty();
+            }
+            return new AcademicScheduleToolResponse(
+                    true,
+                    schedule.termYear(),
+                    schedule.termCode(),
+                    schedule.todayCourses().stream()
+                            .map(course -> new AcademicScheduleCourseRow(
+                                    course.name(),
+                                    course.classroom(),
+                                    course.dayOfWeek(),
+                                    course.startTime(),
+                                    course.endTime()))
+                            .toList(),
+                    schedule.nextCourseToday() == null ? null
+                            : new AcademicScheduleCourseRow(
+                                    schedule.nextCourseToday().name(),
+                                    schedule.nextCourseToday().classroom(),
+                                    schedule.nextCourseToday().dayOfWeek(),
+                                    schedule.nextCourseToday().startTime(),
+                                    schedule.nextCourseToday().endTime()),
+                    schedule.suggestedWorkoutWindows().stream()
+                            .map(window -> new AcademicScheduleWindowRow(
+                                    window.startTime(), window.endTime()))
+                            .toList(),
+                    schedule.upcomingExams().stream()
+                            .map(exam -> new AcademicScheduleExamRow(
+                                    exam.name(), exam.startTime(), exam.location()))
+                            .toList());
         });
     }
 

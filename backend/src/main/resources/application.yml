@@ -70,6 +70,10 @@ fitloop:
     delegation-secret: ${FITLOOP_AGENT_DELEGATION_SECRET:${FITLOOP_JWT_SECRET}}
     delegation-ttl-seconds: ${FITLOOP_AGENT_DELEGATION_TTL_SECONDS:300}
     stream-key: ${FITLOOP_AGENT_STREAM_KEY:fitloop:agent:runs}
+  campus:
+    service-key: ${FITLOOP_CAMPUS_AUTH_SERVICE_KEY:${fitloop.agent.service-key}}
+    id-hash-secret: ${FITLOOP_CAMPUS_ID_HASH_SECRET:${fitloop.verification.hash-secret:${FITLOOP_JWT_SECRET}}}
+    auth-base-url: ${FITLOOP_CAMPUS_AUTH_BASE_URL:http://localhost:8091}
   upload:
     path: ${FITLOOP_UPLOAD_PATH:./uploads}
   mail:

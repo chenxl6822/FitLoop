@@ -30,6 +30,8 @@ import org.testcontainers.utility.DockerImageName;
                 "management.health.mail.enabled=false",
                 "fitloop.admin.bootstrap-account=",
                 "fitloop.verification.debug-return=true",
+                "fitloop.jwt.secret=test-secret-test-secret-test-secret",
+                "fitloop.verification.hash-secret=test-otp-hash-secret-32-bytes-ok!!",
                 "fitloop.agent.service-key=test-agent-service-key-32-bytes-ok",
                 "fitloop.agent.delegation-secret=test-agent-delegation-secret-32-bytes"
         })

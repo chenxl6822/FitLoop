@@ -28,6 +28,9 @@ fitloop:
   agent:
     service-key: test-agent-service-key-32-bytes-ok
     delegation-secret: test-agent-delegation-secret-32-bytes
+  campus:
+    service-key: test-campus-service-key-32-bytes-ok!!
+    id-hash-secret: test-otp-hash-secret-32-bytes-ok!!
   verification:
     hash-secret: test-otp-hash-secret-32-bytes-ok!!
     debug-return: true

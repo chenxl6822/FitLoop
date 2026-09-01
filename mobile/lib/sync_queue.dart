@@ -13,18 +13,21 @@ class PendingFinishRecord {
     required this.sessionId,
     required this.durationSeconds,
     required this.weightKg,
+    this.distanceKm,
     this.trackPoints,
   });
 
   final String sessionId;
   final int durationSeconds;
   final double weightKg;
+  final double? distanceKm;
   final List<TrackPoint>? trackPoints;
 
   Map<String, dynamic> toJson() => {
         'sessionId': sessionId,
         'durationSeconds': durationSeconds,
         'weightKg': weightKg,
+        if (distanceKm != null) 'distanceKm': distanceKm,
         if (trackPoints != null)
           'trackPoints': trackPoints!
               .map((tp) => {
@@ -42,6 +45,7 @@ class PendingFinishRecord {
         sessionId: json['sessionId'] as String,
         durationSeconds: json['durationSeconds'] as int,
         weightKg: (json['weightKg'] as num).toDouble(),
+        distanceKm: (json['distanceKm'] as num?)?.toDouble(),
         trackPoints: json['trackPoints'] != null
             ? (json['trackPoints'] as List)
                 .map((tp) => TrackPoint(
@@ -207,6 +211,7 @@ class SyncProcessor {
           sessionId: item.sessionId,
           durationSeconds: item.durationSeconds,
           weightKg: item.weightKg,
+          distanceKm: item.distanceKm,
         );
         await SyncQueue.removeSession(item.sessionId);
         synced++;
@@ -259,6 +264,7 @@ class ReliableWorkoutFinisher {
         sessionId: sessionId,
         durationSeconds: durationSeconds,
         weightKg: weightKg,
+        distanceKm: distanceKm,
       ));
       return WorkoutFinishResult.queued(error);
     }

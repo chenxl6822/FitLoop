@@ -2012,6 +2012,42 @@ class _FakeApi implements FitLoopApi {
   }
 
   @override
+  Future<CampusStatusResponse> campusStatus({required String token}) async {
+    return const CampusStatusResponse(verified: false);
+  }
+
+  @override
+  Future<CampusStatusResponse> verifyCampus({
+    required String token,
+    required String studentId,
+    required String password,
+  }) async {
+    return const CampusStatusResponse(
+      verified: true,
+      college: '数学与计算科学学院',
+      className: '计科2班',
+      grade: '2023级',
+    );
+  }
+
+  @override
+  Future<void> unlinkCampus({required String token}) async {}
+
+  @override
+  Future<CampusScheduleResponse> campusSchedule({required String token}) async {
+    return const CampusScheduleResponse(synced: false);
+  }
+
+  @override
+  Future<CampusScheduleResponse> syncCampusSchedule({
+    required String token,
+    required String studentId,
+    required String password,
+  }) async {
+    return const CampusScheduleResponse(synced: true);
+  }
+
+  @override
   Future<WeightHistoryResponse> weightHistory({
     required String token,
     int days = 30,
