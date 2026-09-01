@@ -139,7 +139,8 @@ try {
         "get_recent_workouts",
         "get_health_trends",
         "get_goal_completion",
-        "calculate_training_load"
+        "calculate_training_load",
+        "get_academic_schedule"
     )
 
     Write-Host "[4/6] Confirming the coach proposal as the owning user"

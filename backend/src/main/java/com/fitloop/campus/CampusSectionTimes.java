@@ -19,7 +19,7 @@ final class CampusSectionTimes {
             Map.entry(9, LocalTime.of(19, 0)),
             Map.entry(10, LocalTime.of(19, 55)),
             Map.entry(11, LocalTime.of(21, 0)),
-            Map.entry(12, LocalTime.of(21, 55));
+            Map.entry(12, LocalTime.of(21, 55)));
 
     private CampusSectionTimes() {
     }
