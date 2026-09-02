@@ -895,19 +895,20 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   bool _shouldRetryAuth(_JsonHttpResponse response) {
-    // Only retry FitLoop JWT failures. Business 401/403 from campus-auth
-    // (wrong student password, etc.) include a detail/message and must not
-    // trigger a session refresh loop.
+    // FitLoop JWT failures are usually HTTP 401 and may include a message such
+    // as "expired". Always attempt one refresh for unauthorized responses.
+    if (response.statusCode == HttpStatus.unauthorized) {
+      return true;
+    }
+    // Empty/generic Spring Security 403 can mean an expired JWT was rejected
+    // without a problem-detail body. Business 403s from campus flows include
+    // detail/message and must not trigger a session refresh loop.
+    if (response.statusCode != HttpStatus.forbidden) return false;
     final detail = response.body['detail'];
     final message = response.body['message'];
     final hasBusinessReason = (detail is String && detail.isNotEmpty) ||
         (message is String && message.isNotEmpty);
-    if (response.statusCode == HttpStatus.unauthorized) {
-      return !hasBusinessReason;
-    }
-    if (response.statusCode != HttpStatus.forbidden) return false;
-    if (hasBusinessReason) return false;
-    return true;
+    return !hasBusinessReason;
   }
 
   Map<String, dynamic> _expectEnvelope(_JsonHttpResponse response) {
