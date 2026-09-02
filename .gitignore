@@ -72,3 +72,7 @@ deploy/certbot-www/*
 .DS_Store
 Thumbs.db
 *.patch
+
+# Local one-off deploy/debug helpers and logs (never commit)
+scripts/_*
+scripts/capture-campus-log.ps1

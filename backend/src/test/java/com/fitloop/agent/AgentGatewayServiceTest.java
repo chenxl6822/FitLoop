@@ -92,7 +92,7 @@ class AgentGatewayServiceTest {
     }
 
     @Test
-    void executionRequiresRunningStateMatchingScopeAndEightToolLimit() {
+    void executionRequiresRunningStateMatchingScopeAndToolLimit() {
         AgentRun run = running(AgentRunType.COACH, null);
         when(runs.findById(run.getRunId())).thenReturn(Optional.of(run));
         when(runs.findForUpdate(run.getRunId())).thenReturn(Optional.of(run));
@@ -108,9 +108,10 @@ class AgentGatewayServiceTest {
         var wrong = new AgentDtos.ToolContext(run.getRunId(), 2L, null, AgentRunType.COACH);
         assertThatThrownBy(() -> gateway.executeTool(wrong, "goal", Map.of(), () -> "blocked"))
                 .isInstanceOf(AccessDeniedException.class);
-        when(toolAudits.countByRunId(run.getRunId())).thenReturn(8L);
+        when(toolAudits.countByRunId(run.getRunId()))
+                .thenReturn((long) AgentGatewayService.MAX_TOOL_CALLS_PER_RUN);
         assertThatThrownBy(() -> gateway.auditTool(run.getRunId(),
-                new ToolAuditRequest("ninth", "{}", null, false, 1L, "blocked")))
+                new ToolAuditRequest("over-budget", "{}", null, false, 1L, "blocked")))
                 .isInstanceOf(IllegalStateException.class);
 
         AgentRun queued = AgentRun.queued(AgentRunType.COACH, 1L, 1L, null, "{}");

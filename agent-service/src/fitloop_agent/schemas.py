@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -51,6 +51,7 @@ class AgentContext:
     trace_id: str
     token: str
     backend: Any
+    coach_evidence_cache: dict[str, Any] | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True)

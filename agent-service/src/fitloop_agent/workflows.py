@@ -70,6 +70,9 @@ async def health_safety_guardrail(
 @function_tool
 async def get_coach_evidence(ctx: RunContextWrapper[AgentContext]) -> dict[str, Any]:
     """Read the minimum structured evidence required for a safe coaching answer."""
+    cached = ctx.context.coach_evidence_cache
+    if cached is not None:
+        return cached
     token = ctx.context.token
     backend = ctx.context.backend
     goals, workouts, health_trends, goal_completion, training_load, academic_schedule = await asyncio.gather(
@@ -86,7 +89,7 @@ async def get_coach_evidence(ctx: RunContextWrapper[AgentContext]) -> dict[str, 
             "/internal/v1/agent-tools/coach/academic-schedule", token, "get_academic_schedule"
         ),
     )
-    return {
+    evidence = {
         "goals": goals,
         "recentWorkouts": workouts,
         "healthTrends": health_trends,
@@ -94,6 +97,8 @@ async def get_coach_evidence(ctx: RunContextWrapper[AgentContext]) -> dict[str, 
         "trainingLoad": training_load,
         "academicSchedule": academic_schedule,
     }
+    ctx.context.coach_evidence_cache = evidence
+    return evidence
 
 
 @function_tool
@@ -118,10 +123,18 @@ async def get_appeal_review_context(ctx: RunContextWrapper[AgentContext]) -> dic
 
 
 COACH_INSTRUCTIONS = """
-You are the FitLoop training coach. Before answering, you must call get_coach_evidence.
+You are the FitLoop training coach. Call get_coach_evidence exactly once before answering.
+Do not call get_coach_evidence again after it returns; reuse that single evidence payload.
 Use only the supplied structured evidence and build advice from it.
-When academicSchedule.synced is true, avoid scheduling workouts during class times and prefer
-suggestedWorkoutWindows. During upcoming exams within 7 days, reduce training intensity.
+When academicSchedule.synced is true:
+- Prefer weeklyWorkoutWindows for multi-day plans; use suggestedWorkoutWindows only for today.
+- Avoid overlapping weekCourses / todayCourses class times.
+- Align each proposal day to a real weekday from the academic calendar.
+- Always write the weekday and suggested time window into notes (e.g. 周三 19:30–21:00),
+  and prefer putting the weekday in session_type when helpful (e.g. 周三轻松慢跑).
+- Prefer evening free blocks when morning/afternoon are full of classes.
+- If no free window remains today, use the next available weekday window instead of inventing a conflicting slot.
+During upcoming exams within 7 days, reduce training intensity.
 Never invent age, training frequency, health conditions, or other facts that are absent from tool results.
 You may propose a training plan, but you cannot create goals, change data, call arbitrary URLs,
 or access raw GPS. Never diagnose illness, prescribe medication, or advise dosage. If health data

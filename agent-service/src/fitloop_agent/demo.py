@@ -80,6 +80,49 @@ DEMO_TOOL_PAYLOADS: dict[str, Any] = {
             "endTime": "15:35",
         },
         "suggestedWorkoutWindows": [{"startTime": "09:40", "endTime": "11:30"}],
+        "weekCourses": [
+            {
+                "name": "高等数学",
+                "classroom": "A101",
+                "dayOfWeek": 1,
+                "startTime": "08:00",
+                "endTime": "09:35",
+            },
+            {
+                "name": "大学英语",
+                "classroom": "B202",
+                "dayOfWeek": 1,
+                "startTime": "14:00",
+                "endTime": "15:35",
+            },
+            {
+                "name": "程序设计",
+                "classroom": "C303",
+                "dayOfWeek": 3,
+                "startTime": "10:00",
+                "endTime": "11:35",
+            },
+        ],
+        "weeklyWorkoutWindows": [
+            {
+                "dayOfWeek": 1,
+                "weekdayLabel": "周一",
+                "startTime": "09:40",
+                "endTime": "11:30",
+            },
+            {
+                "dayOfWeek": 1,
+                "weekdayLabel": "周一",
+                "startTime": "19:00",
+                "endTime": "22:00",
+            },
+            {
+                "dayOfWeek": 3,
+                "weekdayLabel": "周三",
+                "startTime": "19:00",
+                "endTime": "22:00",
+            },
+        ],
         "upcomingExams": [],
     },
     "get_appeal_evidence": {

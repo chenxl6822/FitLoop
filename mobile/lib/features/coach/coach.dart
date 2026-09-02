@@ -794,7 +794,7 @@ class _SavedTrainingPlanPage extends StatelessWidget {
               Card(
                 key: Key('coach-plan-${plan.planId}-day-${day.day}'),
                 child: ListTile(
-                  title: Text('第 ${day.day} 天 · ${day.sessionType}'),
+                  title: Text('第 ${day.day} 天 · ${day.scheduleHeadline}'),
                   subtitle: Text([
                     '${day.durationMinutes} 分钟 · ${_intensityLabel(day.intensity)}',
                     if (day.notes != null && day.notes!.trim().isNotEmpty)
@@ -1034,7 +1034,7 @@ class _CoachPlanProposalCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '第 ${day.day} 天 · ${day.sessionType}',
+                        '第 ${day.day} 天 · ${day.scheduleHeadline}',
                         style: Theme.of(context)
                             .textTheme
                             .bodyLarge
