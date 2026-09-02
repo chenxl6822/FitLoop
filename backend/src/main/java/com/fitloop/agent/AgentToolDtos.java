@@ -32,18 +32,28 @@ public final class AgentToolDtos {
 
     public record AcademicScheduleWindowRow(String startTime, String endTime) { }
 
+    /** Suggested free workout slot for a weekday (1=Monday … 7=Sunday). */
+    public record AcademicScheduleWeeklyWindowRow(
+            int dayOfWeek,
+            String weekdayLabel,
+            String startTime,
+            String endTime
+    ) { }
+
     public record AcademicScheduleToolResponse(
             boolean synced,
             String termYear,
             String termCode,
+            List<AcademicScheduleCourseRow> weekCourses,
             List<AcademicScheduleCourseRow> todayCourses,
             AcademicScheduleCourseRow nextCourseToday,
             List<AcademicScheduleWindowRow> suggestedWorkoutWindows,
+            List<AcademicScheduleWeeklyWindowRow> weeklyWorkoutWindows,
             List<AcademicScheduleExamRow> upcomingExams
     ) {
         public static AcademicScheduleToolResponse empty() {
             return new AcademicScheduleToolResponse(
-                    false, null, null, List.of(), null, List.of(), List.of());
+                    false, null, null, List.of(), List.of(), null, List.of(), List.of(), List.of());
         }
     }
 }

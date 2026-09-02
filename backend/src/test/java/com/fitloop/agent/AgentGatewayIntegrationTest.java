@@ -82,7 +82,7 @@ class AgentGatewayIntegrationTest {
     }
 
     @Test
-    void delegationTokenIsScopedAndToolCallsAreLimitedToEight() {
+    void delegationTokenIsScopedAndToolCallsAreLimited() {
         Long owner = user("13910000003", "ToolOwner");
         AgentRun run = gateway.createCoachRun(owner, "weekly summary");
         AgentDtos.ToolContext context = delegationTokens.verify(delegationTokens.issue(run));
@@ -91,18 +91,19 @@ class AgentGatewayIntegrationTest {
         assertThat(context.type()).isEqualTo(AgentRunType.COACH);
         gateway.claim(run.getRunId());
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < AgentGatewayService.MAX_TOOL_CALLS_PER_RUN; i++) {
             int value = i;
             assertThat((Integer) gateway.executeTool(context, "test_tool", Map.of("index", i), () -> value))
                     .isEqualTo(i);
         }
-        assertThatThrownBy(() -> gateway.executeTool(context, "ninth_tool", Map.of(), () -> "blocked"))
+        assertThatThrownBy(() -> gateway.executeTool(context, "over_limit_tool", Map.of(), () -> "blocked"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("limit");
         assertThat(gateway.adminRuns(AgentRunType.COACH, AgentRunStatus.RUNNING, 0, 20).items())
                 .extracting(AgentDtos.AdminRunSummary::runId)
                 .contains(run.getRunId());
-        assertThat(gateway.runAudit(run.getRunId()).toolCalls()).hasSize(8);
+        assertThat(gateway.runAudit(run.getRunId()).toolCalls())
+                .hasSize(AgentGatewayService.MAX_TOOL_CALLS_PER_RUN);
     }
 
     @Test

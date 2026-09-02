@@ -6,6 +6,7 @@ import com.fitloop.agent.AgentDtos.TrainingLoadResponse;
 import com.fitloop.agent.AgentToolDtos.AcademicScheduleCourseRow;
 import com.fitloop.agent.AgentToolDtos.AcademicScheduleExamRow;
 import com.fitloop.agent.AgentToolDtos.AcademicScheduleToolResponse;
+import com.fitloop.agent.AgentToolDtos.AcademicScheduleWeeklyWindowRow;
 import com.fitloop.agent.AgentToolDtos.AcademicScheduleWindowRow;
 import com.fitloop.agent.AgentToolDtos.AppealEvidenceResponse;
 import com.fitloop.agent.AgentToolDtos.GoalToolResponse;
@@ -127,6 +128,14 @@ public class AgentToolController {
                     true,
                     schedule.termYear(),
                     schedule.termCode(),
+                    schedule.courses().stream()
+                            .map(course -> new AcademicScheduleCourseRow(
+                                    course.name(),
+                                    course.classroom(),
+                                    course.dayOfWeek(),
+                                    course.startTime(),
+                                    course.endTime()))
+                            .toList(),
                     schedule.todayCourses().stream()
                             .map(course -> new AcademicScheduleCourseRow(
                                     course.name(),
@@ -145,6 +154,13 @@ public class AgentToolController {
                     schedule.suggestedWorkoutWindows().stream()
                             .map(window -> new AcademicScheduleWindowRow(
                                     window.startTime(), window.endTime()))
+                            .toList(),
+                    campusSchedule.weeklyWorkoutWindows(schedule.courses()).stream()
+                            .map(window -> new AcademicScheduleWeeklyWindowRow(
+                                    window.dayOfWeek(),
+                                    window.weekdayLabel(),
+                                    window.startTime(),
+                                    window.endTime()))
                             .toList(),
                     schedule.upcomingExams().stream()
                             .map(exam -> new AcademicScheduleExamRow(

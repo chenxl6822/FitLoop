@@ -51,11 +51,16 @@ String friendlyErrorMsg(dynamic error) {
       msg.contains('Certificate')) {
     return '安全连接失败，请稍后重试';
   }
-  // 认证相关（非网络）
-  if (msg.contains('401') || msg.contains('403')) {
+  // 认证相关：仅当错误本身就是登录过期文案，或明确是空壳 HTTP 401/403 时才覆盖
+  if (error is ApiException) {
+    return error.message;
+  }
+  if (msg == '登录状态已过期，请重新登录' ||
+      msg == '请求失败（401）' ||
+      msg == '请求失败（403）') {
     return '登录状态已过期，请重新登录';
   }
-  if (msg.contains('500')) {
+  if (msg.contains('500') || msg.contains('请求失败（5')) {
     return '服务器开小差了，请稍后重试';
   }
   if (msg.contains('Missing type parameter') ||

@@ -33,6 +33,30 @@ void main() {
     expect(preview?.days.single.intensity, 'LOW');
     expect(preview?.days.single.notes, '以能轻松交谈为准');
 
+    final scheduled = TrainingPlanPreview.tryParse(jsonEncode({
+      'title': '课表周计划',
+      'goal': '按空闲时段训练',
+      'days': [
+        {
+          'day': 1,
+          'weekday': 3,
+          'session_type': '轻松慢跑',
+          'duration_minutes': 30,
+          'intensity': 'LOW',
+          'suggested_start_time': '19:30',
+          'suggested_end_time': '21:00',
+          'notes': '周三 19:30–21:00',
+        },
+      ],
+    }));
+    expect(scheduled?.days.single.weekday, 3);
+    expect(scheduled?.days.single.suggestedStartTime, '19:30');
+    expect(scheduled?.days.single.suggestedEndTime, '21:00');
+    expect(
+      scheduled?.days.single.scheduleHeadline,
+      '周三 · 19:30–21:00 · 轻松慢跑',
+    );
+
     expect(
       TrainingPlanPreview.tryParse(
         '{"title":"计划","goal":"目标","days":[]}',

@@ -178,6 +178,45 @@ public class CampusScheduleService {
         return windows.stream().limit(3).toList();
     }
 
+    /**
+     * Free workout windows for each weekday (1=Monday … 7=Sunday), using today's clock
+     * only when computing the current weekday.
+     */
+    public List<WeeklyWorkoutWindow> weeklyWorkoutWindows(List<ScheduleCourseRow> courses) {
+        LocalDate today = LocalDate.now(ZONE);
+        int todayDow = dayOfWeekNumber(today.getDayOfWeek());
+        LocalTime now = LocalTime.now(ZONE);
+        List<WeeklyWorkoutWindow> windows = new ArrayList<>();
+        for (int dow = 1; dow <= 7; dow++) {
+            int dayOfWeek = dow;
+            var dayCourses = courses.stream()
+                    .filter(course -> course.dayOfWeek() == dayOfWeek)
+                    .sorted(Comparator.comparingInt(ScheduleCourseRow::startSection))
+                    .toList();
+            LocalTime startFrom = dayOfWeek == todayDow ? now : DAY_START;
+            for (WorkoutWindowRow window : suggestWorkoutWindows(dayCourses, startFrom)) {
+                windows.add(new WeeklyWorkoutWindow(
+                        dayOfWeek, weekdayLabel(dayOfWeek), window.startTime(), window.endTime()));
+            }
+        }
+        return windows;
+    }
+
+    public record WeeklyWorkoutWindow(int dayOfWeek, String weekdayLabel, String startTime, String endTime) { }
+
+    private static String weekdayLabel(int dayOfWeek) {
+        return switch (dayOfWeek) {
+            case 1 -> "周一";
+            case 2 -> "周二";
+            case 3 -> "周三";
+            case 4 -> "周四";
+            case 5 -> "周五";
+            case 6 -> "周六";
+            case 7 -> "周日";
+            default -> "周" + dayOfWeek;
+        };
+    }
+
     private ScheduleCourseRow toCourseRow(CampusScheduleCourse course) {
         return new ScheduleCourseRow(
                 course.getCourseName(),

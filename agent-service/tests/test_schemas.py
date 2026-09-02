@@ -68,6 +68,19 @@ def test_training_plan_rejects_day_counts_outside_boundaries(day_count: int) -> 
         )
 
 
+def test_training_day_notes_can_include_weekday_and_time_window() -> None:
+    day = TrainingDay(
+        day=1,
+        session_type="周三轻松慢跑",
+        duration_minutes=30,
+        intensity="LOW",
+        notes="周三 19:30–21:00",
+    )
+
+    assert "周三" in day.session_type
+    assert "19:30" in day.notes
+
+
 @pytest.mark.parametrize("confidence", [0.0, 1.0])
 def test_appeal_confidence_accepts_inclusive_boundaries(confidence: float) -> None:
     decision = AppealDecision(

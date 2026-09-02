@@ -746,7 +746,7 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
       {required String token}) async {
     var accessToken = await _accessTokenForRequest(token);
     var response = await _executeJson('GET', path, token: accessToken);
-    if (response.statusCode == HttpStatus.unauthorized && _session != null) {
+    if (_shouldRetryAuth(response) && _session != null) {
       final refreshed = await _refreshSession(rejectedToken: accessToken);
       accessToken = refreshed.token;
       response = await _executeJson('GET', path, token: accessToken);
@@ -775,9 +775,7 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
       payload: payload,
       token: accessToken,
     );
-    if (response.statusCode == HttpStatus.unauthorized &&
-        token != null &&
-        _session != null) {
+    if (_shouldRetryAuth(response) && token != null && _session != null) {
       final refreshed = await _refreshSession(rejectedToken: accessToken);
       accessToken = refreshed.token;
       response = await _executeJson(
@@ -896,7 +894,26 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
     }
   }
 
+  bool _shouldRetryAuth(_JsonHttpResponse response) {
+    // Only retry FitLoop JWT failures. Business 401/403 from campus-auth
+    // (wrong student password, etc.) include a detail/message and must not
+    // trigger a session refresh loop.
+    final detail = response.body['detail'];
+    final message = response.body['message'];
+    final hasBusinessReason = (detail is String && detail.isNotEmpty) ||
+        (message is String && message.isNotEmpty);
+    if (response.statusCode == HttpStatus.unauthorized) {
+      return !hasBusinessReason;
+    }
+    if (response.statusCode != HttpStatus.forbidden) return false;
+    if (hasBusinessReason) return false;
+    return true;
+  }
+
   Map<String, dynamic> _expectEnvelope(_JsonHttpResponse response) {
+    if (response.statusCode == HttpStatus.noContent) {
+      return const <String, dynamic>{'code': 0};
+    }
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw ApiException(
           _extractErrorMessage(response.body, response.statusCode));
@@ -925,7 +942,7 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
     try {
       var accessToken = await _accessTokenForRequest(token);
       var response = await _sendMultipart(path, imagePath, accessToken!);
-      if (response.statusCode == HttpStatus.unauthorized && _session != null) {
+      if (_shouldRetryAuth(response) && _session != null) {
         final refreshed = await _refreshSession(rejectedToken: accessToken);
         accessToken = refreshed.token;
         response = await _sendMultipart(path, imagePath, accessToken);
@@ -969,11 +986,26 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
     if (body.containsKey('detail') &&
         body['detail'] is String &&
         (body['detail'] as String).isNotEmpty) {
-      return body['detail'] as String;
+      final detail = body['detail'] as String;
+      if (detail == 'Campus identity required') {
+        return '请先完成湘大校园认证后再同步课表';
+      }
+      return detail;
+    }
+    if (body.containsKey('title') &&
+        body['title'] is String &&
+        (body['title'] as String).isNotEmpty &&
+        body['title'] != 'Forbidden') {
+      return body['title'] as String;
     }
     // 后端 code != 0 但没有 message
     if (statusCode >= 500) return '服务器开小差了，请稍后重试';
-    if (statusCode == 401 || statusCode == 403) return '登录状态已过期，请重新登录';
+    if (statusCode == HttpStatus.unauthorized) {
+      return '登录状态已过期，请重新登录';
+    }
+    if (statusCode == HttpStatus.forbidden) {
+      return '登录状态已过期，请重新登录';
+    }
     return '请求失败（$statusCode）';
   }
 

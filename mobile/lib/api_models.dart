@@ -384,14 +384,46 @@ class TrainingPlanDayPreview {
     required this.sessionType,
     required this.durationMinutes,
     required this.intensity,
+    this.weekday,
+    this.suggestedStartTime,
+    this.suggestedEndTime,
     this.notes,
   });
 
   final int day;
+  final int? weekday;
   final String sessionType;
   final int durationMinutes;
   final String intensity;
+  final String? suggestedStartTime;
+  final String? suggestedEndTime;
   final String? notes;
+
+  String? get weekdayLabel {
+    return switch (weekday) {
+      1 => '周一',
+      2 => '周二',
+      3 => '周三',
+      4 => '周四',
+      5 => '周五',
+      6 => '周六',
+      7 => '周日',
+      _ => null,
+    };
+  }
+
+  String get scheduleHeadline {
+    final parts = <String>[
+      if (weekdayLabel != null) weekdayLabel!,
+      if (suggestedStartTime != null &&
+          suggestedStartTime!.trim().isNotEmpty &&
+          suggestedEndTime != null &&
+          suggestedEndTime!.trim().isNotEmpty)
+        '${suggestedStartTime!.trim()}–${suggestedEndTime!.trim()}',
+      sessionType,
+    ];
+    return parts.join(' · ');
+  }
 }
 
 class TrainingPlanPreview {
@@ -404,9 +436,12 @@ class TrainingPlanPreview {
   static const _topLevelFields = <String>{'title', 'goal', 'days'};
   static const _dayFields = <String>{
     'day',
+    'weekday',
     'session_type',
     'duration_minutes',
     'intensity',
+    'suggested_start_time',
+    'suggested_end_time',
     'notes',
   };
   static const _requiredDayFields = <String>{
@@ -447,19 +482,26 @@ class TrainingPlanPreview {
         }
 
         final day = rawDay['day'];
+        final weekday = rawDay['weekday'];
         final sessionType = rawDay['session_type'];
         final durationMinutes = rawDay['duration_minutes'];
         final intensity = rawDay['intensity'];
+        final suggestedStartTime = rawDay['suggested_start_time'];
+        final suggestedEndTime = rawDay['suggested_end_time'];
         final notes = rawDay['notes'];
         if (day is! int ||
             day < 1 ||
             day > 28 ||
+            (weekday != null &&
+                (weekday is! int || weekday < 1 || weekday > 7)) ||
             !_validRequiredString(sessionType, 80) ||
             durationMinutes is! int ||
             durationMinutes < 5 ||
             durationMinutes > 180 ||
             intensity is! String ||
             !_knownIntensities.contains(intensity) ||
+            !_validOptionalString(suggestedStartTime, 16) ||
+            !_validOptionalString(suggestedEndTime, 16) ||
             !_validOptionalString(notes, 300)) {
           return null;
         }
@@ -467,9 +509,12 @@ class TrainingPlanPreview {
         days.add(
           TrainingPlanDayPreview(
             day: day,
+            weekday: weekday as int?,
             sessionType: sessionType as String,
             durationMinutes: durationMinutes,
             intensity: intensity,
+            suggestedStartTime: suggestedStartTime as String?,
+            suggestedEndTime: suggestedEndTime as String?,
             notes: notes as String?,
           ),
         );

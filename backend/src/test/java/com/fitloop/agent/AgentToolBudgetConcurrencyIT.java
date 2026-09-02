@@ -36,13 +36,11 @@ import org.testcontainers.utility.DockerImageName;
                 "spring.mail.host=localhost",
                 "management.health.mail.enabled=false",
                 "fitloop.admin.bootstrap-account=",
-                "fitloop.jwt.secret=test-secret-test-secret-test-secret",
-                "fitloop.verification.hash-secret=test-otp-hash-secret-32-bytes-ok!!",
                 "fitloop.agent.service-key=test-agent-service-key-32-bytes-ok",
                 "fitloop.agent.delegation-secret=test-agent-delegation-secret-32-bytes"
         })
 class AgentToolBudgetConcurrencyIT {
-    private static final int CALLERS = 16;
+    private static final int CALLERS = 48;
 
     @Container
     private static final MySQLContainer MYSQL = new MySQLContainer("mysql:8.0.43")
@@ -70,7 +68,7 @@ class AgentToolBudgetConcurrencyIT {
     }
 
     @Test
-    void concurrentCallsReserveAtMostEightToolSlots() throws Exception {
+    void concurrentCallsReserveAtMostConfiguredToolSlots() throws Exception {
         UserInfo user = new UserInfo();
         user.setPhone("13971000001");
         user.setPasswordHash("synthetic-password-hash");
@@ -133,12 +131,13 @@ class AgentToolBudgetConcurrencyIT {
             }
         }
 
-        assertThat(succeeded).isEqualTo(8);
-        assertThat(invoked.get()).isEqualTo(8);
-        assertThat(failures).hasSize(8).allSatisfy(failure ->
+        assertThat(succeeded).isEqualTo(AgentGatewayService.MAX_TOOL_CALLS_PER_RUN);
+        assertThat(invoked.get()).isEqualTo(AgentGatewayService.MAX_TOOL_CALLS_PER_RUN);
+        assertThat(failures).hasSize(CALLERS - AgentGatewayService.MAX_TOOL_CALLS_PER_RUN).allSatisfy(failure ->
                 assertThat(failure)
                         .isInstanceOf(IllegalStateException.class)
                         .hasMessageContaining("limit"));
-        assertThat(toolAudits.findByRunIdOrderByAuditIdAsc(run.getRunId())).hasSize(8);
+        assertThat(toolAudits.findByRunIdOrderByAuditIdAsc(run.getRunId()))
+                .hasSize(AgentGatewayService.MAX_TOOL_CALLS_PER_RUN);
     }
 }

@@ -31,6 +31,9 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class AgentGatewayService {
+    /** Coach evidence gathers 6 backend tools; allow a few retries + proposal writes. */
+    static final int MAX_TOOL_CALLS_PER_RUN = 24;
+
     private final AgentRunRepository runs;
     private final AgentMessageRepository messages;
     private final AgentToolAuditRepository toolAudits;
@@ -164,7 +167,7 @@ public class AgentGatewayService {
     @Transactional
     public void auditTool(String runId, ToolAuditRequest request) {
         requireRunning(lockedRun(runId));
-        if (toolAudits.countByRunId(runId) >= 8) {
+        if (toolAudits.countByRunId(runId) >= MAX_TOOL_CALLS_PER_RUN) {
             throw new IllegalStateException("Agent run tool-call limit exceeded");
         }
         toolAudits.save(new AgentToolAudit(runId, request.toolName(), request.argumentsJson(),
@@ -180,7 +183,7 @@ public class AgentGatewayService {
                 || !java.util.Objects.equals(run.getSubjectResourceId(), context.subjectResourceId())) {
             throw new org.springframework.security.access.AccessDeniedException("Delegation scope does not match run");
         }
-        if (toolAudits.countByRunId(context.runId()) >= 8) {
+        if (toolAudits.countByRunId(context.runId()) >= MAX_TOOL_CALLS_PER_RUN) {
             throw new IllegalStateException("Agent run tool-call limit exceeded");
         }
         long started = System.nanoTime();
