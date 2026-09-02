@@ -84,8 +84,8 @@ write_metadata() {
     local signer_sha256="${4:-${COMPATIBILITY_SIGNER}}"
     local signing_mode="${5:-Compatibility}"
     local apk_path="${6:-$(dirname "${target}")/app-release.apk}"
-    local version="${7:-0.1.7}"
-    local version_code="${8:-8}"
+    local version="${7:-0.1.8}"
+    local version_code="${8:-10}"
     local apk_size
     apk_size="$(
         python3 - "${apk_path}" <<'PY'
@@ -655,8 +655,8 @@ make_existing_case "${missing_field_dir}"
 missing_field_sha="$(cat "${missing_field_dir}/new.sha256")"
 cat > "${missing_field_dir}/source/version.json" <<JSON
 {
-  "version": "0.1.7",
-  "versionCode": 8,
+  "version": "0.1.8",
+  "versionCode": 10,
   "apiBaseUrl": "https://app.fitloop-health.cn",
   "sha256": "${missing_field_sha}"
 }
@@ -825,8 +825,8 @@ while IFS='|' read -r transition_policy_name version version_code; do
         "${transition_policy_version_dir}" \
         "${transition_policy_version_before}"
 done <<'TRANSITION_POLICY_VERSIONS'
-version|0.1.6|8
-version-code|0.1.7|7
+version|0.1.7|10
+version-code|0.1.8|9
 TRANSITION_POLICY_VERSIONS
 
 transition_http_download_index=0
@@ -2723,7 +2723,7 @@ if command -v pwsh >/dev/null 2>&1; then
         -AllowInsecureHttpTransitionRelease
     assert_build_policy_rejection \
         "build-http-transition-self-expires-after-approved-version" \
-        "The HTTP transition release is restricted to version 0.1.7+8."
+        "The HTTP transition release is restricted to version 0.1.8+10."
 
     run_build_policy_case \
         "${BUILD_APK_SCRIPT}" \
