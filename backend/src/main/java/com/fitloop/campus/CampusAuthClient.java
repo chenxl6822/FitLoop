@@ -48,8 +48,12 @@ public class CampusAuthClient {
 
     private ResponseStatusException mapError(HttpStatusCodeException ex) {
         var status = HttpStatus.resolve(ex.getStatusCode().value());
+        // Campus-auth uses 401 for wrong 学号/密码. Map that to 400 on the
+        // public API so mobile clients do not treat it as an expired FitLoop JWT.
+        if (status == HttpStatus.UNAUTHORIZED) {
+            return new ResponseStatusException(HttpStatus.BAD_REQUEST, "学号或密码不正确");
+        }
         var message = switch (status) {
-            case UNAUTHORIZED -> "学号或密码不正确";
             case CONFLICT -> "该学号已绑定其他 FitLoop 账号";
             case LOCKED -> "教务账号已被禁用";
             case SERVICE_UNAVAILABLE -> "湘大教务系统暂时不可用，请稍后再试";

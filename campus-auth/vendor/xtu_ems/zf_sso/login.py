@@ -5,6 +5,7 @@ from aiohttp import ClientSession
 from xtu_ems.common.encrypt import rsa_encrypt
 from xtu_ems.common.exception import *
 from xtu_ems.common.sess import HttpSessionHolder as SessionHolder
+from xtu_ems.common.urls import normalize_campus_url, url_matches_prefix
 from xtu_ems.zf_sso.config import key_url, login_url, login_success_url_prefix, modify_password_url_prefix
 
 logger = logging.getLogger(__name__)
@@ -70,8 +71,12 @@ async def login(username: str, password: str) -> SessionHolder:
             allow_redirects=False,
         ) as response:
             if response.status == 302 and "Location" in response.headers:
-                redirect_url = response.headers["Location"] or ""
-                logger.debug(f"Redirect Location: {redirect_url}")
+                raw_redirect = response.headers["Location"] or ""
+                # CAS may return relative paths or absolute URLs with :443.
+                redirect_url = normalize_campus_url(raw_redirect, base=login_url)
+                logger.debug(
+                    "Redirect Location raw=%s normalized=%s", raw_redirect, redirect_url
+                )
             elif response.status == 200:
                 raise InvalidUsernameOrPasswordException(username)
             elif response.status == 403:
@@ -84,10 +89,11 @@ async def login(username: str, password: str) -> SessionHolder:
                     f"Login failed: status code {response.status}, headers {response.headers}"
                 )
                 raise ServiceUnavailableException("login failed")
-        # 判断重定向URL
-        if redirect_url.startswith(modify_password_url_prefix):
+        # 判断重定向URL（容忍 :443 / 相对路径等跳转地址变化）
+        if url_matches_prefix(redirect_url, modify_password_url_prefix, base=login_url):
             raise UninitializedAccountException(username, "Please change password first.")
-        elif not redirect_url.startswith(login_success_url_prefix):
+        elif not url_matches_prefix(redirect_url, login_success_url_prefix, base=login_url):
+            logger.error("Unexpected CAS ticket redirect: %s", redirect_url)
             raise ServiceUnavailableException("ticket URL not found")
         # 访问ticket_url，完成登录
         async with session.get(

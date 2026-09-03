@@ -113,6 +113,48 @@ void main() {
     expect(refreshCalls, 0);
     await server.close(force: true);
   });
+
+  test('does not retry campus sync for wrong-password 401 detail', () async {
+    final store = _MemorySessionStore(_session());
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    var refreshCalls = 0;
+    server.listen((request) async {
+      if (request.uri.path == '/api/v1/auth/refresh') {
+        refreshCalls += 1;
+        await _writeJson(request.response, _authPayload(2));
+        return;
+      }
+      request.response.statusCode = HttpStatus.unauthorized;
+      await _writeJson(request.response, {
+        'type': 'about:blank',
+        'title': 'Unauthorized',
+        'status': 401,
+        'detail': '学号或密码不正确',
+      });
+    });
+    final api = HttpFitLoopApi(
+      baseUrl: 'http://127.0.0.1:${server.port}',
+      sessionStore: store,
+      now: () => now,
+    );
+    await api.restoreSession();
+
+    await expectLater(
+      api.syncCampusSchedule(
+        token: 'access-token-1',
+        studentId: '20230001',
+        password: 'secret',
+      ),
+      throwsA(
+        predicate<ApiException>(
+          (error) => error.message == '学号或密码不正确',
+        ),
+      ),
+    );
+
+    expect(refreshCalls, 0);
+    await server.close(force: true);
+  });
 }
 
 UserSession _session() => UserSession(
