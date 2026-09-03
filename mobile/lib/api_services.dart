@@ -38,6 +38,11 @@ abstract class FitLoopApi {
     String? photoUrl,
   });
 
+  Future<SportRecord> cancelSport({
+    required String token,
+    required String sessionId,
+  });
+
   Future<SportStats> sportStats({required String token});
 
   Future<List<SportRecord>> listSportRecords({required String token});

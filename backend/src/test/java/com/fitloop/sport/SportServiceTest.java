@@ -69,6 +69,29 @@ class SportServiceTest {
     }
 
     @Test
+    void cancelAbandonsDraftWithoutCountingAsWorkout() {
+        var start = sportService.start(USER_ID, new StartSessionRequest("running", "gps"));
+        var cancelled = sportService.cancel(USER_ID, start.sessionId());
+        assertThat(cancelled.status()).isEqualTo(SportRecord.STATUS_CANCELLED);
+        assertThat(cancelled.endedAt()).isNotNull();
+        assertThat(cancelled.distanceKm()).isZero();
+
+        var again = sportService.cancel(USER_ID, start.sessionId());
+        assertThat(again.recordId()).isEqualTo(cancelled.recordId());
+        assertThat(again.status()).isEqualTo(SportRecord.STATUS_CANCELLED);
+
+        assertThatThrownBy(() -> sportService.appendTrackBatch(USER_ID, start.sessionId(),
+                new TrackBatchRequest(List.of(new TrackPointInput(
+                        0, 31.23, 121.47, 5.0, Instant.now())))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("已结束");
+
+        var finished = sportService.finish(USER_ID, new FinishSessionRequest(
+                start.sessionId(), 60L, null, null, 60.0, null, null));
+        assertThat(finished.status()).isEqualTo(SportRecord.STATUS_CANCELLED);
+    }
+
+    @Test
     void rejectsGpsForIndoorSport() {
         assertThatThrownBy(() -> sportService.start(USER_ID,
                 new StartSessionRequest("rope_skipping", "gps")))

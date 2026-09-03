@@ -169,6 +169,26 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   @override
+  Future<SportRecord> cancelSport({
+    required String token,
+    required String sessionId,
+  }) async {
+    final body = await _post(
+      '/api/sport/session/cancel',
+      {'sessionId': sessionId},
+      token: token,
+    );
+    final data = body['data'] as Map<String, dynamic>;
+    return SportRecord(
+      recordId: data['recordId'] as int,
+      status: data['status'] as int,
+      durationSeconds: data['durationSeconds'] as int? ?? 0,
+      distanceKm: (data['distanceKm'] as num?)?.toDouble() ?? 0,
+      calorie: (data['calorie'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  @override
   Future<SportStats> sportStats({required String token}) async {
     final body = await _get('/api/stat/sport', token: token);
     final data = body['data'] as Map<String, dynamic>;

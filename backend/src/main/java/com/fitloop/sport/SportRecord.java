@@ -17,6 +17,7 @@ public class SportRecord {
     public static final int STATUS_VALID = 1;
     public static final int STATUS_ABNORMAL = 2;
     public static final int STATUS_APPEALING = 3;
+    public static final int STATUS_CANCELLED = 4;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -98,6 +99,13 @@ public class SportRecord {
             throw new IllegalArgumentException("Invalid finish state: " + target);
         }
         status = target.code();
+    }
+
+    public void cancelDraft() {
+        if (workoutStatus() != WorkoutStatus.DRAFT) {
+            throw new IllegalStateException("Only a draft workout can be cancelled");
+        }
+        status = WorkoutStatus.CANCELLED.code();
     }
     public String getAbnormalReason() { return abnormalReason; }
     public void setAbnormalReason(String abnormalReason) { this.abnormalReason = abnormalReason; }

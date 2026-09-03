@@ -36,6 +36,9 @@ public final class SportDtos {
                                        Double calorie, Double weightKg, String photoUrl, String note) {
     }
 
+    public record CancelSessionRequest(@NotBlank String sessionId) {
+    }
+
     public record SportRecordResponse(Long recordId, String sessionId, String sportType, String checkinMode,
                                       long durationSeconds, double distanceKm, double calorie, int status,
                                       String abnormalReason, String photoUrl, String note,

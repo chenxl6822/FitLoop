@@ -6,7 +6,8 @@ public enum WorkoutStatus {
     DRAFT(0),
     VALID(1),
     ABNORMAL(2),
-    APPEALING(3);
+    APPEALING(3),
+    CANCELLED(4);
 
     private final int code;
 

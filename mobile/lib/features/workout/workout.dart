@@ -319,8 +319,38 @@ class _SportSessionPageState extends State<SportSessionPage> {
           await _startManualCheckin();
       }
     } else {
-      await _finishCheckin();
+      final action = await _chooseEndAction();
+      if (action == null || !mounted) return;
+      if (action == 'abandon') {
+        await _abandonCheckin();
+      } else {
+        await _finishCheckin();
+      }
     }
+  }
+
+  Future<String?> _chooseEndAction() {
+    return showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            key: const Key('sport-session-end-save'),
+            leading: const Icon(Icons.check_circle_outline),
+            title: const Text('保存记录'),
+            subtitle: const Text('结束并保存本次运动（无轨迹也可保存）'),
+            onTap: () => Navigator.pop(ctx, 'save'),
+          ),
+          ListTile(
+            key: const Key('sport-session-end-abandon'),
+            leading: const Icon(Icons.close),
+            title: const Text('放弃本次'),
+            subtitle: const Text('不保存，清除进行中的打卡'),
+            onTap: () => Navigator.pop(ctx, 'abandon'),
+          ),
+        ]),
+      ),
+    );
   }
 
   Future<void> _startGpsCheckin() async {
@@ -481,6 +511,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
       _busy = true;
       _status = '结算中，请稍候...';
     });
+    final activeSessionId = _sessionId;
     try {
       if (_selectedCheckinMode == 'gps') {
         await _stopGpsTracking();
@@ -491,7 +522,8 @@ class _SportSessionPageState extends State<SportSessionPage> {
         } catch (_) {}
 
         if (lastPosition != null &&
-            await _uploadTrackPoint(_sessionId!, lastPosition)) {
+            activeSessionId != null &&
+            await _uploadTrackPoint(activeSessionId, lastPosition)) {
           _appendLiveTrackPoint(lastPosition);
           _trackPointCount++;
         }
@@ -521,7 +553,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
 
       final finishResult = await ReliableWorkoutFinisher(widget.api).finish(
         token: widget.session.token,
-        sessionId: _sessionId!,
+        sessionId: activeSessionId!,
         durationSeconds: duration,
         weightKg: weightKg,
         distanceKm: distanceKm,
@@ -532,21 +564,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
         if (!mounted) return;
         _elapsedTimer?.cancel();
         _elapsedTimer = null;
-        setState(() {
-          _sessionId = null;
-          _startedAt = null;
-          _trackPointCount = 0;
-          _stepCount = 0;
-          _isPaused = false;
-          _activeSeconds = 0;
-          _trackProcessor.reset();
-          _pendingSyncCount = pendingCount;
-          _currentLat = null;
-          _currentLng = null;
-          _currentSpeedMs = null;
-          _status = '网络暂时不可用，记录已安全保存，可联网后立即同步';
-        });
-        widget.onSportActiveChanged?.call(false);
+        _clearActiveSession(
+          status: '网络暂时不可用，记录已安全保存，可联网后立即同步',
+          pendingSyncCount: pendingCount,
+        );
         return;
       }
 
@@ -562,29 +583,106 @@ class _SportSessionPageState extends State<SportSessionPage> {
 
       _elapsedTimer?.cancel();
       _elapsedTimer = null;
-      setState(() {
-        _sessionId = null;
-        _startedAt = null;
-        _trackPointCount = 0;
-        _stepCount = 0;
-        _isPaused = false;
-        _activeSeconds = 0;
-        _trackProcessor.reset();
-        _currentSpeedMs = null;
-        _currentLat = null;
-        _currentLng = null;
-        _lastRecord = record;
-        _status = statusMsg;
-        _appealFuture = _loadAppealCenter();
-      });
-      widget.onSportActiveChanged?.call(false);
+      _clearActiveSession(
+        status: statusMsg,
+        lastRecord: record,
+        refreshAppeals: true,
+      );
     } catch (error) {
-      setState(() => _status = friendlyErrorMsg(error));
+      // Ending must never leave the UI stuck in "进行中". Best-effort cancel
+      // the backend draft, then always clear local session state.
+      if (activeSessionId != null) {
+        try {
+          await widget.api.cancelSport(
+            token: widget.session.token,
+            sessionId: activeSessionId,
+          );
+        } catch (_) {}
+      }
+      _elapsedTimer?.cancel();
+      _elapsedTimer = null;
+      if (_selectedCheckinMode == 'gps') {
+        await _stopGpsTracking();
+      }
+      if (_selectedCheckinMode == 'sensor') {
+        _stepSubscription?.cancel();
+        _pedometerService?.dispose();
+      }
+      _clearActiveSession(status: friendlyErrorMsg(error));
     } finally {
       if (mounted) {
         setState(() => _busy = false);
       }
     }
+  }
+
+  Future<void> _abandonCheckin() async {
+    final activeSessionId = _sessionId;
+    if (activeSessionId == null) return;
+    setState(() {
+      _busy = true;
+      _status = '正在放弃本次打卡...';
+    });
+    try {
+      if (_selectedCheckinMode == 'gps') {
+        await _stopGpsTracking();
+      }
+      if (_selectedCheckinMode == 'sensor') {
+        _stepSubscription?.cancel();
+        _pedometerService?.dispose();
+      }
+      _elapsedTimer?.cancel();
+      _elapsedTimer = null;
+      try {
+        await widget.api.cancelSport(
+          token: widget.session.token,
+          sessionId: activeSessionId,
+        );
+      } catch (error) {
+        // Still clear local state so the user is not stuck; show the error.
+        _clearActiveSession(status: '本地已结束，但放弃同步失败：${friendlyErrorMsg(error)}');
+        return;
+      }
+      _clearActiveSession(status: '已放弃本次打卡');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _clearActiveSession({
+    required String status,
+    SportRecord? lastRecord,
+    int? pendingSyncCount,
+    bool refreshAppeals = false,
+  }) {
+    if (!mounted) {
+      widget.onSportActiveChanged?.call(false);
+      return;
+    }
+    setState(() {
+      _sessionId = null;
+      _startedAt = null;
+      _trackPointCount = 0;
+      _stepCount = 0;
+      _isPaused = false;
+      _activeSeconds = 0;
+      _trackProcessor.reset();
+      _currentSpeedMs = null;
+      _currentLat = null;
+      _currentLng = null;
+      _currentAccuracy = null;
+      if (pendingSyncCount != null) {
+        _pendingSyncCount = pendingSyncCount;
+      }
+      if (lastRecord != null) {
+        _lastRecord = lastRecord;
+      }
+      _status = status;
+      if (refreshAppeals) {
+        _appealFuture = _loadAppealCenter();
+      }
+    });
+    widget.onSportActiveChanged?.call(false);
   }
 
   final _durationController = TextEditingController();
@@ -1305,6 +1403,7 @@ String _sportRecordStatusLabel(int status) => switch (status) {
       1 => '有效',
       2 => '异常',
       3 => '申诉中',
+      4 => '已取消',
       _ => '未知',
     };
 
@@ -1312,6 +1411,7 @@ IconData _sportRecordStatusIcon(int status) => switch (status) {
       1 => Icons.check_circle_outline,
       2 => Icons.warning_amber_outlined,
       3 => Icons.hourglass_empty,
+      4 => Icons.cancel_outlined,
       _ => Icons.directions_run_outlined,
     };
 
