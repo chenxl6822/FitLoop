@@ -1436,13 +1436,13 @@ void _adminDashboardTests() {
           createdAt: '2026-09-03T00:00:00Z',
         ),
       ],
-      adminAgentRunAudit: AgentRunAudit(
+      adminAgentRunAudit: const AgentRunAudit(
         runId: 'run-readable',
         status: 'WAITING_APPROVAL',
         resultJson: adviceJson,
         model: 'deepseek-v4-pro',
         promptVersion: 'appeal-v1',
-        proposals: const [
+        proposals: [
           AgentProposalItem(
             proposalId: 11,
             actionType: 'REVIEW_APPEAL',
@@ -1451,7 +1451,7 @@ void _adminDashboardTests() {
             requiresAdmin: true,
           ),
         ],
-        toolCalls: const [
+        toolCalls: [
           AgentToolAuditItem(toolName: 'get_appeal_evidence', succeeded: true),
           AgentToolAuditItem(toolName: 'get_appeal_rules', succeeded: true),
         ],
