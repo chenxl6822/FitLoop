@@ -895,20 +895,39 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
   }
 
   bool _shouldRetryAuth(_JsonHttpResponse response) {
-    // FitLoop JWT failures are usually HTTP 401 and may include a message such
-    // as "expired". Always attempt one refresh for unauthorized responses.
+    final detail = response.body['detail'];
+    final message = response.body['message'];
+    final hasBusinessReason = (detail is String && detail.isNotEmpty) ||
+        (message is String && message.isNotEmpty);
+    final businessText = '${detail ?? ''}${message ?? ''}';
+
+    // FitLoop JWT failures are usually HTTP 401. Skip refresh when the body is
+    // clearly a campus / business failure (wrong 学号密码, 教务不可用, etc.).
     if (response.statusCode == HttpStatus.unauthorized) {
+      if (hasBusinessReason && _looksLikeCampusBusinessError(businessText)) {
+        return false;
+      }
       return true;
     }
     // Empty/generic Spring Security 403 can mean an expired JWT was rejected
     // without a problem-detail body. Business 403s from campus flows include
     // detail/message and must not trigger a session refresh loop.
     if (response.statusCode != HttpStatus.forbidden) return false;
-    final detail = response.body['detail'];
-    final message = response.body['message'];
-    final hasBusinessReason = (detail is String && detail.isNotEmpty) ||
-        (message is String && message.isNotEmpty);
     return !hasBusinessReason;
+  }
+
+  bool _looksLikeCampusBusinessError(String text) {
+    const hints = <String>[
+      '学号',
+      '密码',
+      '教务',
+      '校园认证',
+      'Campus',
+      'xtu',
+      'invalid credentials',
+    ];
+    final lower = text.toLowerCase();
+    return hints.any((hint) => lower.contains(hint.toLowerCase()));
   }
 
   Map<String, dynamic> _expectEnvelope(_JsonHttpResponse response) {
