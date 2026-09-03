@@ -28,6 +28,7 @@ submission/
 .env.*
 !.env.example
 application-local.yml
+deploy/local.tianditu.token
 
 # Java / Spring Boot
 /build/

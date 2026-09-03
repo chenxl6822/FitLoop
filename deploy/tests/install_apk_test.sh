@@ -2688,8 +2688,20 @@ if command -v pwsh >/dev/null 2>&1; then
         "build-http-transition-rejects-ambiguous-switches" \
         "cannot be combined."
 
+    # HTTP transition lock is frozen at 0.1.9+11. Current pubspec may be newer
+    # (HTTPS channel), so policy cases that must pass the version gate use a fixture.
+    build_http_transition_fixture="${TEST_ROOT}/build-http-transition-fixture"
+    mkdir -p \
+        "${build_http_transition_fixture}/deploy" \
+        "${build_http_transition_fixture}/mobile"
+    cp "${BUILD_APK_SCRIPT}" \
+        "${build_http_transition_fixture}/deploy/build-apk.ps1"
+    printf 'name: fitloop\nversion: 0.1.9+11\n' \
+        > "${build_http_transition_fixture}/mobile/pubspec.yaml"
+    HTTP_TRANSITION_BUILD_SCRIPT="${build_http_transition_fixture}/deploy/build-apk.ps1"
+
     run_build_policy_case \
-        "${BUILD_APK_SCRIPT}" \
+        "${HTTP_TRANSITION_BUILD_SCRIPT}" \
         -ApiBaseUrl "http://43.139.72.25" \
         -SigningMode Official \
         -AllowInsecureHttpTransitionRelease
@@ -2698,7 +2710,7 @@ if command -v pwsh >/dev/null 2>&1; then
         "The HTTP transition release requires Compatibility signing."
 
     run_build_policy_case \
-        "${BUILD_APK_SCRIPT}" \
+        "${HTTP_TRANSITION_BUILD_SCRIPT}" \
         -ApiBaseUrl "http://43.139.72.25" \
         -SigningMode Compatibility \
         -ExpectedSignerSha256 \
@@ -2726,7 +2738,7 @@ if command -v pwsh >/dev/null 2>&1; then
         "The HTTP transition release is restricted to version 0.1.9+11."
 
     run_build_policy_case \
-        "${BUILD_APK_SCRIPT}" \
+        "${HTTP_TRANSITION_BUILD_SCRIPT}" \
         -ApiBaseUrl "http://43.139.72.25" \
         -SigningMode Compatibility \
         -AllowInsecureHttpTransitionRelease
