@@ -317,6 +317,65 @@ class CoachAdvice {
   final List<String> safetyNotices;
 }
 
+class AppealAdvice {
+  const AppealAdvice({
+    required this.decision,
+    required this.confidence,
+    required this.evidence,
+    required this.riskFlags,
+    required this.reason,
+  });
+
+  static const _knownDecisions = {'APPROVE', 'REJECT', 'NEED_MORE_INFO'};
+
+  static AppealAdvice? tryParse(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return null;
+      final decision = decoded['decision'];
+      final reason = decoded['reason'];
+      final confidenceRaw = decoded['confidence'];
+      if (decision is! String || !_knownDecisions.contains(decision)) {
+        return null;
+      }
+      if (reason is! String || reason.trim().isEmpty) return null;
+      final confidence = switch (confidenceRaw) {
+        num value => value.toDouble(),
+        String value => double.tryParse(value),
+        _ => null,
+      };
+      if (confidence == null || confidence < 0 || confidence > 1) return null;
+      final evidence = CoachAdvice._stringList(decoded['evidence']);
+      if (evidence.isEmpty) return null;
+      return AppealAdvice(
+        decision: decision,
+        confidence: confidence,
+        evidence: evidence,
+        riskFlags: CoachAdvice._stringList(decoded['risk_flags']),
+        reason: reason.trim(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String get decisionLabel => switch (decision) {
+        'APPROVE' => '建议批准',
+        'REJECT' => '建议拒绝',
+        'NEED_MORE_INFO' => '建议补充材料',
+        _ => decision,
+      };
+
+  int get confidencePercent => (confidence * 100).round();
+
+  final String decision;
+  final double confidence;
+  final List<String> evidence;
+  final List<String> riskFlags;
+  final String reason;
+}
+
 class AdminAgentRunItem {
   const AdminAgentRunItem({
     required this.runId,
@@ -756,6 +815,8 @@ class AgentRunAudit {
   final String? promptVersion;
   final List<AgentProposalItem> proposals;
   final List<AgentToolAuditItem> toolCalls;
+
+  AppealAdvice? get appealAdvice => AppealAdvice.tryParse(resultJson);
 }
 
 class AdminAuditEntry {
