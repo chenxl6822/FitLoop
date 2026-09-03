@@ -140,7 +140,7 @@ public class SportService {
                 ? request.durationSeconds()
                 : Duration.between(record.getStartedAt(), Instant.now()).toSeconds();
         List<TrackPoint> points = loadTrack(record);
-        TrackSummary summary = points.isEmpty() ? new TrackSummary(0.0, false, null) : summarize(points);
+        TrackSummary summary = summarizeForFinish(record, points);
         double distance = request.distanceKm() != null ? request.distanceKm() : summary.distanceKm();
         double calorie = request.calorie() != null ? request.calorie()
                 : calorieCalculator.estimate(record.getSportType(),
@@ -304,6 +304,20 @@ public class SportService {
         } catch (Exception ex) {
             throw new IllegalArgumentException("轨迹数据格式异常");
         }
+    }
+
+    private TrackSummary summarizeForFinish(SportRecord record, List<TrackPoint> points) {
+        boolean gpsMode = "gps".equalsIgnoreCase(record.getCheckinMode());
+        if (gpsMode) {
+            boolean hasUsablePoint = points.stream().anyMatch(point -> point.accuracy() <= 100.0);
+            if (!hasUsablePoint) {
+                return new TrackSummary(0.0, true, "无有效轨迹点");
+            }
+        }
+        if (points.isEmpty()) {
+            return new TrackSummary(0.0, false, null);
+        }
+        return summarize(points);
     }
 
     private TrackSummary summarize(List<TrackPoint> points) {

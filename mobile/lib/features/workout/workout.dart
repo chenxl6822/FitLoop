@@ -338,7 +338,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
             key: const Key('sport-session-end-save'),
             leading: const Icon(Icons.check_circle_outline),
             title: const Text('保存记录'),
-            subtitle: const Text('结束并保存本次运动（无轨迹也可保存）'),
+            subtitle: const Text('结束并保存；GPS 无有效轨迹将记为异常'),
             onTap: () => Navigator.pop(ctx, 'save'),
           ),
           ListTile(
@@ -516,9 +516,12 @@ class _SportSessionPageState extends State<SportSessionPage> {
       if (_selectedCheckinMode == 'gps') {
         await _stopGpsTracking();
 
+        // GPS 失败时 getCurrentPosition 可能无限等待，必须限时，否则结束会卡死。
         Position? lastPosition;
         try {
-          lastPosition = await widget.locationService.getCurrentPosition();
+          lastPosition = await widget.locationService
+              .getCurrentPosition()
+              .timeout(const Duration(seconds: 5));
         } catch (_) {}
 
         if (lastPosition != null &&
@@ -574,7 +577,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
       final record = finishResult.record!;
 
       var statusMsg = '已保存记录 #${record.recordId}';
-      if (_selectedCheckinMode == 'gps') {
+      if (record.status == 2) {
+        statusMsg =
+            '已保存异常记录 #${record.recordId}${record.abnormalReason == null || record.abnormalReason!.isEmpty ? '' : '：${record.abnormalReason}'}';
+      } else if (_selectedCheckinMode == 'gps') {
         statusMsg += '，共上传 $_trackPointCount 个轨迹点';
       } else if (_selectedCheckinMode == 'sensor') {
         statusMsg +=
@@ -643,7 +649,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _clearActiveSession(status: '本地已结束，但放弃同步失败：${friendlyErrorMsg(error)}');
         return;
       }
-      _clearActiveSession(status: '已放弃本次打卡');
+      _clearActiveSession(status: '已放弃本次打卡', refreshAppeals: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -653,7 +659,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
     required String status,
     SportRecord? lastRecord,
     int? pendingSyncCount,
-    bool refreshAppeals = false,
+    bool refreshAppeals = true,
   }) {
     if (!mounted) {
       widget.onSportActiveChanged?.call(false);
@@ -678,6 +684,7 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _lastRecord = lastRecord;
       }
       _status = status;
+      // Refresh recent records after end/abandon so list is not stuck on 进行中.
       if (refreshAppeals) {
         _appealFuture = _loadAppealCenter();
       }

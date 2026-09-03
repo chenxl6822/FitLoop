@@ -41,12 +41,26 @@ class SportServiceTest {
     @Test
     void startAndFinishRunningGps() {
         var start = sportService.start(USER_ID, new StartSessionRequest("running", "gps"));
+        Instant now = Instant.now();
+        sportService.appendTrackBatch(USER_ID, start.sessionId(), new TrackBatchRequest(List.of(
+                new TrackPointInput(0, 31.2304, 121.4737, 5.0, now),
+                new TrackPointInput(1, 31.2305, 121.4738, 5.0, now.plusSeconds(60)))));
         var record = sportService.finish(USER_ID, new FinishSessionRequest(
                 start.sessionId(), 1800L, null, null, 60.0, null, null));
         assertThat(record.sportType()).isEqualTo("running");
         assertThat(record.checkinMode()).isEqualTo("gps");
         assertThat(record.status()).isEqualTo(SportRecord.STATUS_VALID);
         assertThat(record.durationSeconds()).isEqualTo(1800);
+    }
+
+    @Test
+    void finishGpsWithoutTrackPointsIsAbnormal() {
+        var start = sportService.start(USER_ID, new StartSessionRequest("running", "gps"));
+        var record = sportService.finish(USER_ID, new FinishSessionRequest(
+                start.sessionId(), 120L, null, null, 60.0, null, null));
+        assertThat(record.status()).isEqualTo(SportRecord.STATUS_ABNORMAL);
+        assertThat(record.abnormalReason()).contains("无有效轨迹");
+        assertThat(record.distanceKm()).isZero();
     }
 
     @Test
