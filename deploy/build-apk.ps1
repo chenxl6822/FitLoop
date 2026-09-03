@@ -23,6 +23,7 @@ $apkDir = Join-Path $PSScriptRoot "apk"
 $apkTarget = Join-Path $apkDir "app-release.apk"
 $checksumTarget = Join-Path $apkDir "app-release.apk.sha256"
 $versionTarget = Join-Path $apkDir "version.json"
+$localTiandituTokenFile = Join-Path $PSScriptRoot "local.tianditu.token"
 $pubspecVersion = Select-String -Path (Join-Path $mobileDir "pubspec.yaml") -Pattern "^version:\s*(.+)$" |
     Select-Object -First 1 |
     ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
@@ -31,6 +32,14 @@ $versionCode = if ($pubspecVersion -match "\+(\d+)$") { [int]$Matches[1] } else 
 $approvedTransitionApiBaseUrl = "http://43.139.72.25"
 $approvedTransitionVersion = "0.1.9+11"
 $approvedTransitionSignerSha256 = "69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
+
+if ([string]::IsNullOrWhiteSpace($TiandituToken)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:FITLOOP_TIANDITU_TOKEN)) {
+        $TiandituToken = $env:FITLOOP_TIANDITU_TOKEN.Trim()
+    } elseif (Test-Path $localTiandituTokenFile) {
+        $TiandituToken = (Get-Content -Raw -Path $localTiandituTokenFile).Trim()
+    }
+}
 
 if ($AllowInsecureApiForDevelopment -and $AllowInsecureHttpTransitionRelease) {
     throw "-AllowInsecureApiForDevelopment and -AllowInsecureHttpTransitionRelease cannot be combined."
@@ -126,7 +135,10 @@ try {
             "--dart-define=FITLOOP_BUILD_NUMBER=$versionCode"
         )
         if (-not [string]::IsNullOrWhiteSpace($TiandituToken)) {
+            Write-Host "Embedding Tianditu map token via dart-define."
             $buildDefines += "--dart-define=FITLOOP_TIANDITU_TOKEN=$TiandituToken"
+        } else {
+            Write-Warning "FITLOOP_TIANDITU_TOKEN is empty; APK will only show local track preview without road basemap."
         }
         flutter build apk --release @buildDefines
     } finally {
