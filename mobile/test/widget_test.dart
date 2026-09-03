@@ -393,6 +393,60 @@ void main() {
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
+  testWidgets('finishes session when final GPS lookup hangs past timeout',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          streamPositions: [_position(accuracy: 80)],
+          hangOnCurrentPosition: true,
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await _startSportSession(tester, api);
+    await tester.tap(find.byKey(const Key('sport-session-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sport-session-end-save')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+
+    expect(api.finishedSports, 1);
+    expect(api.uploadedTrackPoints, 0);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+  });
+
+  testWidgets('finishes session when final GPS lookup hangs past timeout',
+      (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          streamPositions: [_position(accuracy: 80)],
+          hangOnCurrentPosition: true,
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await _startSportSession(tester, api);
+    await tester.tap(find.byKey(const Key('sport-session-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sport-session-end-save')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+
+    expect(api.finishedSports, 1);
+    expect(api.uploadedTrackPoints, 0);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+  });
+
   testWidgets('end sheet abandon cancels active GPS session', (tester) async {
     final api = _FakeApi();
     await tester.pumpWidget(
@@ -1386,6 +1440,7 @@ class _FakeLocationService implements LocationService {
     List<Position>? streamPositions,
     Position? currentPosition,
     this.throwOnCurrentPosition = false,
+    this.hangOnCurrentPosition = false,
     this.streamError,
   })  : streamPositions = streamPositions ?? [_position()],
         currentPosition = currentPosition ?? _position();
@@ -1395,6 +1450,7 @@ class _FakeLocationService implements LocationService {
   final List<Position> streamPositions;
   final Position currentPosition;
   final bool throwOnCurrentPosition;
+  final bool hangOnCurrentPosition;
   final Object? streamError;
 
   @override
@@ -1406,6 +1462,9 @@ class _FakeLocationService implements LocationService {
   Future<Position> getCurrentPosition() async {
     if (throwOnCurrentPosition) {
       throw Exception('location unavailable');
+    }
+    if (hangOnCurrentPosition) {
+      return Completer<Position>().future;
     }
     return currentPosition;
   }
