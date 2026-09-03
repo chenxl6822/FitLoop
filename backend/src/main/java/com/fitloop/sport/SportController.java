@@ -2,6 +2,7 @@ package com.fitloop.sport;
 
 import com.fitloop.common.ApiResponse;
 import com.fitloop.security.AuthSupport;
+import com.fitloop.sport.SportDtos.CancelSessionRequest;
 import com.fitloop.sport.SportDtos.FinishSessionRequest;
 import com.fitloop.sport.SportDtos.SportListResponse;
 import com.fitloop.sport.SportDtos.SportRecordResponse;
@@ -44,6 +45,11 @@ public class SportController {
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody FinishSessionRequest request) {
         return ApiResponse.ok(sportService.finish(AuthSupport.currentUserId(), request, idempotencyKey));
+    }
+
+    @PostMapping("/session/cancel")
+    public ApiResponse<SportRecordResponse> cancel(@Valid @RequestBody CancelSessionRequest request) {
+        return ApiResponse.ok(sportService.cancel(AuthSupport.currentUserId(), request.sessionId()));
     }
 
     @PostMapping("/photo")

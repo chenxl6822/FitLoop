@@ -393,6 +393,31 @@ void main() {
     expect(find.byIcon(Icons.play_arrow), findsOneWidget);
   });
 
+  testWidgets('end sheet abandon cancels active GPS session', (tester) async {
+    final api = _FakeApi();
+    await tester.pumpWidget(
+      FitLoopApp(
+        api: api,
+        locationService: _FakeLocationService(
+          streamError: Exception('stream unavailable'),
+        ),
+      ),
+    );
+
+    await _openSportPage(tester);
+    await _startSportSession(tester, api);
+    await tester.tap(find.byKey(const Key('sport-session-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('sport-session-end-abandon')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sport-session-end-abandon')));
+    await tester.pumpAndSettle();
+
+    expect(api.cancelledSports, 1);
+    expect(api.finishedSports, 0);
+    expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+    expect(find.textContaining('已放弃本次打卡'), findsOneWidget);
+  });
+
   testWidgets('submits an appeal from a historical abnormal workout',
       (tester) async {
     final api = _FakeApi(
@@ -1304,6 +1329,9 @@ Future<void> _startSportSession(WidgetTester tester, _FakeApi api) async {
 Future<void> _finishSportSession(WidgetTester tester, _FakeApi api) async {
   _expectEnabledSportButton(tester);
   await tester.tap(find.byKey(const Key('sport-session-toggle')));
+  await tester.pumpAndSettle();
+  expect(find.byKey(const Key('sport-session-end-save')), findsOneWidget);
+  await tester.tap(find.byKey(const Key('sport-session-end-save')));
 
   for (var i = 0; i < 10 && api.finishedSports == 0; i += 1) {
     await tester.pump(const Duration(milliseconds: 20));
@@ -1530,6 +1558,8 @@ class _FakeApi implements FitLoopApi {
   int uploadedTrackPoints = 0;
   int startedSports = 0;
   int finishedSports = 0;
+  int cancelledSports = 0;
+  Object? finishError;
   int createdTargets = 0;
   int createdHealthData = 0;
   int reminderUpsertCalls = 0;
@@ -1783,6 +1813,8 @@ class _FakeApi implements FitLoopApi {
     String? note,
     String? photoUrl,
   }) async {
+    final error = finishError;
+    if (error != null) throw error;
     finishedSports += 1;
     return const SportRecord(
       recordId: 1,
@@ -1790,6 +1822,21 @@ class _FakeApi implements FitLoopApi {
       durationSeconds: 1800,
       distanceKm: 0,
       calorie: 240,
+    );
+  }
+
+  @override
+  Future<SportRecord> cancelSport({
+    required String token,
+    required String sessionId,
+  }) async {
+    cancelledSports += 1;
+    return const SportRecord(
+      recordId: 1,
+      status: 4,
+      durationSeconds: 0,
+      distanceKm: 0,
+      calorie: 0,
     );
   }
 

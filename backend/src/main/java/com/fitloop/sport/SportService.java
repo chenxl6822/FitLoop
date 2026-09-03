@@ -165,6 +165,25 @@ public class SportService {
         return SportRecordResponse.from(record);
     }
 
+    @Transactional
+    public SportRecordResponse cancel(Long userId, String sessionId) {
+        SportRecord record = records.findForUpdate(sessionId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("打卡 session 不存在"));
+        if (record.workoutStatus() == WorkoutStatus.CANCELLED) {
+            return SportRecordResponse.from(record);
+        }
+        if (record.workoutStatus() != WorkoutStatus.DRAFT) {
+            throw new IllegalArgumentException("只有进行中的打卡可以放弃");
+        }
+        record.setDurationSeconds(0);
+        record.setDistanceKm(0);
+        record.setCalorie(0);
+        record.setEndedAt(Instant.now());
+        record.cancelDraft();
+        record.setAbnormalReason(null);
+        return SportRecordResponse.from(record);
+    }
+
     public String savePhoto(Long userId, MultipartFile file) {
         if (file.isEmpty()) throw new IllegalArgumentException("文件不能为空");
         if (file.getSize() > 10 * 1024 * 1024) throw new IllegalArgumentException("文件不能超过 10MB");

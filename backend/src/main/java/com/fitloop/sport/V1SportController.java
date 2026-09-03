@@ -42,6 +42,11 @@ public class V1SportController {
         return workouts.finish(AuthSupport.currentUserId(), request, idempotencyKey);
     }
 
+    @PostMapping("/{sessionId}/cancel")
+    public SportRecordResponse cancel(@PathVariable String sessionId) {
+        return workouts.cancel(AuthSupport.currentUserId(), sessionId);
+    }
+
     @GetMapping("/{recordId}/track-points")
     public WorkoutTrackResponse track(@PathVariable Long recordId) {
         return workouts.track(AuthSupport.currentUserId(), recordId);
