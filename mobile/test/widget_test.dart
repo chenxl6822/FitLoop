@@ -1369,6 +1369,122 @@ void _adminDashboardTests() {
     expect(find.text('申诉'), findsOneWidget);
     expect(find.text('Agent'), findsOneWidget);
   });
+
+  testWidgets('queues appeal agent review and reloads agent tab',
+      (tester) async {
+    final api = _FakeApi(
+      adminAppeals: const [
+        AdminAppealItem(
+          appealId: 1,
+          userId: 3,
+          recordId: 25,
+          reason: 'GPS信号异常',
+          status: 'pending',
+          createdAt: '2026-09-03T00:00:00Z',
+        ),
+      ],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: SettingsPage(
+        session: UserSession(
+          token: 'admin-token',
+          refreshToken: 'admin-refresh-token',
+          expiresAt: DateTime.utc(2100),
+          userId: 2,
+          nickname: 'Admin',
+          role: 'ADMIN',
+        ),
+        api: api,
+      ),
+    ));
+    final adminEntry = find.text('管理后台');
+    await tester.scrollUntilVisible(adminEntry, 200);
+    await tester.tap(adminEntry);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('申诉'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('申诉 #1'), findsOneWidget);
+    final initialAgentLoads = api.adminListAgentRunsCalls;
+
+    await tester.tap(find.text('Agent 建议'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Agent 审核已排队'), findsOneWidget);
+
+    await tester.tap(find.text('Agent').last);
+    await tester.pumpAndSettle();
+    expect(api.adminListAgentRunsCalls, greaterThan(initialAgentLoads));
+    expect(find.text('申诉 #1'), findsOneWidget);
+    expect(find.textContaining('QUEUED'), findsOneWidget);
+  });
+
+  testWidgets('renders readable appeal advice instead of raw json',
+      (tester) async {
+    const adviceJson =
+        '{"decision":"REJECT","confidence":0.92,"evidence":["记录 #25 无有效轨迹点"],"risk_flags":["DISTANCE_INVALID"],"reason":"缺少佐证，不建议改判为有效。"}';
+    final api = _FakeApi(
+      adminAgentRuns: const [
+        AdminAgentRunItem(
+          runId: 'run-readable',
+          type: 'APPEAL_REVIEW',
+          status: 'WAITING_APPROVAL',
+          subjectUserId: 3,
+          subjectResourceId: 1,
+          traceId: 'trace-readable',
+          model: 'deepseek-v4-pro',
+          promptVersion: 'appeal-v1',
+          createdAt: '2026-09-03T00:00:00Z',
+        ),
+      ],
+      adminAgentRunAudit: const AgentRunAudit(
+        runId: 'run-readable',
+        status: 'WAITING_APPROVAL',
+        resultJson: adviceJson,
+        model: 'deepseek-v4-pro',
+        promptVersion: 'appeal-v1',
+        proposals: [
+          AgentProposalItem(
+            proposalId: 11,
+            actionType: 'REVIEW_APPEAL',
+            payloadJson: adviceJson,
+            status: 'PENDING',
+            requiresAdmin: true,
+          ),
+        ],
+        toolCalls: [
+          AgentToolAuditItem(toolName: 'get_appeal_evidence', succeeded: true),
+          AgentToolAuditItem(toolName: 'get_appeal_rules', succeeded: true),
+        ],
+      ),
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: SettingsPage(
+        session: UserSession(
+          token: 'admin-token',
+          refreshToken: 'admin-refresh-token',
+          expiresAt: DateTime.utc(2100),
+          userId: 2,
+          nickname: 'Admin',
+          role: 'ADMIN',
+        ),
+        api: api,
+      ),
+    ));
+    final adminEntry = find.text('管理后台');
+    await tester.scrollUntilVisible(adminEntry, 200);
+    await tester.tap(adminEntry);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Agent').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('申诉 #1'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('建议拒绝'), findsWidgets);
+    expect(find.textContaining('置信度：92%'), findsWidgets);
+    expect(find.textContaining('缺少佐证'), findsWidgets);
+    expect(find.textContaining('记录 #25 无有效轨迹点'), findsWidgets);
+    expect(find.text('查看原始 JSON'), findsWidgets);
+  });
 }
 
 Future<void> _startSportSession(WidgetTester tester, _FakeApi api) async {
@@ -1576,7 +1692,12 @@ class _FakeApi implements FitLoopApi {
     List<AgentRunDetail> coachRuns = const <AgentRunDetail>[],
     List<SavedTrainingPlan> trainingPlans = const <SavedTrainingPlan>[],
     NextTrainingSession? nextTraining,
+    List<AdminAppealItem> adminAppeals = const <AdminAppealItem>[],
+    List<AdminAgentRunItem> adminAgentRuns = const <AdminAgentRunItem>[],
+    this.adminAgentRunAudit,
   })  : _targets = List.of(targets),
+        _adminAppeals = List.of(adminAppeals),
+        _adminAgentRuns = List.of(adminAgentRuns),
         _reminders = List.of(reminders),
         _sportRecords = List.of(sportRecords),
         _appeals = List.of(appeals),
@@ -1607,6 +1728,10 @@ class _FakeApi implements FitLoopApi {
   final List<SportRecord> _sportRecords;
   final List<AppealResponse> _appeals;
   final List<AgentRunDetail> _coachRuns;
+  final List<AdminAppealItem> _adminAppeals;
+  final List<AdminAgentRunItem> _adminAgentRuns;
+  final AgentRunAudit? adminAgentRunAudit;
+  int adminListAgentRunsCalls = 0;
   final List<SavedTrainingPlan> _trainingPlans;
   NextTrainingSession? _nextTraining;
   final Object? reminderUpsertError;
@@ -2306,7 +2431,10 @@ class _FakeApi implements FitLoopApi {
     int page = 0,
     int size = 20,
   }) async {
-    return const AdminAppealPage(items: [], totalElements: 0);
+    return AdminAppealPage(
+      items: List.of(_adminAppeals),
+      totalElements: _adminAppeals.length,
+    );
   }
 
   @override
@@ -2322,7 +2450,20 @@ class _FakeApi implements FitLoopApi {
     required String token,
     required int appealId,
   }) async {
-    return 'run-1';
+    const runId = '9a741eb8-test-run';
+    _adminAgentRuns.insert(
+      0,
+      AdminAgentRunItem(
+        runId: runId,
+        type: 'APPEAL_REVIEW',
+        status: 'QUEUED',
+        subjectUserId: 3,
+        subjectResourceId: appealId,
+        traceId: 'trace-1',
+        createdAt: '2026-09-03T00:00:00Z',
+      ),
+    );
+    return runId;
   }
 
   @override
@@ -2333,7 +2474,11 @@ class _FakeApi implements FitLoopApi {
     int page = 0,
     int size = 20,
   }) async {
-    return const AdminAgentRunPage(items: [], totalElements: 0);
+    adminListAgentRunsCalls += 1;
+    return AdminAgentRunPage(
+      items: List.of(_adminAgentRuns),
+      totalElements: _adminAgentRuns.length,
+    );
   }
 
   @override
@@ -2341,12 +2486,13 @@ class _FakeApi implements FitLoopApi {
     required String token,
     required String runId,
   }) async {
-    return AgentRunAudit(
-      runId: runId,
-      status: 'SUCCEEDED',
-      proposals: const [],
-      toolCalls: const [],
-    );
+    return adminAgentRunAudit ??
+        AgentRunAudit(
+          runId: runId,
+          status: 'SUCCEEDED',
+          proposals: const [],
+          toolCalls: const [],
+        );
   }
 
   @override

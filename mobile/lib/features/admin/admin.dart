@@ -11,6 +11,12 @@ class _AdminDashboardPage extends StatefulWidget {
 
 class _AdminDashboardPageState extends State<_AdminDashboardPage> {
   int _tabIndex = 0;
+  final GlobalKey<_AdminAgentRunsTabState> _agentRunsKey =
+      GlobalKey<_AdminAgentRunsTabState>();
+
+  void _reloadAgentRuns() {
+    _agentRunsKey.currentState?.reload();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,15 +42,28 @@ class _AdminDashboardPageState extends State<_AdminDashboardPage> {
         index: _tabIndex,
         children: [
           _AdminStatsTab(api: widget.api, token: widget.token),
-          _AdminAppealsTab(api: widget.api, token: widget.token),
-          _AdminAgentRunsTab(api: widget.api, token: widget.token),
+          _AdminAppealsTab(
+            api: widget.api,
+            token: widget.token,
+            onAgentReviewQueued: _reloadAgentRuns,
+          ),
+          _AdminAgentRunsTab(
+            key: _agentRunsKey,
+            api: widget.api,
+            token: widget.token,
+          ),
           _AdminUsersTab(api: widget.api, token: widget.token),
           _AdminFeedbackTab(api: widget.api, token: widget.token),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
-        onDestinationSelected: (i) => setState(() => _tabIndex = i),
+        onDestinationSelected: (i) {
+          setState(() => _tabIndex = i);
+          if (i == 2) {
+            _reloadAgentRuns();
+          }
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.dashboard), label: '概览'),
           NavigationDestination(icon: Icon(Icons.gavel), label: '申诉'),
@@ -112,10 +131,15 @@ class _AdminStatCard extends StatelessWidget {
 }
 
 class _AdminAppealsTab extends StatefulWidget {
-  const _AdminAppealsTab({required this.api, required this.token});
+  const _AdminAppealsTab({
+    required this.api,
+    required this.token,
+    this.onAgentReviewQueued,
+  });
 
   final FitLoopApi api;
   final String token;
+  final VoidCallback? onAgentReviewQueued;
 
   @override
   State<_AdminAppealsTab> createState() => _AdminAppealsTabState();
@@ -180,6 +204,7 @@ class _AdminAppealsTabState extends State<_AdminAppealsTab> {
         appealId: appeal.appealId,
       );
       if (!mounted) return;
+      widget.onAgentReviewQueued?.call();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Agent 审核已排队：${runId.substring(0, 8)}')),
       );
@@ -257,7 +282,11 @@ class _AdminAppealsTabState extends State<_AdminAppealsTab> {
 }
 
 class _AdminAgentRunsTab extends StatefulWidget {
-  const _AdminAgentRunsTab({required this.api, required this.token});
+  const _AdminAgentRunsTab({
+    super.key,
+    required this.api,
+    required this.token,
+  });
 
   final FitLoopApi api;
   final String token;
@@ -273,6 +302,11 @@ class _AdminAgentRunsTabState extends State<_AdminAgentRunsTab> {
   void initState() {
     super.initState();
     _refresh();
+  }
+
+  void reload() {
+    if (!mounted) return;
+    setState(_refresh);
   }
 
   void _refresh() {
@@ -334,12 +368,22 @@ class _AdminAgentRunsTabState extends State<_AdminAgentRunsTab> {
                   Text('Prompt：${audit.promptVersion ?? "-"}'),
                   Text('工具调用：${audit.toolCalls.length} 次'),
                   const Divider(),
-                  SelectableText(audit.resultJson ?? '尚未生成建议'),
+                  _AppealAdviceView(
+                    advice: audit.appealAdvice,
+                    rawJson: audit.resultJson,
+                  ),
                   for (final proposal in audit.proposals) ...[
                     const Divider(),
                     Text('操作提案：${proposal.actionType}'),
-                    SelectableText(proposal.payloadJson),
                     Text('状态：${proposal.status}'),
+                    if (proposal.payloadJson != audit.resultJson) ...[
+                      const SizedBox(height: 8),
+                      _AppealAdviceView(
+                        advice: AppealAdvice.tryParse(proposal.payloadJson),
+                        rawJson: proposal.payloadJson,
+                        emptyLabel: '提案内容无法解析',
+                      ),
+                    ],
                     if (proposal.status == 'PENDING')
                       Wrap(
                         spacing: 8,
@@ -392,27 +436,105 @@ class _AdminAgentRunsTabState extends State<_AdminAgentRunsTab> {
           return Center(child: Text(friendlyErrorMsg(snapshot.error)));
         }
         final runs = snapshot.data!.items;
-        if (runs.isEmpty) return const Center(child: Text('暂无 Agent 审核任务'));
         return RefreshIndicator(
           onRefresh: () async => setState(_refresh),
-          child: ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: runs.length,
-            itemBuilder: (context, index) {
-              final run = runs[index];
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.smart_toy_outlined),
-                  title: Text('申诉 #${run.subjectResourceId ?? "-"}'),
-                  subtitle: Text('${run.status} · ${run.model ?? "等待模型"}'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _showAudit(run),
+          child: runs.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(height: 160),
+                    Center(child: Text('暂无 Agent 审核任务')),
+                  ],
+                )
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(12),
+                  itemCount: runs.length,
+                  itemBuilder: (context, index) {
+                    final run = runs[index];
+                    return Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.smart_toy_outlined),
+                        title: Text('申诉 #${run.subjectResourceId ?? "-"}'),
+                        subtitle:
+                            Text('${run.status} · ${run.model ?? "等待模型"}'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _showAudit(run),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
-          ),
         );
       },
+    );
+  }
+}
+
+class _AppealAdviceView extends StatelessWidget {
+  const _AppealAdviceView({
+    required this.advice,
+    required this.rawJson,
+    this.emptyLabel = '尚未生成建议',
+  });
+
+  final AppealAdvice? advice;
+  final String? rawJson;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = advice;
+    if (parsed == null) {
+      return SelectableText(
+        (rawJson == null || rawJson!.trim().isEmpty) ? emptyLabel : rawJson!,
+      );
+    }
+    final theme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(parsed.decisionLabel,
+            style: theme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
+        Text('置信度：${parsed.confidencePercent}%'),
+        const SizedBox(height: 12),
+        Text('理由', style: theme.titleSmall),
+        const SizedBox(height: 4),
+        SelectableText(parsed.reason),
+        if (parsed.evidence.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text('证据', style: theme.titleSmall),
+          const SizedBox(height: 4),
+          for (final item in parsed.evidence)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('• '),
+                  Expanded(child: SelectableText(item)),
+                ],
+              ),
+            ),
+        ],
+        if (parsed.riskFlags.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text('风险标记', style: theme.titleSmall),
+          const SizedBox(height: 4),
+          SelectableText(parsed.riskFlags.join(' · ')),
+        ],
+        if (rawJson != null && rawJson!.trim().isNotEmpty)
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('查看原始 JSON'),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SelectableText(rawJson!),
+              ),
+            ],
+          ),
+      ],
     );
   }
 }
