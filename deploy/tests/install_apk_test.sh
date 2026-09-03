@@ -29,6 +29,8 @@ BUILD_POLICY_OUTPUT=""
 
 COMPATIBILITY_SIGNER="69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
 WRONG_SIGNER="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+HTTP_TRANSITION_VERSION="0.1.9"
+HTTP_TRANSITION_VERSION_CODE="11"
 
 cleanup() {
     if [ -n "${LOCK_HOLDER_PID}" ]; then
@@ -84,8 +86,8 @@ write_metadata() {
     local signer_sha256="${4:-${COMPATIBILITY_SIGNER}}"
     local signing_mode="${5:-Compatibility}"
     local apk_path="${6:-$(dirname "${target}")/app-release.apk}"
-    local version="${7:-0.1.9}"
-    local version_code="${8:-11}"
+    local version="${7:-0.1.10}"
+    local version_code="${8:-12}"
     local apk_size
     apk_size="$(
         python3 - "${apk_path}" <<'PY'
@@ -110,6 +112,23 @@ PY
   "signingMode": "${signing_mode}"
 }
 JSON
+}
+
+write_http_transition_metadata() {
+    local target="$1"
+    local sha256="$2"
+    local api_base_url="${3:-http://43.139.72.25}"
+    local version="${4:-${HTTP_TRANSITION_VERSION}}"
+    local version_code="${5:-${HTTP_TRANSITION_VERSION_CODE}}"
+    write_metadata \
+        "${target}" \
+        "${sha256}" \
+        "${api_base_url}" \
+        "${COMPATIBILITY_SIGNER}" \
+        "Compatibility" \
+        "$(dirname "${target}")/app-release.apk" \
+        "${version}" \
+        "${version_code}"
 }
 
 create_release() {
@@ -655,8 +674,8 @@ make_existing_case "${missing_field_dir}"
 missing_field_sha="$(cat "${missing_field_dir}/new.sha256")"
 cat > "${missing_field_dir}/source/version.json" <<JSON
 {
-  "version": "0.1.9",
-  "versionCode": 11,
+  "version": "0.1.10",
+  "versionCode": 12,
   "apiBaseUrl": "https://app.fitloop-health.cn",
   "sha256": "${missing_field_sha}"
 }
@@ -718,10 +737,9 @@ make_existing_case "${transition_without_approval_dir}"
 transition_without_approval_sha="$(
     cat "${transition_without_approval_dir}/new.sha256"
 )"
-write_metadata \
+write_http_transition_metadata \
     "${transition_without_approval_dir}/source/version.json" \
-    "${transition_without_approval_sha}" \
-    "http://43.139.72.25"
+    "${transition_without_approval_sha}"
 transition_without_approval_before="$(
     active_snapshot "${transition_without_approval_dir}"
 )"
@@ -737,10 +755,9 @@ assert_failure_unchanged \
 transition_verify_dir="${TEST_ROOT}/transition-verify"
 make_existing_case "${transition_verify_dir}"
 transition_verify_sha="$(cat "${transition_verify_dir}/new.sha256")"
-write_metadata \
+write_http_transition_metadata \
     "${transition_verify_dir}/source/version.json" \
-    "${transition_verify_sha}" \
-    "http://43.139.72.25"
+    "${transition_verify_sha}"
 transition_verify_before="$(
     publication_tree_snapshot "${transition_verify_dir}"
 )"
@@ -768,10 +785,9 @@ transition_activate_sha="$(cat "${transition_activate_dir}/new.sha256")"
 transition_activate_previous_sha="$(
     cat "${transition_activate_dir}/current.sha256"
 )"
-write_metadata \
+write_http_transition_metadata \
     "${transition_activate_dir}/source/version.json" \
-    "${transition_activate_sha}" \
-    "http://43.139.72.25"
+    "${transition_activate_sha}"
 if ! run_install "${transition_activate_dir}" \
     --allow-insecure-http-transition-release \
     "file://${transition_activate_dir}/source/app-release.apk" \
@@ -803,13 +819,10 @@ while IFS='|' read -r transition_policy_name version version_code; do
     transition_policy_version_sha="$(
         cat "${transition_policy_version_dir}/new.sha256"
     )"
-    write_metadata \
+    write_http_transition_metadata \
         "${transition_policy_version_dir}/source/version.json" \
         "${transition_policy_version_sha}" \
         "http://43.139.72.25" \
-        "${COMPATIBILITY_SIGNER}" \
-        "Compatibility" \
-        "${transition_policy_version_dir}/source/app-release.apk" \
         "${version}" \
         "${version_code}"
     transition_policy_version_before="$(
@@ -827,6 +840,7 @@ while IFS='|' read -r transition_policy_name version version_code; do
 done <<'TRANSITION_POLICY_VERSIONS'
 version|0.1.8|11
 version-code|0.1.9|10
+https-channel-version|0.1.10|12
 TRANSITION_POLICY_VERSIONS
 
 transition_http_download_index=0
@@ -840,10 +854,9 @@ while IFS='|' read -r transition_download_name apk_url version_url; do
     transition_http_download_sha="$(
         cat "${transition_http_download_dir}/new.sha256"
     )"
-    write_metadata \
+    write_http_transition_metadata \
         "${transition_http_download_dir}/source/version.json" \
-        "${transition_http_download_sha}" \
-        "http://43.139.72.25"
+        "${transition_http_download_sha}"
     transition_http_download_before="$(
         active_snapshot "${transition_http_download_dir}"
     )"
@@ -872,7 +885,7 @@ while IFS='|' read -r transition_variant_name transition_variant_url; do
     )"
     make_existing_case "${transition_variant_dir}"
     transition_variant_sha="$(cat "${transition_variant_dir}/new.sha256")"
-    write_metadata \
+    write_http_transition_metadata \
         "${transition_variant_dir}/source/version.json" \
         "${transition_variant_sha}" \
         "${transition_variant_url}"

@@ -10,10 +10,13 @@
 
 set -euo pipefail
 
-readonly APPROVED_VERSION="0.1.9"
-readonly APPROVED_VERSION_CODE="11"
+readonly APPROVED_VERSION="0.1.10"
+readonly APPROVED_VERSION_CODE="12"
 readonly APPROVED_SIGNING_MODE="Compatibility"
 readonly APPROVED_SIGNER_SHA256="69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
+# Frozen HTTP-transition channel; sealed separately from the HTTPS release pin.
+readonly APPROVED_HTTP_TRANSITION_VERSION="0.1.9"
+readonly APPROVED_HTTP_TRANSITION_VERSION_CODE="11"
 readonly APPROVED_HTTP_TRANSITION_API_BASE_URL="http://43.139.72.25"
 readonly MAX_APK_BYTES="536870912"
 readonly MAX_METADATA_BYTES="1048576"
@@ -396,7 +399,9 @@ validate_metadata() {
         "${APPROVED_SIGNING_MODE}" \
         "${APPROVED_SIGNER_SHA256}" \
         "${ALLOW_INSECURE_HTTP_TRANSITION_RELEASE}" \
-        "${APPROVED_HTTP_TRANSITION_API_BASE_URL}" <<'PY'
+        "${APPROVED_HTTP_TRANSITION_API_BASE_URL}" \
+        "${APPROVED_HTTP_TRANSITION_VERSION}" \
+        "${APPROVED_HTTP_TRANSITION_VERSION_CODE}" <<'PY'
 import datetime
 import ipaddress
 import json
@@ -416,6 +421,8 @@ from urllib.parse import urlsplit
     approved_signer_sha256,
     allow_insecure_http_transition_release,
     approved_http_transition_api_base_url,
+    approved_http_transition_version,
+    approved_http_transition_version_code,
 ) = sys.argv[1:]
 
 
@@ -644,11 +651,17 @@ try:
     )
 
     if validation_mode == "policy":
-        if version != approved_version:
-            raise ValueError(f"version must be {approved_version}")
-        if version_code != int(approved_version_code):
+        if allow_insecure_http_transition_release == "true":
+            expected_version = approved_http_transition_version
+            expected_version_code = int(approved_http_transition_version_code)
+        else:
+            expected_version = approved_version
+            expected_version_code = int(approved_version_code)
+        if version != expected_version:
+            raise ValueError(f"version must be {expected_version}")
+        if version_code != expected_version_code:
             raise ValueError(
-                f"versionCode must be {approved_version_code}"
+                f"versionCode must be {expected_version_code}"
             )
         if signing_mode != approved_signing_mode:
             raise ValueError(
