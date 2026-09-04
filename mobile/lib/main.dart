@@ -15,6 +15,7 @@ import 'api_config.dart';
 import 'api_client.dart';
 import 'fitloop_assets.dart';
 import 'onboarding_screen.dart';
+import 'product_telemetry.dart';
 import 'reminder_scheduler.dart';
 import 'secure_session_storage.dart';
 import 'splash_screen.dart';
