@@ -75,7 +75,7 @@ class ProductionSchemaValidationIT {
                 "select version from flyway_schema_history "
                         + "where success = 1 order by installed_rank desc limit 1",
                 String.class))
-                .isEqualTo("9");
+                .isEqualTo("10");
 
         UserInfo user = new UserInfo();
         user.setPhone("13973000001");
