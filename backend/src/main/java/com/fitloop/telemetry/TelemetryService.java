@@ -1,7 +1,5 @@
 package com.fitloop.telemetry;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitloop.telemetry.TelemetryDtos.EventItem;
 import com.fitloop.telemetry.TelemetryDtos.IngestEventsRequest;
 import com.fitloop.telemetry.TelemetryDtos.IngestEventsResponse;
@@ -16,6 +14,7 @@ import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class TelemetryService {
@@ -64,8 +63,8 @@ public class TelemetryService {
         String propsJson;
         try {
             propsJson = objectMapper.writeValueAsString(sanitized);
-        } catch (JsonProcessingException ex) {
-            throw new IllegalArgumentException("props 无法序列化");
+        } catch (RuntimeException ex) {
+            throw new IllegalArgumentException("props 无法序列化", ex);
         }
         if (propsJson.length() > 2000) {
             throw new IllegalArgumentException("props 过长");

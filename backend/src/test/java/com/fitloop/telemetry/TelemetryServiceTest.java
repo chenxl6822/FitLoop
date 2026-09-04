@@ -3,7 +3,6 @@ package com.fitloop.telemetry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fitloop.telemetry.TelemetryDtos.EventItem;
 import com.fitloop.telemetry.TelemetryDtos.IngestEventsRequest;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -18,6 +17,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import tools.jackson.databind.ObjectMapper;
 
 @DataJpaTest
 @Import({TelemetryService.class, TelemetryServiceTest.TelemetryTestConfig.class})
@@ -26,7 +26,7 @@ class TelemetryServiceTest {
     static class TelemetryTestConfig {
         @Bean
         ObjectMapper objectMapper() {
-            return new ObjectMapper().findAndRegisterModules();
+            return new ObjectMapper();
         }
 
         @Bean
@@ -95,7 +95,7 @@ class TelemetryServiceTest {
     }
 
     @Test
-    void serializesBooleanAndCounts() throws Exception {
+    void serializesBooleanAndCounts() {
         Map<String, Object> clean = telemetry.sanitizeProps(Map.of(
                 "granted", true,
                 "synced_count", 2,
