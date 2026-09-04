@@ -2553,6 +2553,12 @@ class _FakeApi implements FitLoopApi {
   }
 
   @override
+  Future<void> ingestTelemetryEvents({
+    required String token,
+    required List<Map<String, Object?>> events,
+  }) async {}
+
+  @override
   Future<SportTarget> editTarget({
     required String token,
     required int targetId,

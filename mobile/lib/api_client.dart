@@ -1296,6 +1296,18 @@ class HttpFitLoopApi implements FitLoopApi, SessionAwareApi {
     return AdminAuditPage.fromJson(body['data'] as Map<String, dynamic>);
   }
 
+  @override
+  Future<void> ingestTelemetryEvents({
+    required String token,
+    required List<Map<String, Object?>> events,
+  }) async {
+    await _post(
+      '/api/v1/telemetry/events',
+      {'events': events},
+      token: token,
+    );
+  }
+
   String? _absoluteUrl(String? url) {
     if (url == null || url.isEmpty) return url;
     final parsed = Uri.tryParse(url);

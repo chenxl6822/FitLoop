@@ -287,4 +287,10 @@ abstract class FitLoopApi {
     int page = 0,
     int size = 20,
   });
+
+  /// Stage A product telemetry. Props must be non-PII scalars only.
+  Future<void> ingestTelemetryEvents({
+    required String token,
+    required List<Map<String, Object?>> events,
+  });
 }

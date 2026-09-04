@@ -124,6 +124,11 @@ class _SportSessionPageState extends State<SportSessionPage> {
   String _selectedSportType = 'running';
   String _selectedCheckinMode = 'gps';
   int _stepCount = 0;
+
+  ProductTelemetry get _telemetry => ProductTelemetry(
+        widget.api,
+        token: () => widget.session.token,
+      );
   PedometerService? _pedometerService;
   StreamSubscription<int>? _stepSubscription;
 
@@ -148,6 +153,11 @@ class _SportSessionPageState extends State<SportSessionPage> {
         widget.api,
         token: widget.session.token,
       ).processAll();
+      unawaited(_telemetry.track('queue_retry', props: {
+        'synced_count': result.synced,
+        'failed_count': result.failed,
+        'result': result.failed == 0 ? 'success' : 'partial',
+      }));
       if (!mounted) return;
       setState(() {
         _pendingSyncCount = result.failed;
@@ -204,6 +214,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
         false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kMapPrivacyConsentKey, granted);
+    unawaited(_telemetry.track('map_consent', props: {
+      'granted': granted,
+      'forced': force,
+    }));
     if (mounted) {
       setState(() {
         _mapPrivacyGranted = granted;
@@ -386,7 +400,17 @@ class _SportSessionPageState extends State<SportSessionPage> {
       widget.onSportActiveChanged?.call(true);
       _startGpsTracking(start.sessionId);
       _startElapsedTimer();
+      unawaited(_telemetry.track('workout_start', props: {
+        'sport_type': _selectedSportType,
+        'checkin_mode': 'gps',
+        'result': 'success',
+      }));
     } catch (error) {
+      unawaited(_telemetry.track('workout_start', props: {
+        'sport_type': _selectedSportType,
+        'checkin_mode': 'gps',
+        'result': 'failure',
+      }));
       setState(() {
         _status = friendlyErrorMsg(error);
         _busy = false;
@@ -564,6 +588,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
 
       if (finishResult.queued) {
         final pendingCount = await SyncQueue.length();
+        unawaited(_telemetry.track('workout_finish', props: {
+          'checkin_mode': _selectedCheckinMode,
+          'result': 'queued',
+        }));
         if (!mounted) return;
         _elapsedTimer?.cancel();
         _elapsedTimer = null;
@@ -575,6 +603,12 @@ class _SportSessionPageState extends State<SportSessionPage> {
       }
 
       final record = finishResult.record!;
+
+      unawaited(_telemetry.track('workout_finish', props: {
+        'checkin_mode': _selectedCheckinMode,
+        'result': 'saved',
+        'status_code': record.status,
+      }));
 
       var statusMsg = '已保存记录 #${record.recordId}';
       if (record.status == 2) {
@@ -615,6 +649,10 @@ class _SportSessionPageState extends State<SportSessionPage> {
         _pedometerService?.dispose();
       }
       _clearActiveSession(status: friendlyErrorMsg(error));
+      unawaited(_telemetry.track('workout_finish', props: {
+        'checkin_mode': _selectedCheckinMode,
+        'result': 'failure',
+      }));
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -779,13 +817,34 @@ class _SportSessionPageState extends State<SportSessionPage> {
   Future<bool> _ensureLocationPermission() async {
     final permission = await widget.locationService.checkPermission();
     if (_canUseLocation(permission)) {
+      unawaited(_telemetry.track('location_auth_result', props: {
+        'result': 'granted',
+        'source': 'existing',
+      }));
       return true;
     }
     if (permission == LocationPermission.denied) {
       final result = await widget.locationService.requestPermission();
       if (_canUseLocation(result)) {
+        unawaited(_telemetry.track('location_auth_result', props: {
+          'result': 'granted',
+          'source': 'request',
+        }));
         return true;
       }
+      unawaited(_telemetry.track('location_auth_result', props: {
+        'result': result == LocationPermission.deniedForever
+            ? 'denied_forever'
+            : 'denied',
+        'source': 'request',
+      }));
+    } else {
+      unawaited(_telemetry.track('location_auth_result', props: {
+        'result': permission == LocationPermission.deniedForever
+            ? 'denied_forever'
+            : 'denied',
+        'source': 'existing',
+      }));
     }
     if (mounted) {
       setState(() => _status = '需要位置权限才能使用GPS打卡');

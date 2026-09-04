@@ -94,12 +94,19 @@ class _DashboardPageState extends State<DashboardPage> {
     );
     if (confirmed != true || !mounted) return;
     setState(() => _completingTraining = true);
+    final telemetry = ProductTelemetry(
+      widget.api,
+      token: () => widget.session.token,
+    );
     try {
       await widget.api.completeTrainingDay(
         token: widget.session.token,
         planId: session.planId,
         day: session.day,
       );
+      unawaited(telemetry.track('today_plan_complete', props: {
+        'result': 'success',
+      }));
       if (!mounted) return;
       setState(() {
         _completingTraining = false;
@@ -110,6 +117,9 @@ class _DashboardPageState extends State<DashboardPage> {
         const SnackBar(content: Text('训练已完成，下一项计划已更新')),
       );
     } catch (error) {
+      unawaited(telemetry.track('today_plan_complete', props: {
+        'result': 'failure',
+      }));
       if (!mounted) return;
       setState(() => _completingTraining = false);
       ScaffoldMessenger.of(context).showSnackBar(
