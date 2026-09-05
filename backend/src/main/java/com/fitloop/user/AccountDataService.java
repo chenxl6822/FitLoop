@@ -116,6 +116,7 @@ public class AccountDataService {
                     recordId.toString());
         }
         jdbc.update("delete from idempotency_record where user_id = ?", userId);
+        jdbc.update("delete from telemetry_event where user_id = ?", userId);
         jdbc.update("delete from sport_record where user_id = ?", userId);
         jdbc.update("delete from refresh_token where user_id = ?", userId);
         if (user.getPhone() != null) {

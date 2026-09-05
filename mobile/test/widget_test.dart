@@ -1326,6 +1326,10 @@ void _adminDashboardTests() {
     await tester.pumpAndSettle();
     expect(api.deletedAccountPassword, 'current-password');
     expect(deleted, isTrue);
+    expect(
+      api.telemetryEventNames,
+      isNot(contains('account_delete_result')),
+    );
   });
 
   testWidgets('admin dashboard is visible only to admin sessions',
@@ -1753,6 +1757,7 @@ class _FakeApi implements FitLoopApi {
   int trainingPlanQueries = 0;
   int accountDataExports = 0;
   String? deletedAccountPassword;
+  final List<String> telemetryEventNames = [];
   final List<({int planId, int day})> completedTrainingDays = [];
   int rankingCalls = 0;
   final List<int> confirmedCoachProposals = [];
@@ -2556,7 +2561,11 @@ class _FakeApi implements FitLoopApi {
   Future<void> ingestTelemetryEvents({
     required String token,
     required List<Map<String, Object?>> events,
-  }) async {}
+  }) async {
+    telemetryEventNames.addAll(
+      events.map((event) => event['eventName']).whereType<String>(),
+    );
+  }
 
   @override
   Future<SportTarget> editTarget({

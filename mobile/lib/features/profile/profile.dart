@@ -622,15 +622,7 @@ class _AccountDataPageState extends State<_AccountDataPage> {
       _deleting = true;
       _error = null;
     });
-    final telemetry = ProductTelemetry(
-      widget.api,
-      token: () => widget.session.token,
-    );
     try {
-      // Emit before delete: the access token is revoked on success.
-      await telemetry.track('account_delete_result', props: {
-        'result': 'success',
-      });
       await widget.api.deleteAccount(
         token: widget.session.token,
         password: password,
@@ -638,9 +630,6 @@ class _AccountDataPageState extends State<_AccountDataPage> {
       if (!mounted) return;
       widget.onDeleted?.call();
     } catch (error) {
-      unawaited(telemetry.track('account_delete_result', props: {
-        'result': 'failure',
-      }));
       if (mounted) setState(() => _error = _friendlyError(error));
     } finally {
       if (mounted) setState(() => _deleting = false);
