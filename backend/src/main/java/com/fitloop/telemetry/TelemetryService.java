@@ -25,8 +25,7 @@ public class TelemetryService {
             "queue_retry",
             "map_consent",
             "today_plan_complete",
-            "export_result",
-            "account_delete_result");
+            "export_result");
 
     private static final Pattern PROP_KEY = Pattern.compile("^[a-z][a-z0-9_]{0,31}$");
     private static final Pattern FORBIDDEN_KEY = Pattern.compile(

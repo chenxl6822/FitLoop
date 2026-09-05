@@ -75,6 +75,15 @@ class TelemetryServiceTest {
     }
 
     @Test
+    void rejectsAccountDeletionResultThatCouldOutliveErasure() {
+        assertThatThrownBy(() -> telemetry.ingest(1L, new IngestEventsRequest(List.of(
+                        new EventItem("account_delete_result", null, Map.of("result", "success"))))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("不支持的事件");
+        assertThat(events.count()).isZero();
+    }
+
+    @Test
     void rejectsLatitudePropKeys() {
         assertThatThrownBy(() -> telemetry.sanitizeProps(Map.of("lat", 28.1)))
                 .isInstanceOf(IllegalArgumentException.class)

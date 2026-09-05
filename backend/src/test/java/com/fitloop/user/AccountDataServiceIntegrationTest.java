@@ -58,11 +58,14 @@ class AccountDataServiceIntegrationTest {
                 userId);
         jdbc.update("insert into feedback(user_id, type, content, status) values (?, 'feature', 'synthetic', 'pending')",
                 userId);
+        jdbc.update("insert into telemetry_event(user_id, event_name, props_json, created_at) "
+                + "values (?, 'workout_finish', '{\"result\":\"saved\"}', current_timestamp)", userId);
 
         assertThatThrownBy(() -> accountData.delete(userId, "wrong-pass"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("密码");
         assertThat(count("sport_record", userId)).isEqualTo(1);
+        assertThat(count("telemetry_event", userId)).isEqualTo(1);
 
         accountData.delete(userId, "delete-pass");
         users.flush();
@@ -77,6 +80,7 @@ class AccountDataServiceIntegrationTest {
         assertThat(count("health_data", userId)).isZero();
         assertThat(count("reminder_config", userId)).isZero();
         assertThat(count("feedback", userId)).isZero();
+        assertThat(count("telemetry_event", userId)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from sport_track_point where record_id = ?",
                 Long.class, recordId)).isZero();
         assertThatThrownBy(() -> accountData.export(userId)).isInstanceOf(IllegalArgumentException.class);
