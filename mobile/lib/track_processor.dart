@@ -102,6 +102,20 @@ class TrackProcessor {
   }
 }
 
+String formatPace(int totalSeconds, double distanceKm) {
+  if (totalSeconds <= 0 || distanceKm < 0.01) return '--';
+  final paceSeconds = totalSeconds / distanceKm;
+  final paceMin = paceSeconds ~/ 60;
+  final paceSec = (paceSeconds % 60).round();
+  if (paceSec == 60) return '${paceMin + 1}\'00"/km';
+  return '$paceMin\'${paceSec.toString().padLeft(2, '0')}"/km';
+}
+
+String formatPaceFromSpeed(double? speedMs) {
+  if (speedMs == null || !speedMs.isFinite || speedMs < 0.2) return '--';
+  return formatPace((1000 / speedMs).round(), 1);
+}
+
 double haversineMeters(double lat1, double lng1, double lat2, double lng2) {
   const earthRadiusMeters = 6371000.0;
   final dLat = _degToRad(lat2 - lat1);

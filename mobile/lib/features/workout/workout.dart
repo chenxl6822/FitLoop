@@ -1015,14 +1015,6 @@ class _SportSessionPageState extends State<SportSessionPage> {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  String _formatPace(int totalSeconds, double distanceKm) {
-    if (distanceKm < 0.01) return '--';
-    final paceSeconds = totalSeconds / distanceKm;
-    final paceMin = paceSeconds ~/ 60;
-    final paceSec = (paceSeconds % 60).toInt();
-    return '$paceMin\'${paceSec.toString().padLeft(2, '0')}"';
-  }
-
   bool _isCurrentTrackingSession(int generation, String sessionId) {
     return _trackingGeneration == generation && _sessionId == sessionId;
   }
@@ -1169,27 +1161,23 @@ class _SportSessionPageState extends State<SportSessionPage> {
               value: '${_trackProcessor.totalDistanceKm.toStringAsFixed(2)} km',
               icon: Icons.straighten_outlined),
           _MetricCard(
-              label: '平均速度',
-              value: _trackProcessor.averageSpeedKmh(_activeSeconds) < 0.1
-                  ? '--'
-                  : '${_trackProcessor.averageSpeedKmh(_activeSeconds).toStringAsFixed(1)} km/h',
-              icon: Icons.speed_outlined),
-          if (_currentSpeedMs != null)
-            _MetricCard(
-                label: '瞬时速度',
-                value: '${(_currentSpeedMs! * 3.6).toStringAsFixed(1)} km/h',
-                icon: Icons.av_timer_outlined),
-          _MetricCard(
               label: '平均配速',
-              value: _formatPace(
+              value: formatPace(
                   _activeSeconds, _trackProcessor.totalDistanceKm),
-              icon: Icons.trending_down_outlined),
-          if (_currentAccuracy != null &&
-              _currentAccuracy! > _maxAcceptedAccuracyMeters)
+              icon: Icons.speed_outlined),
+          _MetricCard(
+              label: '当前配速',
+              value: formatPaceFromSpeed(_currentSpeedMs),
+              icon: Icons.av_timer_outlined),
+          if (_currentAccuracy != null)
             _MetricCard(
                 label: 'GPS 精度',
-                value: '${_currentAccuracy!.toStringAsFixed(1)}m（信号弱）',
-                icon: Icons.warning_amber_outlined),
+                value: _currentAccuracy! > _maxAcceptedAccuracyMeters
+                    ? '${_currentAccuracy!.toStringAsFixed(1)} m（信号弱）'
+                    : '${_currentAccuracy!.toStringAsFixed(1)} m',
+                icon: _currentAccuracy! > _maxAcceptedAccuracyMeters
+                    ? Icons.warning_amber_outlined
+                    : Icons.gps_fixed),
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Row(

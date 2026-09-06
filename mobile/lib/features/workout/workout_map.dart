@@ -32,6 +32,7 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
   bool _controllerReady = false;
   bool _followCurrent = true;
   bool _tileLoadFailed = false;
+  bool _showImagery = false;
 
   List<latlng.LatLng> get _mapPoints => widget.points
       .map((point) {
@@ -61,7 +62,9 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
   }
 
   List<Widget> _buildMapLayers(List<latlng.LatLng> points) {
-    final baseUrl = MapConfig.baseTileUrl;
+    final baseUrl = _showImagery && MapConfig.imageryTileUrl.isNotEmpty
+        ? MapConfig.imageryTileUrl
+        : MapConfig.baseTileUrl;
     if (!MapConfig.hasConfiguredTiles || baseUrl.isEmpty) {
       return const [];
     }
@@ -80,7 +83,9 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
       ),
     ];
 
-    final labelUrl = MapConfig.labelTileUrl;
+    final labelUrl = _showImagery && MapConfig.imageryLabelTileUrl.isNotEmpty
+        ? MapConfig.imageryLabelTileUrl
+        : MapConfig.labelTileUrl;
     if (labelUrl.isNotEmpty) {
       layers.add(
         fmap.TileLayer(
@@ -98,7 +103,7 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
           polylines: [
             fmap.Polyline(
               points: points,
-              strokeWidth: 6,
+              strokeWidth: 4,
               color: const Color(0xFF1F8A70),
             ),
           ],
@@ -150,6 +155,20 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
+                if (canRenderTiles && MapConfig.usesTianditu)
+                  IconButton(
+                    key: const Key('workout-map-layer-toggle'),
+                    tooltip: _showImagery ? '切换到道路地图' : '切换到卫星影像',
+                    onPressed: () {
+                      setState(() {
+                        _showImagery = !_showImagery;
+                        _tileLoadFailed = false;
+                      });
+                    },
+                    icon: Icon(
+                      _showImagery ? Icons.map_outlined : Icons.satellite_alt,
+                    ),
+                  ),
                 if (canRenderTiles)
                   IconButton(
                     key: const Key('workout-map-follow'),
@@ -179,7 +198,7 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
                             mapController: _controller,
                             options: fmap.MapOptions(
                               initialCenter: points.last,
-                              initialZoom: 17,
+                              initialZoom: 18,
                               initialCameraFit: points.length < 2
                                   ? null
                                   : fmap.CameraFit.coordinates(
@@ -188,7 +207,7 @@ class _WorkoutMapCardState extends State<WorkoutMapCard> {
                                       maxZoom: 18,
                                     ),
                               minZoom: 3,
-                              maxZoom: 19,
+                              maxZoom: 20,
                               onMapReady: () {
                                 _controllerReady = true;
                                 if (_followCurrent && points.length < 2) {
@@ -451,6 +470,7 @@ class _WorkoutTrackPageState extends State<WorkoutTrackPage> {
                 height: 360,
                 title: '历史路线',
               ),
+              _WorkoutSummaryCard(record: widget.record, track: track),
               _MetricCard(
                 label: '轨迹点',
                 value: '${points.length} 个',
@@ -467,4 +487,91 @@ class _WorkoutTrackPageState extends State<WorkoutTrackPage> {
       ),
     );
   }
+}
+
+class _WorkoutSummaryCard extends StatelessWidget {
+  const _WorkoutSummaryCard({required this.record, required this.track});
+
+  final SportRecord record;
+  final WorkoutTrack track;
+
+  @override
+  Widget build(BuildContext context) {
+    final accuracies = track.points
+        .map((point) => point.accuracy)
+        .where((value) => value.isFinite && value >= 0)
+        .toList(growable: false);
+    final averageAccuracy = accuracies.isEmpty
+        ? null
+        : accuracies.reduce((a, b) => a + b) / accuracies.length;
+    final startedAt = record.startedAt?.toLocal();
+    final startedAtText = startedAt == null
+        ? '--'
+        : '${startedAt.year}-${startedAt.month.toString().padLeft(2, '0')}-'
+            '${startedAt.day.toString().padLeft(2, '0')} '
+            '${startedAt.hour.toString().padLeft(2, '0')}:'
+            '${startedAt.minute.toString().padLeft(2, '0')}';
+    final items = [
+      ('距离', '${record.distanceKm.toStringAsFixed(2)} km'),
+      ('时长', _summaryDuration(record.durationSeconds)),
+      ('平均配速', formatPace(record.durationSeconds, record.distanceKm)),
+      ('消耗热量', '${record.calorie.toStringAsFixed(1)} kcal'),
+      ('运动类型', _sportTypes[record.sportType] ?? record.sportType ?? '未记录'),
+      ('打卡方式', _checkinModeLabel(record.checkinMode ?? 'gps')),
+      ('开始时间', startedAtText),
+      ('平均 GPS 精度', averageAccuracy == null
+          ? '--'
+          : '${averageAccuracy.toStringAsFixed(1)} m'),
+    ];
+    return Card(
+      key: const Key('workout-summary-card'),
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('运动详情', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final width = (constraints.maxWidth - 12) / 2;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 14,
+                  children: [
+                    for (final item in items)
+                      SizedBox(
+                        width: width,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(item.$1,
+                                style: Theme.of(context).textTheme.bodySmall),
+                            const SizedBox(height: 2),
+                            Text(item.$2,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleSmall
+                                    ?.copyWith(fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _summaryDuration(int totalSeconds) {
+  final hours = totalSeconds ~/ 3600;
+  final minutes = (totalSeconds % 3600) ~/ 60;
+  final seconds = totalSeconds % 60;
+  if (hours > 0) return '$hours 小时 $minutes 分';
+  return '$minutes 分 ${seconds.toString().padLeft(2, '0')} 秒';
 }

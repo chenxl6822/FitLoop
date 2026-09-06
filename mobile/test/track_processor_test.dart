@@ -4,6 +4,13 @@ import 'package:fitloop/track_processor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('formats running pace per kilometer', () {
+    expect(formatPace(1500, 5), '5\'00"/km');
+    expect(formatPaceFromSpeed(1000 / 300), '5\'00"/km');
+    expect(formatPace(0, 0), '--');
+    expect(formatPaceFromSpeed(0), '--');
+  });
+
   group('TrackProcessor', () {
     test('rejects GPS drift jumps and stationary noise', () {
       final processor = TrackProcessor(
