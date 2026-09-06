@@ -52,11 +52,11 @@ APPEAL_OUTPUT = {
     "decision": "APPROVE",
     "confidence": 0.91,
     "evidence": [
-        "The appeal evidence and deterministic anomaly rules were both inspected.",
-        "The seeded workout contains an isolated location spike consistent with the demo scenario.",
+        "已检查申诉证据和确定性异常规则。",
+        "测试运动记录包含一个孤立的位置跳点，与演示场景一致。",
     ],
-    "risk_flags": ["Administrator confirmation is required before changing the appeal."],
-    "reason": "The evidence supports approval, but the model result remains advisory.",
+    "risk_flags": ["变更申诉状态前仍需管理员确认。"],
+    "reason": "现有证据支持批准，但模型结果仅作为管理员决策建议。",
 }
 
 

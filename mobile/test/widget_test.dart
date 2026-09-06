@@ -57,6 +57,11 @@ void main() {
     expect(find.textContaining('已上传 1 个轨迹点'), findsOneWidget);
     expect(find.byKey(const Key('workout-map-card')), findsOneWidget);
     expect(find.byKey(const Key('local-track-preview')), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('平均配速'), 200);
+    expect(find.text('平均配速'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('当前配速'), 200);
+    expect(find.text('当前配速'), findsOneWidget);
+    expect(find.text('平均速度'), findsNothing);
   });
 
   testWidgets('shows and completes the next training from the dashboard',
@@ -510,7 +515,7 @@ void main() {
   testWidgets('opens the signed-in users private workout route',
       (tester) async {
     final api = _FakeApi(
-      sportRecords: const [
+      sportRecords: [
         SportRecord(
           recordId: 43,
           status: 1,
@@ -519,6 +524,7 @@ void main() {
           calorie: 160,
           sportType: 'running',
           checkinMode: 'gps',
+          startedAt: DateTime.utc(2026, 9, 6, 10, 30),
         ),
       ],
     );
@@ -534,6 +540,16 @@ void main() {
 
     expect(find.text('路线 #43'), findsOneWidget);
     expect(find.text('历史路线'), findsOneWidget);
+    expect(find.byKey(const Key('workout-summary-card')), findsOneWidget);
+    expect(find.text('运动详情'), findsOneWidget);
+    expect(find.text('2.10 km'), findsOneWidget);
+    expect(find.text('9\'31"/km'), findsOneWidget);
+    expect(find.text('160.0 kcal'), findsOneWidget);
+    expect(find.text('跑步'), findsOneWidget);
+    expect(find.text('GPS 定位打卡'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('5.5 m'), 200);
+    expect(find.text('5.5 m'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('2 个'), 200);
     expect(find.text('2 个'), findsOneWidget);
     await tester.scrollUntilVisible(find.textContaining('仅本人可见'), 200);
     expect(find.textContaining('仅本人可见'), findsOneWidget);

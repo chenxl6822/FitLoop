@@ -32,8 +32,8 @@ async def test_live_demo_runs_both_workflows_with_required_tools(monkeypatch) ->
             AppealDecision(
                 decision="APPROVE",
                 confidence=0.85,
-                evidence=["The spike was shorter than the configured threshold."],
-                reason="The deterministic rule was not triggered.",
+                evidence=["位置跳点持续时间短于配置阈值。"],
+                reason="确定性规则未触发。",
             ),
             SimpleNamespace(raw_responses=[]),
         )

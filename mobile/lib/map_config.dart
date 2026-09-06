@@ -14,6 +14,11 @@ const _customTileUrl = String.fromEnvironment(
   defaultValue: '',
 );
 
+const _mapCoordinateSystem = String.fromEnvironment(
+  'FITLOOP_MAP_COORDINATE_SYSTEM',
+  defaultValue: 'WGS84',
+);
+
 class MapConfig {
   const MapConfig._();
 
@@ -38,6 +43,20 @@ class MapConfig {
         'TILEMATRIXSET=w&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=$_tiandituToken';
   }
 
+  static String get imageryTileUrl {
+    if (!usesTianditu) return '';
+    return 'https://t{s}.tianditu.gov.cn/img_w/wmts?'
+        'SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&'
+        'TILEMATRIXSET=w&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=$_tiandituToken';
+  }
+
+  static String get imageryLabelTileUrl {
+    if (!usesTianditu) return '';
+    return 'https://t{s}.tianditu.gov.cn/cia_w/wmts?'
+        'SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&'
+        'TILEMATRIXSET=w&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&tk=$_tiandituToken';
+  }
+
   static List<String> get tileSubdomains => const ['0', '1', '2', '3', '4', '5', '6', '7'];
 
   static String get attributionLabel {
@@ -48,7 +67,15 @@ class MapConfig {
 
   /// Display coordinates for map rendering. Storage remains WGS84.
   static ({double lat, double lng}) displayCoordinate(double lat, double lng) {
-    if (!usesTianditu && !_customTileUrl.contains('tianditu')) {
+    return displayCoordinateForSystem(lat, lng, _mapCoordinateSystem);
+  }
+
+  static ({double lat, double lng}) displayCoordinateForSystem(
+    double lat,
+    double lng,
+    String coordinateSystem,
+  ) {
+    if (coordinateSystem.toUpperCase() != 'GCJ02') {
       return (lat: lat, lng: lng);
     }
     final gcj = CoordTransform.wgs84ToGcj02(lat, lng);

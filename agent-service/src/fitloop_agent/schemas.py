@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TrainingDay(BaseModel):
@@ -31,6 +31,24 @@ class AppealDecision(BaseModel):
     evidence: list[str] = Field(min_length=1, max_length=12)
     risk_flags: list[str] = Field(default_factory=list, max_length=12)
     reason: str = Field(min_length=1, max_length=3000)
+
+    @field_validator("evidence", "risk_flags")
+    @classmethod
+    def human_readable_lists_must_be_chinese(cls, values: list[str]) -> list[str]:
+        if any(not _contains_chinese(value) for value in values):
+            raise ValueError("appeal human-readable list items must contain Chinese")
+        return values
+
+    @field_validator("reason")
+    @classmethod
+    def reason_must_be_chinese(cls, value: str) -> str:
+        if not _contains_chinese(value):
+            raise ValueError("appeal reason must contain Chinese")
+        return value
+
+
+def _contains_chinese(value: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in value)
 
 
 class ClaimResponse(BaseModel):
