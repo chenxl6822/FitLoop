@@ -86,8 +86,8 @@ write_metadata() {
     local signer_sha256="${4:-${COMPATIBILITY_SIGNER}}"
     local signing_mode="${5:-Compatibility}"
     local apk_path="${6:-$(dirname "${target}")/app-release.apk}"
-    local version="${7:-0.1.10}"
-    local version_code="${8:-12}"
+    local version="${7:-0.1.11}"
+    local version_code="${8:-13}"
     local apk_size
     apk_size="$(
         python3 - "${apk_path}" <<'PY'
@@ -674,8 +674,8 @@ make_existing_case "${missing_field_dir}"
 missing_field_sha="$(cat "${missing_field_dir}/new.sha256")"
 cat > "${missing_field_dir}/source/version.json" <<JSON
 {
-  "version": "0.1.10",
-  "versionCode": 12,
+  "version": "0.1.11",
+  "versionCode": 13,
   "apiBaseUrl": "https://app.fitloop-health.cn",
   "sha256": "${missing_field_sha}"
 }
@@ -840,7 +840,7 @@ while IFS='|' read -r transition_policy_name version version_code; do
 done <<'TRANSITION_POLICY_VERSIONS'
 version|0.1.8|11
 version-code|0.1.9|10
-https-channel-version|0.1.10|12
+https-channel-version|0.1.11|13
 TRANSITION_POLICY_VERSIONS
 
 transition_http_download_index=0
