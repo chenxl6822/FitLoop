@@ -115,9 +115,9 @@ async def test_mocked_appeal_approval_creates_admin_proposal(monkeypatch) -> Non
     output = AppealDecision(
         decision="APPROVE",
         confidence=0.91,
-        evidence=["The isolated speed spike was shorter than the deterministic threshold."],
-        risk_flags=["Administrator confirmation is still required."],
-        reason="The rule was not triggered, so approval is recommended.",
+        evidence=["孤立的速度突增持续时间短于确定性阈值。"],
+        risk_flags=["仍需管理员确认后才能变更申诉。"],
+        reason="异常规则未触发，因此建议批准。",
     )
     usage = SimpleNamespace(input_tokens=220, output_tokens=80)
     fake_result = SimpleNamespace(raw_responses=[SimpleNamespace(usage=usage)])
@@ -147,8 +147,8 @@ async def test_mocked_appeal_needing_more_info_does_not_create_proposal(monkeypa
     output = AppealDecision(
         decision="NEED_MORE_INFO",
         confidence=0.72,
-        evidence=["The available trace summary is incomplete."],
-        reason="An administrator should request the detailed trace before deciding.",
+        evidence=["现有轨迹摘要不完整。"],
+        reason="管理员应在决定前要求补充详细轨迹。",
     )
     fake_result = SimpleNamespace(raw_responses=[])
 
@@ -170,6 +170,13 @@ def test_timeout_and_network_errors_are_retryable() -> None:
     assert not AgentWorker._is_retryable(type("PermanentAgentError", (RuntimeError,), {})())
     assert not AgentWorker._is_retryable(type("PaymentRequired", (RuntimeError,), {"status_code": 402})())
     assert AgentWorker._is_retryable(type("RateLimited", (RuntimeError,), {"status_code": 429})())
+
+
+def test_appeal_input_requests_simplified_chinese_output() -> None:
+    prompt = AgentWorker._appeal_input('{"appealId":42}')
+
+    assert "简体中文" in prompt
+    assert "证据、风险和理由" in prompt
 
 
 @pytest.mark.asyncio

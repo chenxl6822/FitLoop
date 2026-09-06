@@ -86,8 +86,8 @@ def test_appeal_confidence_accepts_inclusive_boundaries(confidence: float) -> No
     decision = AppealDecision(
         decision="NEED_MORE_INFO",
         confidence=confidence,
-        evidence=["Synthetic evidence is intentionally incomplete."],
-        reason="Request deterministic synthetic evidence.",
+        evidence=["合成证据有意保持不完整。"],
+        reason="需要补充确定性的合成证据。",
     )
 
     assert decision.confidence == confidence
@@ -99,6 +99,17 @@ def test_appeal_confidence_rejects_values_outside_boundaries(confidence: float) 
         AppealDecision(
             decision="NEED_MORE_INFO",
             confidence=confidence,
-            evidence=["Synthetic evidence is intentionally incomplete."],
-            reason="Request deterministic synthetic evidence.",
+            evidence=["合成证据有意保持不完整。"],
+            reason="需要补充确定性的合成证据。",
+        )
+
+
+def test_appeal_human_readable_output_rejects_english_only_text() -> None:
+    with pytest.raises(ValidationError, match="must contain Chinese"):
+        AppealDecision(
+            decision="REJECT",
+            confidence=0.8,
+            evidence=["The GPS trace contains an unexplained jump."],
+            risk_flags=["Administrator confirmation is required."],
+            reason="The evidence is insufficient.",
         )

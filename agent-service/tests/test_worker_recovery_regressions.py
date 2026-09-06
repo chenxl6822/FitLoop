@@ -132,9 +132,9 @@ def appeal_output() -> AppealDecision:
     return AppealDecision(
         decision="APPROVE",
         confidence=0.91,
-        evidence=["Only deterministic synthetic evidence was used."],
-        risk_flags=["Administrator confirmation remains mandatory."],
-        reason="The synthetic rule was not triggered.",
+        evidence=["仅使用确定性的合成证据。"],
+        risk_flags=["仍必须由管理员确认。"],
+        reason="合成规则未触发。",
     )
 
 

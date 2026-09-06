@@ -343,7 +343,7 @@ class AgentWorker:
     @staticmethod
     def _appeal_input(input_json: str) -> str:
         payload = json.loads(input_json)
-        return f"Review appeal {int(payload['appealId'])} using all required evidence tools."
+        return f"请使用全部必需的证据工具审核申诉 {int(payload['appealId'])}，并用简体中文说明证据、风险和理由。"
 
     @staticmethod
     def _is_retryable(exc: Exception) -> bool:
