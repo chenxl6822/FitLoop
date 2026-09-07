@@ -1,8 +1,8 @@
 # FitLoop 部署与运维指南
 
-本文适用于短期受控 HTTP 过渡版 `0.1.7+8`。任何 push、证书切换、服务器部署或 APK 发布都必须在执行前单独确认。
+本文描述可复用的部署与运维边界。当前生产提交、APK 版本、哈希、回滚锚和验证限制见 [当前发布状态](RELEASE_STATUS.md)。任何 push、证书切换、服务器部署或 APK 发布都必须在执行前单独确认。
 
-需要从 PR、域名、密钥、证书一路执行到真机、发布和回滚时，直接使用 [人工发布执行手册](MANUAL_RELEASE_RUNBOOK.md)。
+旧版 [0.1.7+8 人工发布执行手册](MANUAL_RELEASE_RUNBOOK.md) 保留了首次 HTTP 到 HTTPS 迁移的完整证据链，仅作历史参考。下一次发布应以当前脚本门禁和本指南为基础建立新的、版本固定的执行记录。
 
 ## 1. 服务拓扑与降级边界
 
@@ -51,7 +51,7 @@ FITLOOP_MAIL_PASSWORD=<SMTP_AUTHORIZATION_CODE>
 
 如暂不启用 Agent，设置 `FITLOOP_AGENT_ENABLED=false`；核心服务仍可部署。
 
-## 3. TLS 配置和 30 天兼容窗口
+## 3. TLS 配置和兼容窗口
 
 取得证书后配置：
 
@@ -95,7 +95,7 @@ certbot renew --dry-run
 `1209600` 秒（14 天）；160 小时的 IP 短证书使用 `172800` 秒（48 小时）。
 阈值必须是 1 到 31536000 的整数秒数。
 
-记录 HTTPS 启用日期。TLS 日志会记录 `transport=80/443`；在至少 30 天且确认旧客户端退出后，经单独批准把 `FITLOOP_HTTP_COMPAT_ENABLED` 改为 `false`。部署脚本将启用 `nginx.https-only.conf`，明文 `/api/` 返回 426。
+记录 HTTPS 启用日期。TLS 日志会记录 `transport=80/443`；在满足项目约定的观察期且确认旧客户端退出后，经单独批准把 `FITLOOP_HTTP_COMPAT_ENABLED` 改为 `false`。部署脚本将启用 `nginx.https-only.conf`，明文 `/api/` 返回 426。当前线上开关状态必须现场查询，不能从示例配置或旧发布记录推断。
 
 ## 4. 部署核心服务
 
@@ -125,7 +125,7 @@ Agent readiness 失败应单独告警，但不得判定核心 API 发布失败�
 
 ## 5. Android 构建与签名
 
-版本固定为 `0.1.7+8`。本周期延续已发布 APK 的兼容证书，已知 SHA-256 指纹为：
+安装器当前批准的 forward 版本为 `0.1.12+14`。本版本延续已发布 APK 的兼容证书，已知 SHA-256 指纹为：
 
 ```text
 69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a
@@ -224,9 +224,9 @@ test "$(
 ```bash
 cd /root/FitLoop
 bash deploy/install-apk.sh --verify-only \
-  https://artifacts.example.com/fitloop/0.1.7/app-release.apk \
+  file:///tmp/fitloop-apk-<version>/app-release.apk \
   <EXPECTED_SHA256> \
-  https://artifacts.example.com/fitloop/0.1.7/version.json
+  file:///tmp/fitloop-apk-<version>/version.json
 ```
 
 `--verify-only` 可能创建安装锁和受管工作目录，但不会创建 release、
@@ -254,7 +254,7 @@ schema；只有重跑返回 0 才确认耐久收敛。重跑的 `sync` 或任一
 哈希必须来自迁移前或发布时已经核验的发布记录，不能在故障发生后从待
 回滚目录临时计算。脚本不依赖可能损坏的 current，要求 managed previous
 实际 APK 哈希与信任锚一致，严格校验三件套后原子建立回滚 state；回滚
-完整性校验不受面向新版本的 `0.1.7+8` forward policy 限制。若不存在
+完整性校验不受面向当前批准版本的 forward policy 限制。若不存在
 managed previous，回滚必须失败且保持 `active` 不变；不会撤下 `active`
 或回退到 flat 根文件。不要直接改写 `active` 或单独移动其中一个文件。
 回滚只改变下载产物，不会回滚数据库或服务代码。
