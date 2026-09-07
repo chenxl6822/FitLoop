@@ -4,7 +4,7 @@
 
 ![FitLoop 产品展示图](mobile/assets/ai_generated/readme_hero_mockup.png)
 
-当前定位是“可本地运行、可自动验证、可现场演示”的作品集版本 `0.1.7+8`，重点展示 Java 业务建模、安全鉴权、异步 Agent 编排、工具权限、Human-in-the-loop 和工程化交付。公网域名、备案、正式证书与应用商店发布不是完成本项目演示的前置条件。
+当前仓库包含已部署的受控发布版本 `0.1.12+14`，重点展示 Java 业务建模、安全鉴权、异步 Agent 编排、工具权限、Human-in-the-loop 和工程化交付。公网部署是带日期的运行快照，不替代本地可复现测试；准确版本、产物哈希、回滚锚和限制见 [当前发布状态](docs/RELEASE_STATUS.md)。
 
 ## 技术栈
 
@@ -124,32 +124,35 @@ CI 执行以下门禁：
 - Shell 语法与基础/TLS/Agent E2E Compose 配置校验。
 - Pull Request 高危依赖审查。
 
-`origin/main` @ `3e48671`（合并 PR #29）的 GitHub Actions 快照：后端 Surefire 188 项、Failsafe 4 项，全部通过且 JaCoCo 门禁通过；Agent pytest 36 项通过；Flutter 63 项通过；隔离容器 Agent E2E 通过。测试声明数量与最近一次实际执行结果应分开记录，避免把历史基线误报为本次全部通过。教练与申诉审批已使用真实 DeepSeek V4 模型完成模型层演示。
+最近一次发布与修复的精确测试证据记录在 [当前发布状态](docs/RELEASE_STATUS.md)。其中申诉确认修复的合并前源码树通过 203 项后端单元测试、4 项 Testcontainers 集成测试和 JaCoCo 门禁；该数字是对应提交的快照，不代表后续任意工作树自动通过。CI、生产部署和真机验收必须分别记录，不能相互替代。
 
 ## 可选部署能力
 
-作品集演示可以全部在本地完成，不需要域名。若以后决定公网展示，再按
-[部署与运维指南](docs/DEPLOYMENT.md) 配置域名或固定公网 IP、TLS、监控与
-发布流程；固定公网 IP 使用
-[IP HTTPS 发布补充手册](docs/IP_HTTPS_RELEASE_RUNBOOK.md)。
+作品集演示可以全部在本地完成，不依赖公网。当前固定公网 IP 的 HTTPS
+下载与 API 快照见 [当前发布状态](docs/RELEASE_STATUS.md)；新环境或下一次
+发布仍须按 [部署与运维指南](docs/DEPLOYMENT.md) 重新核验 TLS、监控、备份
+和回滚门禁。旧的固定 IP HTTPS 迁移过程保留在
+[历史发布补充手册](docs/IP_HTTPS_RELEASE_RUNBOOK.md) 中，仅作参考。
 
 APK 二进制不再进入 Git。发布产物必须附带 SHA-256，服务器通过 `deploy/install-apk.sh` 校验并原子替换，并保留上一版本用于回滚。本周期不改写 Git 历史。
 
 ## 当前状态与边界
 
-- `0.1.7+8` 仍是作品集候选版本。Gate 0B 相关安全修复已合入 `main`（PR #23–#29）：生产占位密钥 fail-closed 与 backend loopback、Release 默认 HTTPS / 禁止任意 cleartext、密码最小长度、可信代理下的 `X-Forwarded-For`、运动照片魔数校验、Agent 409 等价复用，以及 OTP 失败尝试在回滚后仍可持久计数。
-- AI 教练训练计划确认后查看、计划列表与详情已在更早 PR 合入；Agent 真实模型演示使用固定脱敏证据；隔离容器 E2E 覆盖 Spring、Redis、Worker、工具审计和人工确认。
-- 仓库代码侧 Release 路径默认走 HTTPS；仅显式授权的 HTTP 过渡构建可临时放行明文。公网是否已完成证书挂载、Backend/APK 是否已与当前 `main` 对齐，必须以服务器与发布记录复核为准，不能用仓库默认值代替部署证据。
-- Gate 0C 发布证据尚未完成：正式签名、兼容升级、真机冒烟、备份/恢复与原子回滚、HTTPS 或书面锁定的 HTTP 过渡结束条件，均需按 [人工发布执行手册](docs/MANUAL_RELEASE_RUNBOOK.md) 留存脱敏证据后，才能称为发布候选或已上线。
+- `0.1.12+14` 已通过服务器 `verify-only`、真机覆盖安装与激活前冒烟，并已原子激活为 HTTPS 公网下载产物；哈希、大小、服务器提交和回滚锚见 [当前发布状态](docs/RELEASE_STATUS.md)。
+- Agent 申诉人工确认修复已合入并部署；真机确认不再误报“登录状态已过期”，申诉决策可成功落库。模型只提供结构化建议，最终写入仍由 Spring 鉴权、事务和人工确认控制。
+- 地图细节、定位纠偏、配速展示和运动记录详情已进入 `0.1.12+14`；其长期定位精度和设备兼容性仍需持续真机采样，不能由一次冒烟概括。
+- Release 默认使用 HTTPS，Android 生产 manifest 禁止任意明文流量。HTTP 兼容入口的最新开关未在本次文档更新中重新验证，不能据此宣称已经关闭。
+- 生产备份和回滚锚已建立，但本次没有执行数据库恢复演练；任何恢复或回滚仍需单独授权。
 - 正式 keystore 的创建、离线备份和签名切换尚未完成，不能宣称正式生产签名完成。
-- 当前已包含普通用户 AI 教练 UI 与训练计划确认/拒绝流程；仍不包含 iOS 正式构建、数据库重构或 Git 历史重写。Gate 0 完成前不扩展社交展示类功能。
+- 当前公开渠道是服务器 HTTPS 下载端点，尚未创建 Git tag、GitHub Release 或应用商店发布记录；仍不包含 iOS 正式构建。
 
 ## 文档
 
 - [系统架构与 Agent 时序](docs/ARCHITECTURE.md)
+- [当前生产发布状态（2026-09-07）](docs/RELEASE_STATUS.md)
 - [部署与运维指南](docs/DEPLOYMENT.md)
-- [固定公网 IP HTTPS 发布补充手册](docs/IP_HTTPS_RELEASE_RUNBOOK.md)
 - [Agent 可重复演示](docs/AGENT_DEMO.md)
-- [0.1.7+8 人工发布执行手册](docs/MANUAL_RELEASE_RUNBOOK.md)
-- [Android 真机冒烟清单](docs/SMOKE_TEST_CHECKLIST.md)
+- [历史：0.1.7+8 人工发布执行手册](docs/MANUAL_RELEASE_RUNBOOK.md)
+- [历史：0.1.7+8 固定公网 IP HTTPS 补充手册](docs/IP_HTTPS_RELEASE_RUNBOOK.md)
+- [历史：0.1.7+8 Android 真机冒烟清单](docs/SMOKE_TEST_CHECKLIST.md)
 - [协作与提交规范](CONTRIBUTING.md)

@@ -52,7 +52,7 @@ flowchart LR
 
 基础 `deploy/docker-compose.yml` 会把 Spring 的宿主机端口绑定到所有接口；因此“只有 Nginx 对外”是目标部署边界，不是基础 Compose 自动保证的事实。公网环境必须通过安全组、防火墙或受审查的 Compose override 收敛 `8080`，并按 `docs/DEPLOYMENT.md` 完成 HTTPS 验证。
 
-基础 Compose 和当前移动端兼容配置仍允许 HTTP；TLS overlay 才增加 `443`。本图展示可用的部署能力，不代表当前公网环境已经完成 HTTPS 验收。
+基础 Compose 可用于本地 HTTP 开发，TLS overlay 才增加 `443`；Release 默认 API 使用 HTTPS，生产 Android manifest 禁止任意明文流量。本图描述的是部署能力，带日期的公网 HTTPS 验证结果见 [当前发布状态](RELEASE_STATUS.md)，不能从 Compose 默认值推断实时线上状态。
 
 Nginx 只依赖 Spring 的健康状态。Agent Service 或 DeepSeek 不可用时，Agent `/ready` 可以失败，但登录、运动、管理等核心 API 与 APK 下载仍由 Spring 和 Nginx 提供；MySQL 则是核心业务依赖，不能按同样方式降级。
 
