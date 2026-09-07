@@ -10,8 +10,8 @@
 
 set -euo pipefail
 
-readonly APPROVED_VERSION="0.1.11"
-readonly APPROVED_VERSION_CODE="13"
+readonly APPROVED_VERSION="0.1.12"
+readonly APPROVED_VERSION_CODE="14"
 readonly APPROVED_SIGNING_MODE="Compatibility"
 readonly APPROVED_SIGNER_SHA256="69316bd8f5a1d79dad539415f88b3ecbaf43f3113831782e35499c0f55a47c2a"
 # Frozen HTTP-transition channel; sealed separately from the HTTPS release pin.

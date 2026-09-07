@@ -126,9 +126,18 @@ try {
 
     Push-Location $mobileDir
     try {
-        flutter pub get
+        flutter pub get --enforce-lockfile
+        if ($LASTEXITCODE -ne 0) {
+            throw "flutter pub get --enforce-lockfile failed with exit code $LASTEXITCODE."
+        }
         flutter analyze
+        if ($LASTEXITCODE -ne 0) {
+            throw "flutter analyze failed with exit code $LASTEXITCODE."
+        }
         flutter test
+        if ($LASTEXITCODE -ne 0) {
+            throw "flutter test failed with exit code $LASTEXITCODE."
+        }
         $buildDefines = @(
             "--dart-define=FITLOOP_API_BASE_URL=$ApiBaseUrl",
             "--dart-define=FITLOOP_APP_VERSION=$versionName",
@@ -141,6 +150,9 @@ try {
             Write-Warning "FITLOOP_TIANDITU_TOKEN is empty; APK will only show local track preview without road basemap."
         }
         flutter build apk --release @buildDefines
+        if ($LASTEXITCODE -ne 0) {
+            throw "flutter build apk --release failed with exit code $LASTEXITCODE."
+        }
     } finally {
         Pop-Location
     }
