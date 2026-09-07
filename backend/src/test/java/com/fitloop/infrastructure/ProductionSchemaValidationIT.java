@@ -75,7 +75,13 @@ class ProductionSchemaValidationIT {
                 "select version from flyway_schema_history "
                         + "where success = 1 order by installed_rank desc limit 1",
                 String.class))
-                .isEqualTo("10");
+                .isEqualTo("11");
+        assertThat(jdbc.queryForObject(
+                "select data_type from information_schema.columns "
+                        + "where table_schema = database() and table_name = 'appeal' "
+                        + "and column_name = 'review_note'",
+                String.class))
+                .isEqualTo("text");
 
         UserInfo user = new UserInfo();
         user.setPhone("13973000001");

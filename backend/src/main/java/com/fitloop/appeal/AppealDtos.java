@@ -13,7 +13,7 @@ public final class AppealDtos {
     public record CreateAppealRequest(@NotNull Long recordId, @NotBlank String reason, String evidenceUrl) {
     }
 
-    public record ReviewAppealRequest(@NotBlank String status, @Size(max = 255) String reviewNote) {
+    public record ReviewAppealRequest(@NotBlank String status, @Size(max = 3000) String reviewNote) {
     }
 
     public record AppealResponse(Long appealId, Long recordId, String reason, String evidenceUrl,

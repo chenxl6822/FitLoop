@@ -27,6 +27,7 @@ public class Appeal {
 
     private String evidenceUrl;
     private String status = "pending";
+    @Column(columnDefinition = "TEXT")
     private String reviewNote;
     private Instant createdAt;
     private Instant updatedAt;

@@ -85,6 +85,35 @@ class AppealServiceTest {
     }
 
     @Test
+    void storesAgentReviewReasonUpToDocumentedLimit() {
+        SportRecord record = new SportRecord();
+        record.setUserId(2L);
+        record.setSessionId("session-appeal-long-review");
+        record.setSportType("running");
+        record.setCheckinMode("gps");
+        record.setStartedAt(Instant.now());
+        record.setStatus(SportRecord.STATUS_ABNORMAL);
+        records.save(record);
+        var appeal = appealService.create(2L,
+                new CreateAppealRequest(record.getRecordId(), "GPS 漂移", null));
+        String reviewNote = "证".repeat(3000);
+
+        appealService.review(appeal.appealId(),
+                new ReviewAppealRequest("approved", reviewNote));
+
+        assertThat(appealService.list(2L)).singleElement()
+                .satisfies(item -> assertThat(item.reviewNote()).isEqualTo(reviewNote));
+    }
+
+    @Test
+    void rejectsReviewReasonBeyondDocumentedLimitBeforePersistence() {
+        assertThatThrownBy(() -> appealService.review(1L,
+                new ReviewAppealRequest("approved", "证".repeat(3001))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("审核备注不能超过 3000 个字符");
+    }
+
+    @Test
     void adminListSupportsStatusFilterAndHumanDecisionIsAudited() {
         SportRecord record = new SportRecord();
         record.setUserId(5L);
