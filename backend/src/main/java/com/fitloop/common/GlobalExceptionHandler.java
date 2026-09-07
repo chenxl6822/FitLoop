@@ -4,6 +4,7 @@ import com.fitloop.agent.ExistingAgentProposalException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.net.URI;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +30,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Object validation(Exception ex, HttpServletRequest request) {
         return error(request, HttpStatus.BAD_REQUEST, "Validation failed", "请求参数不合法");
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public Object dataIntegrity(DataIntegrityViolationException ex, HttpServletRequest request) {
+        return error(request, HttpStatus.INTERNAL_SERVER_ERROR,
+                "Data persistence failed", "数据保存失败，请稍后重试");
     }
 
     private Object error(HttpServletRequest request, HttpStatus status, String title, String detail) {

@@ -21,6 +21,8 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class AppealService {
+    static final int MAX_REVIEW_NOTE_LENGTH = 3000;
+
     private final AppealRepository appeals;
     private final SportRecordRepository records;
     private final AdminAuditService audits;
@@ -76,6 +78,9 @@ public class AppealService {
     @Transactional
     public AppealResponse review(Long appealId, ReviewAppealRequest request,
                                  Long actorUserId, String source) {
+        if (request.reviewNote() != null && request.reviewNote().length() > MAX_REVIEW_NOTE_LENGTH) {
+            throw new IllegalArgumentException("审核备注不能超过 " + MAX_REVIEW_NOTE_LENGTH + " 个字符");
+        }
         Appeal appeal = appeals.findForReview(appealId)
                 .orElseThrow(() -> new IllegalArgumentException("申诉不存在"));
         if (!"pending".equals(appeal.getStatus())) {
